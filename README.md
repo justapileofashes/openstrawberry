@@ -13,6 +13,7 @@
 | Workspace | Two-pane split browsing with tab drag targets, pane-local navigation, and visible active-pane state |
 | Workspace continuity | Named local snapshots save and restore a bounded set of tab URLs, split layout, and active pane; they do not clone site cookies, credentials, or page storage |
 | Browser productivity | Keyboard-accessible command palette with actions for tabs, address focus, split workspace, saved workspaces, and the Companion; supports Ctrl on Windows/Linux and Command on macOS |
+| Reader mode | Local text-only overlay for the selected tab, entered through the command palette; it extracts readable page text in-place and does not send it to a provider or third party |
 | Media deck | Detect compatible HTML video in the selected tab and expose play, pause, seek, mute, volume, and browser-native picture-in-picture commands |
 | Downloads | Session download panel with progress and completion state; completed files can be revealed through a main-process action without exposing local paths to the renderer |
 | Agent control plane | Separate local agent profiles, per-agent encrypted credential bindings when operating-system encryption is available, local CLI discovery, and review-first handoff planning |

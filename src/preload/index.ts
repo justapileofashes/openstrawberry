@@ -19,6 +19,7 @@ contextBridge.exposeInMainWorld("openStrawberry", {
     setSplit: (enabled: boolean): Promise<BrowserSnapshot | undefined> => ipcRenderer.invoke("browser:set-split", enabled),
     setActivePane: (paneId: BrowserPaneId): Promise<BrowserSnapshot | undefined> => ipcRenderer.invoke("browser:set-active-pane", paneId),
     revealDownload: (id: string): Promise<boolean> => ipcRenderer.invoke("browser:reveal-download", id),
+    toggleReaderMode: (): Promise<boolean> => ipcRenderer.invoke("browser:toggle-reader"),
     onState: (listener: (snapshot: BrowserSnapshot) => void): (() => void) => { const handler = (_event: Electron.IpcRendererEvent, snapshot: BrowserSnapshot) => listener(snapshot); ipcRenderer.on("browser:state", handler); return () => ipcRenderer.removeListener("browser:state", handler); }
   },
   media: {

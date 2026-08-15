@@ -6,6 +6,7 @@ import { dirname } from "node:path";
 import { PANE_IDS, validateWorkspaceName, type BrowserCommand, type BrowserDownloadState, type BrowserPaneId, type BrowserSnapshot, type BrowserTabState, type BrowserViewport, type WorkspaceSnapshot } from "../shared/browser.js";
 import { isBrowserUrlAllowed, normalizeAddress } from "../shared/navigation.js";
 import { EMPTY_MEDIA_STATE, type MediaCommand, type MediaState } from "../shared/media.js";
+import { buildReaderModeScript } from "../shared/reader.js";
 
 type TabRuntime = { view: BrowserView; state: BrowserTabState };
 type SavedSession = { version: 1; tabs: { id: string; url: string }[]; panes: { id: BrowserPaneId; tabId: string | null }[]; activePaneId: BrowserPaneId; splitEnabled: boolean };
@@ -103,6 +104,12 @@ export class BrowserManager {
   public setActivePane(paneId: BrowserPaneId): BrowserSnapshot { this.activePaneId = paneId; this.publish(); return this.snapshot(); }
   public async mediaState(): Promise<MediaState> { return this.executeMediaCommand({ action: "refresh" }); }
   public async mediaCommand(command: MediaCommand): Promise<MediaState> { return this.executeMediaCommand(command); }
+  public async toggleReaderMode(): Promise<boolean> {
+    const activeId = this.panes[this.activePaneId].tabId;
+    const active = activeId ? this.tabs.get(activeId) : undefined;
+    if (!active || active.view.webContents.isDestroyed()) return false;
+    try { return Boolean(await active.view.webContents.executeJavaScript(buildReaderModeScript(), true)); } catch { return false; }
+  }
   public snapshot(): BrowserSnapshot { return { activeTabId: this.panes[this.activePaneId].tabId, activePaneId: this.activePaneId, splitEnabled: this.splitEnabled, panes: PANE_IDS.map((id) => ({ id, tabId: this.panes[id].tabId })), tabs: [...this.tabs.values()].map((tab) => tab.state), downloads: this.downloads }; }
   public selectedContextUrls(): string[] { return PANE_IDS.map((paneId) => this.panes[paneId].tabId).filter((id): id is string => Boolean(id)).map((id) => this.tabs.get(id)?.state.url ?? "").filter((url) => Boolean(url)); }
   public revealDownload(id: string): boolean {

@@ -11,7 +11,7 @@ import { resolveBrowserShortcut } from "../shared/keyboard";
 import { downloadProgress } from "../shared/download";
 
 const EMPTY_SNAPSHOT: BrowserSnapshot = { activeTabId: null, activePaneId: "primary", splitEnabled: false, panes: [{ id: "primary", tabId: null }, { id: "secondary", tabId: null }], tabs: [], downloads: [] };
-const PALETTE_ACTIONS = [{ id: "new-tab", label: "New tab", hint: "⌘/Ctrl T" }, { id: "focus-address", label: "Focus address bar", hint: "⌘/Ctrl L" }, { id: "toggle-split", label: "Toggle split workspace", hint: "⌘/Ctrl Shift S" }, { id: "open-workspaces", label: "Open saved workspaces", hint: "" }, { id: "toggle-agents", label: "Toggle Companion", hint: "" }];
+const PALETTE_ACTIONS = [{ id: "new-tab", label: "New tab", hint: "⌘/Ctrl T" }, { id: "focus-address", label: "Focus address bar", hint: "⌘/Ctrl L" }, { id: "toggle-split", label: "Toggle split workspace", hint: "⌘/Ctrl Shift S" }, { id: "reader-mode", label: "Toggle reader mode", hint: "" }, { id: "open-workspaces", label: "Open saved workspaces", hint: "" }, { id: "toggle-agents", label: "Toggle Companion", hint: "" }];
 
 function IconButton({ label, disabled, children, onClick }: { label: string; disabled?: boolean; children: ReactNode; onClick?: () => void }) {
   return <button aria-label={label} disabled={disabled} onClick={onClick} className="icon-button">{children}</button>;
@@ -107,6 +107,7 @@ export function App() {
     if (action === "new-tab") createTab();
     if (action === "focus-address") focusAddress();
     if (action === "toggle-split") void window.openStrawberry.browser.setSplit(!browser.splitEnabled);
+    if (action === "reader-mode") void window.openStrawberry.browser.toggleReaderMode();
     if (action === "open-workspaces") setWorkspaceDrawerOpen(true);
     if (action === "toggle-agents") setAgentRailOpen((value) => !value);
     setCommandPaletteOpen(false);
