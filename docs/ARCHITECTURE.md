@@ -19,7 +19,9 @@ The current media deck executes user-triggered play, pause, seek, volume, mute, 
 
 ## Planned Companion and orchestration model
 
-The Companion uses explicit selected context. It shows a plan before dispatching work and can open visible Agent work tabs. The Orchestrator will dispatch scoped WorkItems to named specialists via a typed, run-scoped message bus. Every agent profile receives its own credential reference by default; raw values remain in a main-process vault and are never passed through the renderer, prompts, artifacts, or logs.
+The Companion uses explicit selected context. It shows a plan before dispatching work and can open visible Agent work tabs. The current Orchestrator produces a typed, reviewable handoff graph for Researcher, Coder, and Reviewer roles, with explicit dependency and context-policy edges. The execution adapter is intentionally absent until the approval, audit, token-budget, provider-protocol, and local-CLI policy surfaces are complete.
+
+Every agent profile receives its own credential reference by default. The local agent registry persists only profile metadata to `agents.json`; when the operating system’s secure storage is available, an API key is encrypted there and persisted separately in `agent-vault.json`. Raw values are never returned to the renderer, placed in orchestration plans, passed through browser context, or written to standard application logs.
 
 ## Security baseline
 

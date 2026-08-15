@@ -2,8 +2,9 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { ArrowLeft, ArrowRight, Bot, CircleStop, Columns2, Command, Download, Globe2, LayoutPanelTop, Maximize2, MoreHorizontal, PanelRightClose, Pause, Play, Plus, RefreshCw, Settings2, ShieldCheck, Sparkles, Volume2, VolumeX, X } from "lucide-react";
 import type { BrowserPaneId, BrowserSnapshot, BrowserTabState } from "../shared/browser";
-import { defaultAgentProfiles } from "../shared/agent";
+import { defaultAgentProfiles, type AgentProfileInput, type AgentProfileSummary, type LocalCliStatus } from "../shared/agent";
 import { EMPTY_MEDIA_STATE, type MediaCommand, type MediaState } from "../shared/media";
+import type { OrchestrationPlan } from "../shared/orchestration";
 
 const EMPTY_SNAPSHOT: BrowserSnapshot = { activeTabId: null, activePaneId: "primary", splitEnabled: false, panes: [{ id: "primary", tabId: null }, { id: "secondary", tabId: null }], tabs: [], downloads: [] };
 
@@ -16,6 +17,9 @@ export function App() {
   const [urlInput, setUrlInput] = useState("");
   const [agentRailOpen, setAgentRailOpen] = useState(true);
   const [agentView, setAgentView] = useState<"agents" | "orchestrate" | "runs">("agents");
+  const [agents, setAgents] = useState<AgentProfileSummary[]>(defaultAgentProfiles);
+  const [localClis, setLocalClis] = useState<LocalCliStatus[]>([]);
+  const [orchestrationPlan, setOrchestrationPlan] = useState<OrchestrationPlan | null>(null);
   const [media, setMedia] = useState<MediaState>(EMPTY_MEDIA_STATE);
   const primaryViewportRef = useRef<HTMLDivElement>(null);
   const secondaryViewportRef = useRef<HTMLDivElement>(null);
@@ -29,6 +33,11 @@ export function App() {
       else void window.openStrawberry.browser.create("https://example.com");
     });
     return window.openStrawberry.browser.onState(update);
+  }, []);
+
+  useEffect(() => {
+    void window.openStrawberry.agents.list().then(setAgents);
+    void window.openStrawberry.agents.detectLocalClis().then(setLocalClis);
   }, []);
 
   useEffect(() => setUrlInput(activeTab?.url ?? ""), [activeTab?.id, activeTab?.url]);
@@ -99,7 +108,7 @@ export function App() {
           <div className={`browser-canvas pane-canvas ${browser.activePaneId === "primary" ? "active" : ""}`} ref={primaryViewportRef} aria-label="Primary browser page">{!browser.panes.find((pane) => pane.id === "primary")?.tabId && <EmptyPane onCreate={() => void window.openStrawberry.browser.create("https://example.com", "primary")} />}</div>
           {browser.splitEnabled && <div className={`browser-canvas pane-canvas ${browser.activePaneId === "secondary" ? "active" : ""}`} ref={secondaryViewportRef} aria-label="Secondary browser page">{!browser.panes.find((pane) => pane.id === "secondary")?.tabId && <EmptyPane onCreate={() => void window.openStrawberry.browser.create("https://example.com", "secondary")} />}</div>}
         </div>
-        {agentRailOpen && <AgentRail activeView={agentView} onChange={setAgentView} onClose={() => setAgentRailOpen(false)} />}
+        {agentRailOpen && <AgentRail activeView={agentView} onChange={setAgentView} onClose={() => setAgentRailOpen(false)} profiles={agents} localClis={localClis} sourceTabCount={browser.tabs.length} plan={orchestrationPlan} onProfilesChange={setAgents} onPlan={setOrchestrationPlan} />}
       </section>
     </main>
   </div>;
@@ -136,12 +145,44 @@ function formatTime(value: number): string {
   return `${minutes}:${seconds}`;
 }
 
-function AgentRail({ activeView, onChange, onClose }: { activeView: "agents" | "orchestrate" | "runs"; onChange: (view: "agents" | "orchestrate" | "runs") => void; onClose: () => void }) {
+function AgentRail({ activeView, onChange, onClose, profiles, localClis, sourceTabCount, plan, onProfilesChange, onPlan }: { activeView: "agents" | "orchestrate" | "runs"; onChange: (view: "agents" | "orchestrate" | "runs") => void; onClose: () => void; profiles: AgentProfileSummary[]; localClis: LocalCliStatus[]; sourceTabCount: number; plan: OrchestrationPlan | null; onProfilesChange: (profiles: AgentProfileSummary[]) => void; onPlan: (plan: OrchestrationPlan) => void }) {
+  const [selectedId, setSelectedId] = useState(profiles[0]?.id ?? "");
+  const selected = profiles.find((profile) => profile.id === selectedId) ?? profiles[0];
+  const [draft, setDraft] = useState<AgentProfileInput | null>(null);
+  const [apiKey, setApiKey] = useState("");
+  const [status, setStatus] = useState("");
+
+  useEffect(() => {
+    if (!selected) return;
+    setSelectedId(selected.id);
+    setDraft({ id: selected.id, name: selected.name, role: selected.role, provider: selected.provider, model: selected.model, baseUrl: selected.baseUrl, executor: selected.executor });
+    setApiKey("");
+    setStatus("");
+  }, [selected?.id]);
+
+  const saveProfile = () => {
+    if (!draft) return;
+    setStatus("Saving local binding…");
+    void window.openStrawberry.agents.save({ ...draft, apiKey: apiKey || undefined }).then((saved) => {
+      if (!saved) return;
+      onProfilesChange(profiles.map((profile) => profile.id === saved.id ? saved : profile));
+      setApiKey("");
+      setStatus("Saved locally. The key remains outside the renderer.");
+    }).catch((error: unknown) => setStatus(error instanceof Error ? error.message : "Could not save this binding."));
+  };
+
+  const createPlan = () => {
+    const availableRoles = profiles.filter((profile) => profile.credentialStatus === "ready" || profile.executor === "local-cli").map((profile) => profile.role);
+    void window.openStrawberry.orchestrator.createPlan({ objective: "Coordinate the selected browser context", sourceTabCount, availableRoles }).then(onPlan);
+  };
+
   return <aside className="agent-rail liquid-glass">
     <header><div><p className="eyebrow">OpenStrawberry control plane</p><h2>Companion</h2></div><IconButton label="Close agents" onClick={onClose}><PanelRightClose size={15} /></IconButton></header>
     <nav className="agent-tabs" aria-label="Agent control plane">{(["agents", "orchestrate", "runs"] as const).map((view) => <button key={view} className={activeView === view ? "selected" : ""} onClick={() => onChange(view)}>{view}</button>)}</nav>
-    {activeView === "agents" && <section className="agent-content"><p className="eyebrow">Specialist registry</p>{defaultAgentProfiles.map((agent) => <article className="agent-card" key={agent.id}><div><strong>{agent.name}</strong><span>{agent.role} · {agent.provider}</span></div><span className="status">{agent.credentialStatus === "ready" ? "Ready" : "Set key"}</span></article>)}<button className="secondary-action"><Plus size={14} /> Add agent</button></section>}
-    {activeView === "orchestrate" && <section className="agent-content"><p className="eyebrow">Complex task orchestration</p><h3>Delegate with a visible plan.</h3><p className="muted">Select tabs, choose agents, inspect the task graph, and approve the run before any specialist starts.</p><button className="primary-action"><Sparkles size={14} /> Create orchestration plan</button><div className="orchestration-note"><ShieldCheck size={15} /><span>Each specialist uses a separate credential reference and context grant.</span></div></section>}
-    {activeView === "runs" && <section className="agent-content"><p className="eyebrow">Active runs</p><div className="empty-runs"><Bot size={22} /><strong>No active runs</strong><span>Configure a Companion or create an orchestration plan to start.</span></div></section>}
+    {activeView === "agents" && <section className="agent-content"><p className="eyebrow">Specialist registry</p>{profiles.map((agent) => <button className={`agent-card agent-select ${selected?.id === agent.id ? "selected" : ""}`} key={agent.id} onClick={() => setSelectedId(agent.id)}><div><strong>{agent.name}</strong><span>{agent.role} · {agent.provider}</span></div><span className="status">{agent.credentialStatus === "ready" ? "Ready" : agent.credentialStatus === "unavailable" ? "Unavailable" : "Set key"}</span></button>)}
+      {draft && <div className="agent-editor"><p className="eyebrow">Agent binding</p><label>Name<input value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} /></label><label>Provider<input value={draft.provider} onChange={(event) => setDraft({ ...draft, provider: event.target.value })} placeholder="OpenAI, Anthropic, OpenRouter…" /></label><label>Model<input value={draft.model} onChange={(event) => setDraft({ ...draft, model: event.target.value })} placeholder="Model identifier" /></label><label>Base URL <span>optional</span><input value={draft.baseUrl ?? ""} onChange={(event) => setDraft({ ...draft, baseUrl: event.target.value })} placeholder="https://…" /></label><label>Executor<select value={draft.executor} onChange={(event) => setDraft({ ...draft, executor: event.target.value as AgentProfileInput["executor"] })}><option value="provider">Provider API</option><option value="local-cli">Local coding CLI</option></select></label>{draft.executor === "local-cli" && <div className="cli-detection">{localClis.map((cli) => <span key={cli.command} className={cli.available ? "detected" : "missing"}>{cli.label}: {cli.available ? "found" : "not found"}</span>)}</div>}<label>Agent API key <span>stored locally</span><input type="password" value={apiKey} onChange={(event) => setApiKey(event.target.value)} placeholder={selected?.credentialStatus === "ready" ? "Saved — enter a value to replace" : "Paste a key for this agent only"} /></label><button className="secondary-action" onClick={saveProfile}><ShieldCheck size={14} /> Save local binding</button>{status && <p className="agent-status">{status}</p>}</div>}
+    </section>}
+    {activeView === "orchestrate" && <section className="agent-content"><p className="eyebrow">Complex task orchestration</p><h3>Delegate with a visible plan.</h3><p className="muted">The Orchestrator creates a reviewable handoff graph from selected tabs. It does not send prompts or expose credentials until a future explicit-run step is approved.</p><button className="primary-action" onClick={createPlan}><Sparkles size={14} /> Create orchestration plan</button><div className="orchestration-note"><ShieldCheck size={15} /><span>Each specialist references its own local credential binding and receives only the context named in its step.</span></div>{plan && <div className="plan-preview"><p className="eyebrow">Draft plan · {plan.sourceTabCount} tabs</p>{plan.steps.map((step) => <div key={step.id} className="plan-step"><strong>{step.role}</strong><span>{step.title}</span><em>{step.contextPolicy}</em></div>)}{plan.warnings.map((warning) => <p className="plan-warning" key={warning}>{warning}</p>)}</div>}</section>}
+    {activeView === "runs" && <section className="agent-content"><p className="eyebrow">Active runs</p><div className="empty-runs"><Bot size={22} /><strong>No active runs</strong><span>Configure the specialists, inspect an orchestration draft, and approve a future execution adapter to begin.</span></div></section>}
   </aside>;
 }

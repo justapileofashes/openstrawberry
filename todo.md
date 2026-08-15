@@ -14,3 +14,9 @@
 - [x] Implement a secure permissions and downloads baseline for app-owned browser profiles.
 - [x] Add native picture-in-picture window scaffolding with truthful media capability detection.
 - [ ] Test the browser core, package a Linux installer artifact, and publish the milestone to GitHub.
+
+## Companion and orchestration control plane
+
+- [x] Add a local encrypted per-agent credential registry and local coding-CLI detection.
+- [x] Add a visible review-first multi-agent orchestration plan with scoped handoff steps.
+- [ ] Add audited provider and local-CLI execution adapters behind explicit approval controls.

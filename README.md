@@ -12,6 +12,7 @@
 | Browser core | Create, select, close, navigate, back, forward, reload, stop, restore local tabs on launch, and retain pane-local browser state |
 | Workspace | Two-pane split browsing with tab drag targets, pane-local navigation, and visible active-pane state |
 | Media deck | Detect compatible HTML video in the selected tab and expose play, pause, seek, mute, volume, and browser-native picture-in-picture commands |
+| Agent control plane | Separate local agent profiles, per-agent encrypted credential bindings when operating-system encryption is available, local CLI discovery, and review-first handoff planning |
 | UI | OpenStrawberry dark Liquid Glass browser chrome and an Agents / Orchestrate / Runs control surface |
 | Security baseline | Sandboxed guest pages, context isolation, disabled Node integration, explicit navigation scheme policy, and minimal IPC |
 | Distribution configuration | Electron Builder targets for macOS DMG, Windows NSIS, Linux AppImage/DEB/RPM |
@@ -39,7 +40,7 @@ Read [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the runtime boundary and
 
 ## Status and scope
 
-OpenStrawberry is intentionally building browser fundamentals before autonomous agents. It does **not** yet import passwords, copy login sessions, run coding agents, bypass CAPTCHA/DRM, create a cross-site external video overlay when a site blocks native picture-in-picture, or include a production signed installer. Those features are tracked as explicit, security-reviewed milestones.
+OpenStrawberry is intentionally building browser fundamentals before autonomous agents. It does **not** yet import passwords, copy login sessions, call provider APIs, run coding agents, bypass CAPTCHA/DRM, create a cross-site external video overlay when a site blocks native picture-in-picture, or include a production signed installer. Those features are tracked as explicit, security-reviewed milestones.
 
 ## License
 
