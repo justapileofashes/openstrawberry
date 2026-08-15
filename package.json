@@ -39,6 +39,7 @@
     "appId": "io.openstrawberry.browser",
     "productName": "OpenStrawberry",
     "artifactName": "OpenStrawberry-${version}-${os}-${arch}.${ext}",
+    "asar": true,
     "directories": {
       "output": "release",
       "buildResources": "resources"

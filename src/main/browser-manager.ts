@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { PANE_IDS, validateWorkspaceName, type BrowserCommand, type BrowserDownloadState, type BrowserPaneId, type BrowserSnapshot, type BrowserTabState, type BrowserViewport, type WorkspaceSnapshot } from "../shared/browser.js";
-import { isBrowserUrlAllowed, normalizeAddress } from "../shared/navigation.js";
+import { isBrowserUrlAllowed, normalizeBrowserUrl } from "../shared/navigation.js";
 import { EMPTY_MEDIA_STATE, type MediaCommand, type MediaState } from "../shared/media.js";
 import { buildReaderModeScript } from "../shared/reader.js";
 
@@ -47,15 +47,15 @@ export class BrowserManager {
     return this.snapshot();
   }
 
-  public createTab(input = "https://example.com", paneId = this.activePaneId, suppliedId?: string, publish = true): BrowserSnapshot {
+  public createTab(input: unknown = "https://example.com", paneId = this.activePaneId, suppliedId?: string, publish = true): BrowserSnapshot {
     const id = suppliedId ?? randomUUID();
     const view = new BrowserView({ webPreferences: { partition: PROFILE_PARTITION, contextIsolation: true, nodeIntegration: false, sandbox: true, webSecurity: true } });
     const runtime: TabRuntime = { view, state: { id, url: "", title: FALLBACK_TITLE, favicon: null, isLoading: true, canGoBack: false, canGoForward: false, isAudible: false } };
     this.tabs.set(id, runtime);
     this.observeTab(id, runtime);
-    view.webContents.setWindowOpenHandler(({ url }) => { this.createTab(url, paneId); return { action: "deny" }; });
+    view.webContents.setWindowOpenHandler(({ url }) => { if (isBrowserUrlAllowed(url)) this.createTab(url, paneId); return { action: "deny" }; });
     view.webContents.on("will-navigate", (event, url) => { if (!this.isAllowedNavigation(url)) event.preventDefault(); });
-    void view.webContents.loadURL(normalizeAddress(input)).catch(() => this.updateState(id));
+    this.loadSafeUrl(id, input);
     this.assignTabToPane(id, paneId);
     this.activePaneId = paneId;
     if (paneId === "secondary") this.splitEnabled = true;
@@ -80,7 +80,7 @@ export class BrowserManager {
     this.publish();
     return this.snapshot();
   }
-  public navigate(id: string, input: string): BrowserSnapshot { const tab = this.tabs.get(id); if (tab) void tab.view.webContents.loadURL(normalizeAddress(input)).catch(() => this.updateState(id)); return this.snapshot(); }
+  public navigate(id: string, input: unknown): BrowserSnapshot { const tab = this.tabs.get(id); if (tab) this.loadSafeUrl(id, input); return this.snapshot(); }
   public command(id: string, command: BrowserCommand): BrowserSnapshot {
     const tab = this.tabs.get(id); if (!tab) return this.snapshot(); const wc = tab.view.webContents;
     if (command === "back" && wc.canGoBack()) wc.goBack(); if (command === "forward" && wc.canGoForward()) wc.goForward(); if (command === "reload") wc.reload(); if (command === "stop") wc.stop();
@@ -148,6 +148,11 @@ export class BrowserManager {
     wc.on("media-started-playing", () => { tab.state.isAudible = true; this.publish(); }); wc.on("media-paused", () => { tab.state.isAudible = false; this.publish(); });
   }
   private updateState(id: string): void { const tab = this.tabs.get(id); if (!tab || tab.view.webContents.isDestroyed()) return; const wc = tab.view.webContents; tab.state = { ...tab.state, url: wc.getURL(), title: wc.getTitle() || FALLBACK_TITLE, isLoading: wc.isLoading(), canGoBack: wc.canGoBack(), canGoForward: wc.canGoForward() }; this.publish(); }
+  private loadSafeUrl(id: string, input: unknown): void {
+    const tab = this.tabs.get(id);
+    if (!tab) return;
+    try { void tab.view.webContents.loadURL(normalizeBrowserUrl(input)).catch(() => this.updateState(id)); } catch { this.updateState(id); }
+  }
   private attachVisibleViews(): void {
     for (const tab of this.tabs.values()) this.window.removeBrowserView(tab.view);
     const visible = this.splitEnabled ? PANE_IDS : ["primary"] as BrowserPaneId[];
@@ -212,5 +217,5 @@ export class BrowserManager {
       return { ...EMPTY_MEDIA_STATE, title: active.state.title, message: "The page did not allow media inspection at this moment." };
     }
   }
-  private isAllowedNavigation(url: string): boolean { if (isBrowserUrlAllowed(url)) return true; if (url.startsWith("mailto:")) { void shell.openExternal(url); } return false; }
+  private isAllowedNavigation(url: string): boolean { return isBrowserUrlAllowed(url); }
 }

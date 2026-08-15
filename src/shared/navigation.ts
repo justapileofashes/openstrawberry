@@ -1,4 +1,8 @@
-export function normalizeAddress(input: string): string {
+const MAX_ADDRESS_LENGTH = 8_192;
+
+export function normalizeAddress(input: unknown): string {
+  if (typeof input !== "string") throw new Error("The browser address must be text.");
+  if (input.length > MAX_ADDRESS_LENGTH) throw new Error("The browser address is too long.");
   const trimmed = input.trim();
   if (!trimmed) return "https://example.com";
   if (/^https?:\/\//i.test(trimmed)) return trimmed;
@@ -14,4 +18,10 @@ export function isBrowserUrlAllowed(input: string): boolean {
   } catch {
     return false;
   }
+}
+
+export function normalizeBrowserUrl(input: unknown): string {
+  const normalized = normalizeAddress(input);
+  if (!isBrowserUrlAllowed(normalized)) throw new Error("Only HTTP and HTTPS browser addresses are allowed.");
+  return normalized;
 }

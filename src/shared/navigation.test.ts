@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isBrowserUrlAllowed, normalizeAddress } from "./navigation.js";
+import { isBrowserUrlAllowed, normalizeAddress, normalizeBrowserUrl } from "./navigation.js";
 
 describe("normalizeAddress", () => {
   it("preserves explicit web URLs", () => {
@@ -25,5 +25,14 @@ describe("isBrowserUrlAllowed", () => {
     expect(isBrowserUrlAllowed("file:///etc/passwd")).toBe(false);
     expect(isBrowserUrlAllowed("javascript:alert(1)")).toBe(false);
     expect(isBrowserUrlAllowed("mailto:hello@example.com")).toBe(false);
+  });
+});
+
+describe("normalizeBrowserUrl", () => {
+  it("rejects unsafe, malformed, and oversized values before a BrowserView load", () => {
+    expect(() => normalizeBrowserUrl("file:///etc/passwd")).toThrow("Only HTTP");
+    expect(() => normalizeBrowserUrl("javascript:alert(1)")).toThrow("Only HTTP");
+    expect(() => normalizeBrowserUrl({ url: "https://example.com" })).toThrow("text");
+    expect(() => normalizeBrowserUrl("x".repeat(8_193))).toThrow("too long");
   });
 });

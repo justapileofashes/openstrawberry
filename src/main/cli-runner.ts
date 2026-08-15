@@ -1,6 +1,6 @@
 /* Local coding-CLI runner: strict executable allowlist, no shell, bounded output/time, and per-agent app-owned workspace directories. */
 import { spawn } from "node:child_process";
-import { mkdirSync } from "node:fs";
+import { chmodSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import type { AgentRegistry } from "./agent-registry.js";
 import type { AgentRunRequest, AgentRunResult } from "../shared/agent-run.js";
@@ -9,6 +9,7 @@ import { buildCliInvocation, resolveSupportedCli } from "../shared/cli-protocol.
 
 const CLI_TIMEOUT_MS = 120_000;
 const MAX_OUTPUT_BYTES = 1_000_000;
+const SAFE_ENV_KEYS = ["PATH", "HOME", "USERPROFILE", "TEMP", "TMP", "TMPDIR", "SYSTEMROOT", "COMSPEC", "WINDIR", "LANG", "LC_ALL", "APPDATA", "LOCALAPPDATA", "XDG_CONFIG_HOME", "XDG_DATA_HOME"] as const;
 
 export class CliRunner {
   public constructor(private readonly registry: AgentRegistry, private readonly workspaceRoot: string) {}
@@ -18,16 +19,26 @@ export class CliRunner {
     try {
       const { profile, apiKey } = this.registry.resolveCliCredential(request.agentId);
       const command = resolveSupportedCli(profile);
+      const executable = this.registry.resolveCliExecutable(command);
+      if (!executable) throw new Error(`The approved local ${command} CLI was not found on this device.`);
       const prompt = buildContextualPrompt(request.prompt, request.context.selectedTabUrls, request.context.artifactText);
       const invocation = buildCliInvocation(command, prompt);
       const workspace = join(this.workspaceRoot, profile.id.replace(/[^a-zA-Z0-9_-]/g, "_"));
-      mkdirSync(workspace, { recursive: true });
-      const env = { ...process.env, ...(invocation.credentialEnv ? { [invocation.credentialEnv]: apiKey } : {}) };
-      const text = await this.spawnBounded(invocation.command, invocation.args, workspace, env, apiKey);
+      mkdirSync(workspace, { recursive: true, mode: 0o700 });
+      try { chmodSync(workspace, 0o700); } catch { /* Best-effort on platforms without POSIX modes. */ }
+      const env = this.createCliEnvironment(invocation.credentialEnv, apiKey);
+      const text = await this.spawnBounded(executable, invocation.args, workspace, env, apiKey);
       return { agentId: profile.id, provider: profile.provider, model: profile.model, text, startedAt, completedAt: Date.now(), status: "completed" };
     } catch (error) {
       return { agentId: request.agentId, provider: "redacted", model: "redacted", text: "", startedAt, completedAt: Date.now(), status: "failed", error: error instanceof Error ? error.message : "Local CLI run failed." };
     }
+  }
+
+  private createCliEnvironment(credentialEnv: string | undefined, apiKey: string): NodeJS.ProcessEnv {
+    const environment: NodeJS.ProcessEnv = {};
+    for (const key of SAFE_ENV_KEYS) if (process.env[key]) environment[key] = process.env[key];
+    if (credentialEnv) environment[credentialEnv] = apiKey;
+    return environment;
   }
 
   private spawnBounded(command: string, args: string[], cwd: string, env: NodeJS.ProcessEnv, apiKey: string): Promise<string> {
@@ -38,7 +49,7 @@ export class CliRunner {
         if (output.length >= MAX_OUTPUT_BYTES) { didTruncate = true; return; }
         output += chunk.toString("utf8").slice(0, MAX_OUTPUT_BYTES - output.length);
       };
-      const child = spawn(command, args, { cwd, env, shell: false, windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
+      const child = spawn(command, args, { cwd, env, shell: false, windowsHide: true, stdio: ["ignore", "pipe", "pipe"], detached: process.platform !== "win32" });
       const timeout = setTimeout(() => child.kill("SIGTERM"), CLI_TIMEOUT_MS);
       child.stdout.on("data", append);
       child.stderr.on("data", append);

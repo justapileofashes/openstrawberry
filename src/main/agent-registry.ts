@@ -1,8 +1,8 @@
 /* OpenStrawberry agent registry: profile metadata is local; per-agent keys stay encrypted in the main process. */
 import { safeStorage } from "electron";
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { dirname, isAbsolute } from "node:path";
 import { spawnSync } from "node:child_process";
 import { defaultAgentProfiles, type AgentProfileInput, type AgentProfileSummary, type AgentRole, type LocalCliStatus } from "../shared/agent.js";
 
@@ -75,19 +75,25 @@ export class AgentRegistry {
   }
 
   public detectLocalClis(): LocalCliStatus[] {
-    const locator = process.platform === "win32" ? "where" : "which";
     return CLI_CANDIDATES.map((candidate) => {
-      const result = spawnSync(locator, [candidate.command], { encoding: "utf8", windowsHide: true });
-      const path = result.status === 0 ? result.stdout.trim().split(/\r?\n/)[0] : undefined;
-      return { ...candidate, available: Boolean(path), path };
+      return { ...candidate, available: Boolean(this.resolveCliExecutable(candidate.command)) };
     });
+  }
+  public resolveCliExecutable(command: string): string | null {
+    const allowed = CLI_CANDIDATES.find((candidate) => candidate.command === command);
+    if (!allowed) return null;
+    const locator = process.platform === "win32" ? "where" : "which";
+    const result = spawnSync(locator, [allowed.command], { encoding: "utf8", windowsHide: true, timeout: 2_000 });
+    const candidatePath = result.status === 0 ? result.stdout.trim().split(/\r?\n/)[0]?.trim() : undefined;
+    if (!candidatePath || !isAbsolute(candidatePath)) return null;
+    try { return lstatSync(candidatePath).isFile() ? candidatePath : null; } catch { return null; }
   }
 
   private load(): void {
     try {
-      const stored = existsSync(this.profileFile) ? JSON.parse(readFileSync(this.profileFile, "utf8")) as AgentProfileSummary[] : defaultAgentProfiles;
+      const stored = this.readPrivateJson<AgentProfileSummary[]>(this.profileFile, defaultAgentProfiles);
       for (const profile of stored) this.profiles.set(profile.id, profile);
-      if (existsSync(this.vaultFile)) this.encryptedVault = JSON.parse(readFileSync(this.vaultFile, "utf8")) as StoredVault;
+      this.encryptedVault = this.readPrivateJson<StoredVault>(this.vaultFile, {});
       for (const profile of this.profiles.values()) if (this.encryptedVault[profile.id]) profile.credentialStatus = safeStorage.isEncryptionAvailable() ? "ready" : "unavailable";
     } catch {
       this.profiles = new Map(defaultAgentProfiles.map((profile) => [profile.id, profile]));
@@ -96,8 +102,22 @@ export class AgentRegistry {
   }
 
   private persist(): void {
-    mkdirSync(dirname(this.profileFile), { recursive: true });
-    writeFileSync(this.profileFile, JSON.stringify(this.list(), null, 2), "utf8");
-    writeFileSync(this.vaultFile, JSON.stringify(this.encryptedVault, null, 2), "utf8");
+    const directory = dirname(this.profileFile);
+    mkdirSync(directory, { recursive: true, mode: 0o700 });
+    try { chmodSync(directory, 0o700); } catch { /* Best-effort on platforms without POSIX modes. */ }
+    this.writePrivateJson(this.profileFile, this.list());
+    this.writePrivateJson(this.vaultFile, this.encryptedVault);
+  }
+  private readPrivateJson<T>(file: string, fallback: T): T {
+    if (!existsSync(file)) return fallback;
+    if (lstatSync(file).isSymbolicLink()) throw new Error("Refusing a symlinked agent data file.");
+    try { chmodSync(file, 0o600); } catch { /* Best-effort on platforms without POSIX modes. */ }
+    return JSON.parse(readFileSync(file, "utf8")) as T;
+  }
+  private writePrivateJson(file: string, data: unknown): void {
+    const temporary = `${file}.${process.pid}.${randomUUID()}.tmp`;
+    writeFileSync(temporary, JSON.stringify(data, null, 2), { encoding: "utf8", mode: 0o600 });
+    renameSync(temporary, file);
+    try { chmodSync(file, 0o600); } catch { /* Best-effort on platforms without POSIX modes. */ }
   }
 }

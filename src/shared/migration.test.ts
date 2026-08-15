@@ -11,4 +11,12 @@ describe("Chromium migration parsing", () => {
     expect(extractChromiumDefaultSearch(JSON.stringify({ default_search_provider_data: { template_url_data: { short_name: "DuckDuckGo" } } }))).toBe("DuckDuckGo");
     expect(extractChromiumDefaultSearch("not json")).toBeUndefined();
   });
+
+  it("bounds deep traversal and excludes malformed or oversized bookmark URLs", () => {
+    let root: Record<string, unknown> = { name: "Folder", children: [] };
+    const top = root;
+    for (let index = 0; index < 40; index += 1) { const child: Record<string, unknown> = { name: `Folder ${index}`, children: [] }; (root.children as unknown[]).push(child); root = child; }
+    (root.children as unknown[]).push({ name: "Bad", url: "https://" }, { name: "Oversized", url: `https://example.com/${"x".repeat(2_050)}` });
+    expect(extractChromiumBookmarks(JSON.stringify({ roots: { bar: top } }))).toEqual([]);
+  });
 });

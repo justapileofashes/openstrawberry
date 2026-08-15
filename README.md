@@ -44,6 +44,8 @@ The native main process owns browser views, sessions, permissions, native window
 
 Read [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the runtime boundary and [`docs/OPENSTRAWBERRY_PLAN.md`](docs/OPENSTRAWBERRY_PLAN.md) for the research-aligned browser and agent roadmap.
 
+Read [`docs/SECURITY.md`](docs/SECURITY.md) for the enforced security controls, review evidence, residual risks, and responsible disclosure guidance.
+
 ## Status and scope
 
 OpenStrawberry is intentionally building browser fundamentals before broad autonomy. It does **not** copy passwords, login sessions, cookies, payment data, browser history, or account tokens from another browser; password import must remain a separate user-selected export-file flow. It also does **not** yet execute Qwen Code or Kimi Code, provide fully automated multi-agent plan execution, bypass CAPTCHA/DRM, create a cross-site external video overlay when a site blocks native picture-in-picture, or include a production signed installer. Those features remain explicit, security-reviewed milestones.

@@ -47,3 +47,11 @@
 - [ ] Add native macOS ICNS and Windows ICO conversions of the OpenStrawberry application icon.
 - [ ] Validate AppImage/RPM/macOS DMG/Windows NSIS artifacts on appropriate release runners.
 - [ ] Configure platform signing, macOS notarization, checksums, and release publishing; do not publish unsigned binaries.
+
+## Security hardening review
+
+- [x] Audit Electron window, BrowserView, preload, IPC, navigation, and permission boundaries against the current security checklist.
+- [x] Add validation and tests for every renderer-reachable IPC request, including malformed payloads and untrusted navigation input.
+- [x] Review credential encryption, provider/CLI approval gates, prompt/context handling, process timeouts, and local CLI workspace containment.
+- [x] Tighten migration parsers, local persistence permissions, release artifact exclusions, and dependency/package configuration.
+- [x] Document threat boundaries, residual risks, and required signing/release controls; publish only verified hardening changes.
