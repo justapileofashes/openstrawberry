@@ -1,0 +1,76 @@
+{
+  "name": "openstrawberry",
+  "productName": "OpenStrawberry",
+  "version": "0.1.0",
+  "description": "A local-first agentic desktop browser.",
+  "author": {"name": "OpenStrawberry contributors", "email": "opensource@openstrawberry.dev"},
+  "type": "module",
+  "main": "dist/main/index.js",
+  "license": "MIT",
+  "scripts": {
+    "dev": "concurrently -k \"vite --host 127.0.0.1\" \"wait-on http://127.0.0.1:5173 && cross-env VITE_DEV_SERVER_URL=http://127.0.0.1:5173 electron .\"",
+    "check": "tsc --noEmit -p tsconfig.main.json && tsc --noEmit -p tsconfig.renderer.json",
+    "test": "vitest run --config vitest.config.ts",
+    "build": "vite build && tsc -p tsconfig.main.json",
+    "package": "pnpm build && electron-builder",
+    "package:dir": "pnpm build && electron-builder --dir"
+  },
+  "dependencies": {
+    "lucide-react": "latest",
+    "react": "latest",
+    "react-dom": "latest"
+  },
+  "devDependencies": {
+    "@types/node": "latest",
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "@vitejs/plugin-react": "latest",
+    "concurrently": "latest",
+    "cross-env": "latest",
+    "electron": "latest",
+    "electron-builder": "latest",
+    "typescript": "latest",
+    "vitest": "^4.1.10",
+    "vite": "latest",
+    "wait-on": "latest"
+  },
+  "build": {
+    "appId": "io.openstrawberry.browser",
+    "productName": "OpenStrawberry",
+    "artifactName": "OpenStrawberry-${version}-${os}-${arch}.${ext}",
+    "directories": {
+      "output": "release",
+      "buildResources": "resources"
+    },
+    "files": [
+      "dist/**/*",
+      "package.json"
+    ],
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "category": "public.app-category.productivity"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb",
+        "rpm"
+      ],
+      "category": "Network"
+    }
+  }
+}

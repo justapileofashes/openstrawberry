@@ -1,0 +1,173 @@
+/* OpenStrawberry runtime: real Chromium tabs stay isolated from the Liquid Glass browser chrome. */
+import { BrowserView, BrowserWindow, session, shell } from "electron";
+import { randomUUID } from "node:crypto";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
+import { PANE_IDS, type BrowserCommand, type BrowserDownloadState, type BrowserPaneId, type BrowserSnapshot, type BrowserTabState, type BrowserViewport } from "../shared/browser.js";
+import { isBrowserUrlAllowed, normalizeAddress } from "../shared/navigation.js";
+import { EMPTY_MEDIA_STATE, type MediaCommand, type MediaState } from "../shared/media.js";
+
+type TabRuntime = { view: BrowserView; state: BrowserTabState };
+type SavedSession = { version: 1; tabs: { id: string; url: string }[]; panes: { id: BrowserPaneId; tabId: string | null }[]; activePaneId: BrowserPaneId; splitEnabled: boolean };
+const FALLBACK_TITLE = "New tab";
+const PROFILE_PARTITION = "persist:openstrawberry-default";
+
+export class BrowserManager {
+  private readonly tabs = new Map<string, TabRuntime>();
+  private readonly panes: Record<BrowserPaneId, { tabId: string | null; viewport: BrowserViewport }> = {
+    primary: { tabId: null, viewport: { paneId: "primary", x: 0, y: 0, width: 0, height: 0 } },
+    secondary: { tabId: null, viewport: { paneId: "secondary", x: 0, y: 0, width: 0, height: 0 } }
+  };
+  private readonly downloads: BrowserDownloadState[] = [];
+  private activePaneId: BrowserPaneId = "primary";
+  private splitEnabled = false;
+  private initialized = false;
+  public constructor(private readonly window: BrowserWindow, private readonly emit: (snapshot: BrowserSnapshot) => void, private readonly sessionFile: string) {
+    const profile = session.fromPartition(PROFILE_PARTITION);
+    profile.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
+    profile.setPermissionCheckHandler(() => false);
+    profile.on("will-download", (_event, item) => this.trackDownload(item));
+  }
+
+  public initialize(): BrowserSnapshot {
+    if (this.initialized) return this.snapshot();
+    this.initialized = true;
+    const saved = this.readSession();
+    if (saved) {
+      for (const tab of saved.tabs) this.createTab(tab.url, "primary", tab.id, false);
+      for (const pane of saved.panes) if (pane.tabId && this.tabs.has(pane.tabId)) this.assignTabToPane(pane.tabId, pane.id);
+      this.activePaneId = saved.activePaneId;
+      this.splitEnabled = saved.splitEnabled && Boolean(this.panes.secondary.tabId);
+    }
+    if (!this.panes.primary.tabId) this.createTab("https://example.com", "primary", undefined, false);
+    this.attachVisibleViews();
+    this.publish();
+    return this.snapshot();
+  }
+
+  public createTab(input = "https://example.com", paneId = this.activePaneId, suppliedId?: string, publish = true): BrowserSnapshot {
+    const id = suppliedId ?? randomUUID();
+    const view = new BrowserView({ webPreferences: { partition: PROFILE_PARTITION, contextIsolation: true, nodeIntegration: false, sandbox: true, webSecurity: true } });
+    const runtime: TabRuntime = { view, state: { id, url: "", title: FALLBACK_TITLE, favicon: null, isLoading: true, canGoBack: false, canGoForward: false, isAudible: false } };
+    this.tabs.set(id, runtime);
+    this.observeTab(id, runtime);
+    view.webContents.setWindowOpenHandler(({ url }) => { this.createTab(url, paneId); return { action: "deny" }; });
+    view.webContents.on("will-navigate", (event, url) => { if (!this.isAllowedNavigation(url)) event.preventDefault(); });
+    void view.webContents.loadURL(normalizeAddress(input)).catch(() => this.updateState(id));
+    this.assignTabToPane(id, paneId);
+    this.activePaneId = paneId;
+    if (paneId === "secondary") this.splitEnabled = true;
+    if (publish) this.publish();
+    return this.snapshot();
+  }
+
+  public activateTab(id: string, paneId = this.activePaneId): BrowserSnapshot {
+    if (!this.tabs.has(id)) return this.snapshot();
+    this.assignTabToPane(id, paneId);
+    this.activePaneId = paneId;
+    if (paneId === "secondary") this.splitEnabled = true;
+    this.publish();
+    return this.snapshot();
+  }
+  public closeTab(id: string): BrowserSnapshot {
+    const runtime = this.tabs.get(id); if (!runtime) return this.snapshot();
+    this.window.removeBrowserView(runtime.view); runtime.view.webContents.close(); this.tabs.delete(id);
+    for (const paneId of PANE_IDS) if (this.panes[paneId].tabId === id) this.panes[paneId].tabId = this.tabs.keys().next().value ?? null;
+    if (!this.panes.primary.tabId) return this.createTab();
+    if (!this.panes.secondary.tabId) this.splitEnabled = false;
+    this.publish();
+    return this.snapshot();
+  }
+  public navigate(id: string, input: string): BrowserSnapshot { const tab = this.tabs.get(id); if (tab) void tab.view.webContents.loadURL(normalizeAddress(input)).catch(() => this.updateState(id)); return this.snapshot(); }
+  public command(id: string, command: BrowserCommand): BrowserSnapshot {
+    const tab = this.tabs.get(id); if (!tab) return this.snapshot(); const wc = tab.view.webContents;
+    if (command === "back" && wc.canGoBack()) wc.goBack(); if (command === "forward" && wc.canGoForward()) wc.goForward(); if (command === "reload") wc.reload(); if (command === "stop") wc.stop();
+    this.updateState(id); return this.snapshot();
+  }
+  public setViewport(viewport: BrowserViewport): BrowserSnapshot {
+    this.panes[viewport.paneId].viewport = { paneId: viewport.paneId, x: Math.max(0, Math.round(viewport.x)), y: Math.max(0, Math.round(viewport.y)), width: Math.max(0, Math.round(viewport.width)), height: Math.max(0, Math.round(viewport.height)) };
+    this.attachVisibleViews();
+    return this.snapshot();
+  }
+  public setSplit(enabled: boolean): BrowserSnapshot {
+    if (enabled && !this.panes.secondary.tabId) {
+      const alternative = [...this.tabs.keys()].find((id) => id !== this.panes.primary.tabId);
+      if (alternative) this.panes.secondary.tabId = alternative;
+      else this.createTab("https://example.com", "secondary", undefined, false);
+    }
+    this.splitEnabled = enabled;
+    this.publish();
+    return this.snapshot();
+  }
+  public setActivePane(paneId: BrowserPaneId): BrowserSnapshot { this.activePaneId = paneId; this.publish(); return this.snapshot(); }
+  public async mediaState(): Promise<MediaState> { return this.executeMediaCommand({ action: "refresh" }); }
+  public async mediaCommand(command: MediaCommand): Promise<MediaState> { return this.executeMediaCommand(command); }
+  public snapshot(): BrowserSnapshot { return { activeTabId: this.panes[this.activePaneId].tabId, activePaneId: this.activePaneId, splitEnabled: this.splitEnabled, panes: PANE_IDS.map((id) => ({ id, tabId: this.panes[id].tabId })), tabs: [...this.tabs.values()].map((tab) => tab.state), downloads: this.downloads }; }
+  public destroy(): void { for (const tab of this.tabs.values()) { this.window.removeBrowserView(tab.view); if (!tab.view.webContents.isDestroyed()) tab.view.webContents.close(); } this.tabs.clear(); }
+  private observeTab(id: string, tab: TabRuntime): void {
+    const refresh = () => this.updateState(id); const wc = tab.view.webContents;
+    wc.on("did-start-loading", refresh); wc.on("did-stop-loading", refresh); wc.on("did-navigate", refresh); wc.on("did-navigate-in-page", refresh); wc.on("page-title-updated", refresh);
+    wc.on("focus", () => { const paneId = PANE_IDS.find((candidate) => this.panes[candidate].tabId === id); if (paneId && this.activePaneId !== paneId) { this.activePaneId = paneId; this.emit(this.snapshot()); } });
+    wc.on("page-favicon-updated", (_event, favicons) => { tab.state.favicon = favicons[0] ?? null; this.publish(); });
+    wc.on("media-started-playing", () => { tab.state.isAudible = true; this.publish(); }); wc.on("media-paused", () => { tab.state.isAudible = false; this.publish(); });
+  }
+  private updateState(id: string): void { const tab = this.tabs.get(id); if (!tab || tab.view.webContents.isDestroyed()) return; const wc = tab.view.webContents; tab.state = { ...tab.state, url: wc.getURL(), title: wc.getTitle() || FALLBACK_TITLE, isLoading: wc.isLoading(), canGoBack: wc.canGoBack(), canGoForward: wc.canGoForward() }; this.publish(); }
+  private attachVisibleViews(): void {
+    for (const tab of this.tabs.values()) this.window.removeBrowserView(tab.view);
+    const visible = this.splitEnabled ? PANE_IDS : ["primary"] as BrowserPaneId[];
+    for (const paneId of visible) { const tabId = this.panes[paneId].tabId; const tab = tabId ? this.tabs.get(tabId) : undefined; if (tab) { this.window.addBrowserView(tab.view); tab.view.setBounds(this.panes[paneId].viewport); } }
+  }
+  private assignTabToPane(tabId: string, paneId: BrowserPaneId): void {
+    for (const candidate of PANE_IDS) if (candidate !== paneId && this.panes[candidate].tabId === tabId) this.panes[candidate].tabId = null;
+    this.panes[paneId].tabId = tabId;
+  }
+  private publish(): void { this.attachVisibleViews(); this.writeSession(); this.emit(this.snapshot()); }
+  private readSession(): SavedSession | null {
+    try { if (!existsSync(this.sessionFile)) return null; const parsed = JSON.parse(readFileSync(this.sessionFile, "utf8")) as SavedSession; return parsed.version === 1 && Array.isArray(parsed.tabs) && Array.isArray(parsed.panes) ? parsed : null; } catch { return null; }
+  }
+  private writeSession(): void {
+    try { mkdirSync(dirname(this.sessionFile), { recursive: true }); const payload: SavedSession = { version: 1, tabs: [...this.tabs.values()].map((tab) => ({ id: tab.state.id, url: tab.state.url || "https://example.com" })), panes: PANE_IDS.map((id) => ({ id, tabId: this.panes[id].tabId })), activePaneId: this.activePaneId, splitEnabled: this.splitEnabled }; writeFileSync(this.sessionFile, JSON.stringify(payload, null, 2), "utf8"); } catch { /* Session restore is best-effort and never blocks browsing. */ }
+  }
+  private trackDownload(item: Electron.DownloadItem): void {
+    const record: BrowserDownloadState = { id: randomUUID(), filename: item.getFilename(), receivedBytes: item.getReceivedBytes(), totalBytes: item.getTotalBytes(), state: "progressing" };
+    this.downloads.unshift(record);
+    item.on("updated", () => { record.receivedBytes = item.getReceivedBytes(); record.totalBytes = item.getTotalBytes(); this.emit(this.snapshot()); });
+    item.once("done", (_event, state) => { record.state = state === "completed" ? "completed" : "cancelled"; this.emit(this.snapshot()); });
+    this.emit(this.snapshot());
+  }
+  private async executeMediaCommand(command: MediaCommand): Promise<MediaState> {
+    const activeId = this.panes[this.activePaneId].tabId;
+    const active = activeId ? this.tabs.get(activeId) : undefined;
+    if (!active || active.view.webContents.isDestroyed()) return EMPTY_MEDIA_STATE;
+    const value = "value" in command && typeof command.value === "number" && Number.isFinite(command.value) ? command.value : null;
+    const action = command.action;
+    const script = `(() => {
+      const videos = Array.from(document.querySelectorAll("video"));
+      const video = videos.find((candidate) => !candidate.paused || candidate.currentTime > 0) || videos[0];
+      const snapshot = (message) => !video ? ({ available: false, pictureInPictureSupported: false, isPlaying: false, currentTime: 0, duration: 0, volume: 1, muted: false, title: document.title || "No active media", message: message || "No HTML video element was found in this tab." }) : ({ available: true, pictureInPictureSupported: Boolean(video.requestPictureInPicture && document.pictureInPictureEnabled), isPlaying: !video.paused, currentTime: Number.isFinite(video.currentTime) ? video.currentTime : 0, duration: Number.isFinite(video.duration) ? video.duration : 0, volume: video.volume, muted: video.muted, title: document.title || "Active media", message });
+      if (!video) return snapshot();
+      try {
+        const action = ${JSON.stringify(action)};
+        const value = ${JSON.stringify(value)};
+        if (action === "play") { void video.play(); }
+        if (action === "pause") { video.pause(); }
+        if (action === "toggle") { if (video.paused) { void video.play(); } else { video.pause(); } }
+        if (action === "seek" && typeof value === "number") { video.currentTime = Math.max(0, Math.min(value, Number.isFinite(video.duration) ? video.duration : value)); }
+        if (action === "volume" && typeof value === "number") { video.volume = Math.max(0, Math.min(value, 1)); video.muted = false; }
+        if (action === "mute") { video.muted = !video.muted; }
+        if (action === "picture-in-picture") {
+          if (!video.requestPictureInPicture || !document.pictureInPictureEnabled) return snapshot("This site does not expose browser-native picture-in-picture for the selected video.");
+          if (document.pictureInPictureElement === video) { void document.exitPictureInPicture(); } else { void video.requestPictureInPicture(); }
+        }
+        return snapshot();
+      } catch (error) { return snapshot(error instanceof Error ? error.message : "The media control request could not be completed."); }
+    })()`;
+    try {
+      const state = await active.view.webContents.executeJavaScript(script, true) as MediaState;
+      return state && typeof state.available === "boolean" ? state : EMPTY_MEDIA_STATE;
+    } catch {
+      return { ...EMPTY_MEDIA_STATE, title: active.state.title, message: "The page did not allow media inspection at this moment." };
+    }
+  }
+  private isAllowedNavigation(url: string): boolean { if (isBrowserUrlAllowed(url)) return true; if (url.startsWith("mailto:")) { void shell.openExternal(url); } return false; }
+}
