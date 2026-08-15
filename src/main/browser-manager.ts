@@ -3,7 +3,7 @@ import { BrowserView, BrowserWindow, session, shell } from "electron";
 import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-import { PANE_IDS, type BrowserCommand, type BrowserDownloadState, type BrowserPaneId, type BrowserSnapshot, type BrowserTabState, type BrowserViewport } from "../shared/browser.js";
+import { PANE_IDS, validateWorkspaceName, type BrowserCommand, type BrowserDownloadState, type BrowserPaneId, type BrowserSnapshot, type BrowserTabState, type BrowserViewport, type WorkspaceSnapshot } from "../shared/browser.js";
 import { isBrowserUrlAllowed, normalizeAddress } from "../shared/navigation.js";
 import { EMPTY_MEDIA_STATE, type MediaCommand, type MediaState } from "../shared/media.js";
 
@@ -22,7 +22,7 @@ export class BrowserManager {
   private activePaneId: BrowserPaneId = "primary";
   private splitEnabled = false;
   private initialized = false;
-  public constructor(private readonly window: BrowserWindow, private readonly emit: (snapshot: BrowserSnapshot) => void, private readonly sessionFile: string) {
+  public constructor(private readonly window: BrowserWindow, private readonly emit: (snapshot: BrowserSnapshot) => void, private readonly sessionFile: string, private readonly workspaceFile: string) {
     const profile = session.fromPartition(PROFILE_PARTITION);
     profile.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
     profile.setPermissionCheckHandler(() => false);
@@ -104,6 +104,26 @@ export class BrowserManager {
   public async mediaCommand(command: MediaCommand): Promise<MediaState> { return this.executeMediaCommand(command); }
   public snapshot(): BrowserSnapshot { return { activeTabId: this.panes[this.activePaneId].tabId, activePaneId: this.activePaneId, splitEnabled: this.splitEnabled, panes: PANE_IDS.map((id) => ({ id, tabId: this.panes[id].tabId })), tabs: [...this.tabs.values()].map((tab) => tab.state), downloads: this.downloads }; }
   public selectedContextUrls(): string[] { return PANE_IDS.map((paneId) => this.panes[paneId].tabId).filter((id): id is string => Boolean(id)).map((id) => this.tabs.get(id)?.state.url ?? "").filter((url) => Boolean(url)); }
+  public listWorkspaceSnapshots(): WorkspaceSnapshot[] { return this.readWorkspaceSnapshots().sort((left, right) => right.createdAt - left.createdAt); }
+  public saveWorkspaceSnapshot(name: string): WorkspaceSnapshot {
+    const snapshot: WorkspaceSnapshot = { id: randomUUID(), name: validateWorkspaceName(name), createdAt: Date.now(), tabs: [...this.tabs.values()].map((tab) => ({ id: tab.state.id, url: tab.state.url || "https://example.com" })), panes: PANE_IDS.map((id) => ({ id, tabId: this.panes[id].tabId })), activePaneId: this.activePaneId, splitEnabled: this.splitEnabled };
+    this.writeWorkspaceSnapshots([snapshot, ...this.readWorkspaceSnapshots()].slice(0, 50));
+    return snapshot;
+  }
+  public restoreWorkspaceSnapshot(id: string): BrowserSnapshot {
+    const saved = this.readWorkspaceSnapshots().find((candidate) => candidate.id === id);
+    if (!saved) throw new Error("That workspace snapshot no longer exists.");
+    for (const tab of this.tabs.values()) { this.window.removeBrowserView(tab.view); if (!tab.view.webContents.isDestroyed()) tab.view.webContents.close(); }
+    this.tabs.clear();
+    for (const paneId of PANE_IDS) this.panes[paneId].tabId = null;
+    for (const tab of saved.tabs.slice(0, 50)) this.createTab(tab.url, "primary", tab.id, false);
+    for (const pane of saved.panes) if (pane.tabId && this.tabs.has(pane.tabId)) this.assignTabToPane(pane.tabId, pane.id);
+    if (!this.panes.primary.tabId) this.createTab("https://example.com", "primary", undefined, false);
+    this.activePaneId = saved.activePaneId;
+    this.splitEnabled = saved.splitEnabled && Boolean(this.panes.secondary.tabId);
+    this.publish();
+    return this.snapshot();
+  }
   public destroy(): void { for (const tab of this.tabs.values()) { this.window.removeBrowserView(tab.view); if (!tab.view.webContents.isDestroyed()) tab.view.webContents.close(); } this.tabs.clear(); }
   private observeTab(id: string, tab: TabRuntime): void {
     const refresh = () => this.updateState(id); const wc = tab.view.webContents;
@@ -128,6 +148,12 @@ export class BrowserManager {
   }
   private writeSession(): void {
     try { mkdirSync(dirname(this.sessionFile), { recursive: true }); const payload: SavedSession = { version: 1, tabs: [...this.tabs.values()].map((tab) => ({ id: tab.state.id, url: tab.state.url || "https://example.com" })), panes: PANE_IDS.map((id) => ({ id, tabId: this.panes[id].tabId })), activePaneId: this.activePaneId, splitEnabled: this.splitEnabled }; writeFileSync(this.sessionFile, JSON.stringify(payload, null, 2), "utf8"); } catch { /* Session restore is best-effort and never blocks browsing. */ }
+  }
+  private readWorkspaceSnapshots(): WorkspaceSnapshot[] {
+    try { if (!existsSync(this.workspaceFile)) return []; const parsed = JSON.parse(readFileSync(this.workspaceFile, "utf8")) as WorkspaceSnapshot[]; return Array.isArray(parsed) ? parsed.filter((snapshot) => typeof snapshot?.id === "string" && typeof snapshot?.name === "string" && Array.isArray(snapshot?.tabs) && Array.isArray(snapshot?.panes)) : []; } catch { return []; }
+  }
+  private writeWorkspaceSnapshots(snapshots: WorkspaceSnapshot[]): void {
+    try { mkdirSync(dirname(this.workspaceFile), { recursive: true }); writeFileSync(this.workspaceFile, JSON.stringify(snapshots, null, 2), "utf8"); } catch { /* Workspace save is local best-effort and never blocks browsing. */ }
   }
   private trackDownload(item: Electron.DownloadItem): void {
     const record: BrowserDownloadState = { id: randomUUID(), filename: item.getFilename(), receivedBytes: item.getReceivedBytes(), totalBytes: item.getTotalBytes(), state: "progressing" };

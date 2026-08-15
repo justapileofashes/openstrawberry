@@ -28,4 +28,5 @@
 - [x] Add a first-launch browser-choice flow with user-approved Chromium bookmark and displayed default-search-name import into app-owned storage.
 - [ ] Add a dedicated password export-file import flow with a clear review screen; never copy browser password databases, cookies, sessions, or account tokens.
 - [ ] Add manual export-file imports for Firefox and Safari bookmarks/settings, plus a user-scoped history import policy.
-- [ ] Add named workspace snapshots and tab groups.
+- [x] Add named workspace snapshots that restore bounded tab URLs, split layout, and active pane from local app-owned storage.
+- [ ] Add tab-group naming, colors, collapse behavior, and snapshot filtering.

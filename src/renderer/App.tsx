@@ -1,7 +1,7 @@
 /* OpenStrawberry desktop shell: monochrome technical chrome with Liquid Glass reserved for Companion and control surfaces. */
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { ArrowLeft, ArrowRight, Bot, CircleStop, Columns2, Command, Download, Globe2, LayoutPanelTop, Maximize2, MoreHorizontal, PanelRightClose, Pause, Play, Plus, RefreshCw, Settings2, ShieldCheck, Sparkles, Volume2, VolumeX, X } from "lucide-react";
-import type { BrowserPaneId, BrowserSnapshot, BrowserTabState } from "../shared/browser";
+import type { BrowserPaneId, BrowserSnapshot, BrowserTabState, WorkspaceSnapshot } from "../shared/browser";
 import { defaultAgentProfiles, type AgentProfileInput, type AgentProfileSummary, type LocalCliStatus } from "../shared/agent";
 import { EMPTY_MEDIA_STATE, type MediaCommand, type MediaState } from "../shared/media";
 import type { OrchestrationPlan } from "../shared/orchestration";
@@ -26,6 +26,10 @@ export function App() {
   const [onboarding, setOnboarding] = useState<OnboardingState | null>(null);
   const [migrationCandidates, setMigrationCandidates] = useState<BrowserMigrationCandidate[]>([]);
   const [migrationStatus, setMigrationStatus] = useState("");
+  const [workspaceDrawerOpen, setWorkspaceDrawerOpen] = useState(false);
+  const [workspaceName, setWorkspaceName] = useState("");
+  const [workspaces, setWorkspaces] = useState<WorkspaceSnapshot[]>([]);
+  const [workspaceStatus, setWorkspaceStatus] = useState("");
   const primaryViewportRef = useRef<HTMLDivElement>(null);
   const secondaryViewportRef = useRef<HTMLDivElement>(null);
   const activeTab = browser.tabs.find((tab) => tab.id === browser.activeTabId) ?? null;
@@ -49,10 +53,20 @@ export function App() {
     void Promise.all([window.openStrawberry.migration.state(), window.openStrawberry.migration.detect()]).then(([state, candidates]) => { setOnboarding(state); setMigrationCandidates(candidates); });
   }, []);
 
+  useEffect(() => { void window.openStrawberry.workspaces.list().then(setWorkspaces); }, []);
+
   const completeFreshProfile = () => { void window.openStrawberry.migration.complete().then(setOnboarding); };
   const importMigration = (browserId: BrowserId) => {
     setMigrationStatus("Waiting for native approval…");
     void window.openStrawberry.migration.importBrowser(browserId).then((result) => window.openStrawberry.migration.complete(result.browser).then((state) => { setMigrationStatus(""); setOnboarding(state); })).catch((error: unknown) => setMigrationStatus(error instanceof Error ? error.message : "The selected browser could not be migrated."));
+  };
+  const saveWorkspace = () => {
+    setWorkspaceStatus("");
+    void window.openStrawberry.workspaces.save(workspaceName).then((snapshot) => { if (snapshot) { setWorkspaces((current) => [snapshot, ...current]); setWorkspaceName(""); setWorkspaceStatus("Workspace saved locally."); } }).catch((error: unknown) => setWorkspaceStatus(error instanceof Error ? error.message : "Could not save workspace."));
+  };
+  const restoreWorkspace = (id: string) => {
+    setWorkspaceStatus("Restoring workspace…");
+    void window.openStrawberry.workspaces.restore(id).then((snapshot) => { if (snapshot) setBrowser(snapshot); setWorkspaceStatus("Workspace restored."); }).catch((error: unknown) => setWorkspaceStatus(error instanceof Error ? error.message : "Could not restore workspace."));
   };
 
   useEffect(() => setUrlInput(activeTab?.url ?? ""), [activeTab?.id, activeTab?.url]);
@@ -87,7 +101,7 @@ export function App() {
       <div className="relay-mark" aria-label="OpenStrawberry"><span /><span /><span /></div>
       <div className="side-actions">
         <button className="side-action active" aria-label="Browser"><Globe2 size={17} /></button>
-        <button className="side-action" aria-label="Workspaces"><LayoutPanelTop size={17} /></button>
+        <button className={`side-action ${workspaceDrawerOpen ? "active" : ""}`} aria-label="Workspaces" onClick={() => setWorkspaceDrawerOpen((value) => !value)}><LayoutPanelTop size={17} /></button>
         <button className="side-action" aria-label="Downloads"><Download size={17} /></button>
         <button className="side-action" aria-label="Settings"><Settings2 size={17} /></button>
       </div>
@@ -126,8 +140,13 @@ export function App() {
         {agentRailOpen && <AgentRail activeView={agentView} onChange={setAgentView} onClose={() => setAgentRailOpen(false)} profiles={agents} localClis={localClis} sourceTabCount={browser.tabs.length} plan={orchestrationPlan} onProfilesChange={setAgents} onPlan={setOrchestrationPlan} />}
       </section>
     </main>
+    {workspaceDrawerOpen && <WorkspaceDrawer name={workspaceName} status={workspaceStatus} workspaces={workspaces} onNameChange={setWorkspaceName} onSave={saveWorkspace} onRestore={restoreWorkspace} onClose={() => setWorkspaceDrawerOpen(false)} />}
     {onboarding && !onboarding.completed && <OnboardingSheet candidates={migrationCandidates} status={migrationStatus} onImport={importMigration} onFresh={completeFreshProfile} />}
   </div>;
+}
+
+function WorkspaceDrawer({ name, status, workspaces, onNameChange, onSave, onRestore, onClose }: { name: string; status: string; workspaces: WorkspaceSnapshot[]; onNameChange: (name: string) => void; onSave: () => void; onRestore: (id: string) => void; onClose: () => void }) {
+  return <aside className="workspace-drawer liquid-glass" aria-label="Saved workspaces"><header><div><p className="eyebrow">Local workspace snapshots</p><h2>Workspaces</h2></div><IconButton label="Close workspaces" onClick={onClose}><X size={15} /></IconButton></header><div className="workspace-drawer-content"><p>Save the current tabs and pane layout. A snapshot stores URLs and layout only; it does not duplicate cookies, credentials, or page storage.</p><div className="workspace-save"><input value={name} onChange={(event) => onNameChange(event.target.value)} placeholder="Workspace name" aria-label="Workspace name" /><button className="primary-action" onClick={onSave}>Save snapshot</button></div>{status && <small className="workspace-status">{status}</small>}<div className="workspace-list">{workspaces.length === 0 ? <div className="workspace-empty">No saved workspaces yet.</div> : workspaces.map((workspace) => <button key={workspace.id} onClick={() => onRestore(workspace.id)}><span><strong>{workspace.name}</strong><em>{workspace.tabs.length} tabs · {workspace.splitEnabled ? "split layout" : "single pane"}</em></span><b>Restore</b></button>)}</div></div></aside>;
 }
 
 function OnboardingSheet({ candidates, status, onImport, onFresh }: { candidates: BrowserMigrationCandidate[]; status: string; onImport: (browserId: BrowserId) => void; onFresh: () => void }) {

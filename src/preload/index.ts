@@ -1,6 +1,6 @@
 /* OpenStrawberry preload: typed browser controls only; no raw vault, filesystem, or Node access enters the renderer. */
 import { contextBridge, ipcRenderer } from "electron";
-import type { BrowserCommand, BrowserPaneId, BrowserSnapshot, BrowserViewport } from "../shared/browser.js";
+import type { BrowserCommand, BrowserPaneId, BrowserSnapshot, BrowserViewport, WorkspaceSnapshot } from "../shared/browser.js";
 import type { MediaCommand, MediaState } from "../shared/media.js";
 import type { AgentProfileInput, AgentProfileSummary, LocalCliStatus } from "../shared/agent.js";
 import type { OrchestrationPlan, OrchestrationRequest } from "../shared/orchestration.js";
@@ -23,6 +23,11 @@ contextBridge.exposeInMainWorld("openStrawberry", {
   media: {
     state: (): Promise<MediaState | undefined> => ipcRenderer.invoke("media:state"),
     command: (command: MediaCommand): Promise<MediaState | undefined> => ipcRenderer.invoke("media:command", command)
+  },
+  workspaces: {
+    list: (): Promise<WorkspaceSnapshot[]> => ipcRenderer.invoke("workspace:list"),
+    save: (name: string): Promise<WorkspaceSnapshot | undefined> => ipcRenderer.invoke("workspace:save", name),
+    restore: (id: string): Promise<BrowserSnapshot | undefined> => ipcRenderer.invoke("workspace:restore", id)
   },
   agents: {
     list: (): Promise<AgentProfileSummary[]> => ipcRenderer.invoke("agents:list"),
