@@ -1,0 +1,28 @@
+name: Feature request
+description: Propose an improvement that fits the local-first and security-first direction
+title: "feature: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem to solve
+      description: Describe the user need rather than only a solution.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed approach
+      description: Explain the intended user experience and any security/privacy implications.
+    validations:
+      required: true
+  - type: checkboxes
+    id: boundaries
+    attributes:
+      label: Project boundaries
+      options:
+        - label: "This proposal does not require copying browser passwords, cookies, sessions, payment data, or account tokens."
+          required: true
+        - label: "This proposal does not require exposing raw credentials to the renderer or bypassing explicit execution approval."
+          required: true

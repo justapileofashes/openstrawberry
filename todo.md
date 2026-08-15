@@ -55,3 +55,10 @@
 - [x] Review credential encryption, provider/CLI approval gates, prompt/context handling, process timeouts, and local CLI workspace containment.
 - [x] Tighten migration parsers, local persistence permissions, release artifact exclusions, and dependency/package configuration.
 - [x] Document threat boundaries, residual risks, and required signing/release controls; publish only verified hardening changes.
+
+## Repository promotion
+
+- [x] Audit the public GitHub profile, topic discoverability, onboarding, and contribution path.
+- [x] Add accurate community and contributor materials that improve repository trust and participation.
+- [x] Prepare factual launch copy for GitHub, Hacker News, Reddit, and developer social channels.
+- [ ] Obtain explicit user authorization before posting or submitting content to any third-party community.

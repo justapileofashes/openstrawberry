@@ -46,6 +46,10 @@ Read [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the runtime boundary and
 
 Read [`docs/SECURITY.md`](docs/SECURITY.md) for the enforced security controls, review evidence, residual risks, and responsible disclosure guidance.
 
+## Get involved
+
+OpenStrawberry is looking for contributors who care about local-first browser tooling, Electron security, Chromium workspace ergonomics, and carefully bounded agent execution. Start with [`CONTRIBUTING.md`](CONTRIBUTING.md), review the current scope and limitations below, and open an issue before starting a large architectural change. Security concerns should follow the private reporting path in [`docs/SECURITY.md`](docs/SECURITY.md), not a public issue.
+
 ## Status and scope
 
 OpenStrawberry is intentionally building browser fundamentals before broad autonomy. It does **not** copy passwords, login sessions, cookies, payment data, browser history, or account tokens from another browser; password import must remain a separate user-selected export-file flow. It also does **not** yet execute Qwen Code or Kimi Code, provide fully automated multi-agent plan execution, bypass CAPTCHA/DRM, create a cross-site external video overlay when a site blocks native picture-in-picture, or include a production signed installer. Those features remain explicit, security-reviewed milestones.
