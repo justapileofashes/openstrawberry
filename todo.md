@@ -46,7 +46,7 @@
 
 - [x] Validate an unpacked Linux Electron application and native DEB package build from the configured Electron Builder targets.
 - [x] Replace Electron’s default Linux package icon with the OpenStrawberry PNG application icon.
-- [ ] Add native macOS ICNS and Windows ICO conversions of the OpenStrawberry application icon.
+- [x] Add native macOS ICNS and Windows ICO conversions of the OpenStrawberry application icon.
 - [ ] Validate AppImage/RPM/macOS DMG/Windows NSIS artifacts on appropriate release runners.
 - [ ] Configure platform signing, macOS notarization, checksums, and release publishing; do not publish unsigned binaries.
 - [x] Add a GitHub Releases-first installer discovery path with clear platform download guidance and signed-release verification steps; no unsigned binary is presented as a public download.

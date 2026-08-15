@@ -50,6 +50,7 @@
       "package.json"
     ],
     "mac": {
+      "icon": "resources/icon.icns",
       "target": [
         {
           "target": "dmg",
@@ -61,6 +62,7 @@
       "category": "public.app-category.productivity"
     },
     "win": {
+      "icon": "resources/icon.ico",
       "target": [
         "nsis"
       ],
