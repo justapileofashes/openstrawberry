@@ -62,3 +62,8 @@
 - [x] Add accurate community and contributor materials that improve repository trust and participation.
 - [x] Prepare factual launch copy for GitHub, Hacker News, Reddit, and developer social channels.
 - [ ] Obtain explicit user authorization before posting or submitting content to any third-party community.
+- [ ] Verify account access and current posting rules for Hacker News, Reddit r/electronjs, Reddit r/opensource, and the connected developer-social account.
+- [ ] Tailor and review final destination-specific launch posts without overstating OpenStrawberry’s current release or security posture.
+- [ ] Obtain final per-post confirmation immediately before submitting public content.
+- [ ] Publish authorized posts and record their public links in the promotion kit.
+- [x] Submit the authorized r/electronjs post; record its public link and immediate Reddit filter removal without reposting.

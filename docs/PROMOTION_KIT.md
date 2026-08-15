@@ -52,3 +52,32 @@ https://github.com/justapileofashes/openstrawberry
 | Launch communities | Read each community’s current self-promotion rules before posting; tailor the draft rather than cross-posting identical text. |
 | Feedback | Ask for technical critique and contributors, not stars. Respond to issues with the same accuracy as the README. |
 | Release claims | State clearly that installers are not signed or publicly released until platform signing and provenance controls are complete. |
+
+## Authorized-channel readiness review
+
+| Channel | Status | Decision |
+|---|---|---|
+| Hacker News Show HN | The authenticated submission page was not available to automation, and the published HN guidelines prohibit generated or AI-edited text. | Do not submit this generated draft. The repository owner may provide a final human-authored post for manual submission. |
+| Reddit r/electronjs | Account access was verified and the text-post interface is available. No community-specific restrictions were visibly displayed in the submission interface. | Eligible for a transparent technical introduction, subject to final per-post confirmation. |
+| Reddit r/opensource | Account access was verified, but the visible rules prohibit spam, excessive self-promotion, and drive-by posting. | Do not submit a repository launch announcement. Engage only if a moderator-approved or substantive community discussion path is available. |
+| Instagram | The configured connector is enabled but not connected to a business account. | Cannot create or publish a post until the user connects the intended Instagram account. |
+
+### Submission result
+
+On 15 August 2026, the authorized post was submitted to [`r/electronjs`](https://www.reddit.com/r/electronjs/comments/1voyne1/im_building_openstrawberry_a_localfirst_electron/). Reddit immediately marked it **removed by Reddit’s filters**. No duplicate repost was attempted. A future community submission should use a substantially revised, owner-authored message or follow a moderator-approved route rather than attempting to evade the platform’s filters.
+
+## Final r/electronjs submission
+
+**Title:** I’m building OpenStrawberry, a local-first Electron browser with split panes and approval-gated AI companions
+
+**Body:**
+
+I’ve open-sourced OpenStrawberry, an early Electron browser foundation focused on real BrowserView tabs, split-pane workspaces, local session restore, a command palette, reader mode, downloads, and compatible native media controls.
+
+The part I’d especially value Electron feedback on is the local-first agent boundary. Each Companion has a separate encrypted credential binding, provider and local CLI runs require native approval, remote pages stay sandboxed and Node-free, and browser context is minimized before it is passed to an agent. The current execution adapters cover OpenAI-compatible and Anthropic Messages providers plus Codex, Claude Code, and OpenCode in app-owned workspaces.
+
+This is not a signed production browser yet, and it does not copy passwords, cookies, sessions, payment data, account tokens, or browsing history during migration. It also does not yet provide automatic multi-agent execution, Qwen Code/Kimi Code runtime adapters, or tracker blocking.
+
+I’m looking for technical feedback on Electron security boundaries, BrowserView workspace UX, and release engineering rather than generic promotion. The repository and threat-model details are here:
+
+https://github.com/justapileofashes/openstrawberry
