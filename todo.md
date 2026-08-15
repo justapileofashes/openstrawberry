@@ -30,3 +30,11 @@
 - [ ] Add manual export-file imports for Firefox and Safari bookmarks/settings, plus a user-scoped history import policy.
 - [x] Add named workspace snapshots that restore bounded tab URLs, split layout, and active pane from local app-owned storage.
 - [ ] Add tab-group naming, colors, collapse behavior, and snapshot filtering.
+
+## Browser productivity and control surfaces
+
+- [x] Add a keyboard-accessible command palette for navigation, tab, split, workspace, and Companion actions.
+- [x] Add keyboard shortcuts for address focus, tabs, split workspace, and command palette.
+- [ ] Add a visible download manager with per-item state and local reveal/open actions.
+- [ ] Add reader mode plus an explicitly configured tracker/ad blocking policy.
+- [ ] Add a permissions and agent-vault center with auditable local settings.

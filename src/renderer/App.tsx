@@ -7,8 +7,10 @@ import { EMPTY_MEDIA_STATE, type MediaCommand, type MediaState } from "../shared
 import type { OrchestrationPlan } from "../shared/orchestration";
 import type { AgentRunResult } from "../shared/agent-run";
 import type { BrowserId, BrowserMigrationCandidate, OnboardingState } from "../shared/migration";
+import { resolveBrowserShortcut } from "../shared/keyboard";
 
 const EMPTY_SNAPSHOT: BrowserSnapshot = { activeTabId: null, activePaneId: "primary", splitEnabled: false, panes: [{ id: "primary", tabId: null }, { id: "secondary", tabId: null }], tabs: [], downloads: [] };
+const PALETTE_ACTIONS = [{ id: "new-tab", label: "New tab", hint: "⌘/Ctrl T" }, { id: "focus-address", label: "Focus address bar", hint: "⌘/Ctrl L" }, { id: "toggle-split", label: "Toggle split workspace", hint: "⌘/Ctrl Shift S" }, { id: "open-workspaces", label: "Open saved workspaces", hint: "" }, { id: "toggle-agents", label: "Toggle Companion", hint: "" }];
 
 function IconButton({ label, disabled, children, onClick }: { label: string; disabled?: boolean; children: ReactNode; onClick?: () => void }) {
   return <button aria-label={label} disabled={disabled} onClick={onClick} className="icon-button">{children}</button>;
@@ -30,8 +32,11 @@ export function App() {
   const [workspaceName, setWorkspaceName] = useState("");
   const [workspaces, setWorkspaces] = useState<WorkspaceSnapshot[]>([]);
   const [workspaceStatus, setWorkspaceStatus] = useState("");
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [commandQuery, setCommandQuery] = useState("");
   const primaryViewportRef = useRef<HTMLDivElement>(null);
   const secondaryViewportRef = useRef<HTMLDivElement>(null);
+  const addressInputRef = useRef<HTMLInputElement>(null);
   const activeTab = browser.tabs.find((tab) => tab.id === browser.activeTabId) ?? null;
   const refreshMedia = useCallback(() => { void window.openStrawberry.media.state().then((state) => { if (state) setMedia(state); }); }, []);
 
@@ -95,6 +100,31 @@ export function App() {
   const runCommand = (command: "back" | "forward" | "reload" | "stop") => { if (activeTab) void window.openStrawberry.browser.command(activeTab.id, command); };
   const assignToPane = (tabId: string, paneId: BrowserPaneId) => { void window.openStrawberry.browser.activate(tabId, paneId); };
   const runMediaCommand = (command: MediaCommand) => { void window.openStrawberry.media.command(command).then((state) => { if (state) setMedia(state); window.setTimeout(refreshMedia, 250); }); };
+  const focusAddress = () => { addressInputRef.current?.focus(); addressInputRef.current?.select(); };
+  const executePaletteAction = (action: string) => {
+    if (action === "new-tab") createTab();
+    if (action === "focus-address") focusAddress();
+    if (action === "toggle-split") void window.openStrawberry.browser.setSplit(!browser.splitEnabled);
+    if (action === "open-workspaces") setWorkspaceDrawerOpen(true);
+    if (action === "toggle-agents") setAgentRailOpen((value) => !value);
+    setCommandPaletteOpen(false);
+    setCommandQuery("");
+  };
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && commandPaletteOpen) { event.preventDefault(); setCommandPaletteOpen(false); return; }
+      const shortcut = resolveBrowserShortcut(event);
+      if (shortcut === "none") return;
+      event.preventDefault();
+      if (shortcut === "command-palette") setCommandPaletteOpen(true);
+      if (shortcut === "address-bar") focusAddress();
+      if (shortcut === "new-tab") createTab();
+      if (shortcut === "toggle-split") void window.openStrawberry.browser.setSplit(!browser.splitEnabled);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [browser.activePaneId, browser.splitEnabled, commandPaletteOpen]);
 
   return <div className="app-shell">
     <aside className="side-nav" aria-label="OpenStrawberry navigation">
@@ -105,7 +135,7 @@ export function App() {
         <button className="side-action" aria-label="Downloads"><Download size={17} /></button>
         <button className="side-action" aria-label="Settings"><Settings2 size={17} /></button>
       </div>
-      <button className="side-action command" aria-label="Open command palette"><Command size={16} /></button>
+      <button className="side-action command" aria-label="Open command palette" onClick={() => setCommandPaletteOpen(true)}><Command size={16} /></button>
     </aside>
 
     <main className="browser-shell">
@@ -128,7 +158,7 @@ export function App() {
           <IconButton label="Forward" disabled={!activeTab?.canGoForward} onClick={() => runCommand("forward")}><ArrowRight size={15} /></IconButton>
           <IconButton label={activeTab?.isLoading ? "Stop" : "Reload"} onClick={() => runCommand(activeTab?.isLoading ? "stop" : "reload")}>{activeTab?.isLoading ? <CircleStop size={14} /> : <RefreshCw size={14} />}</IconButton>
         </div>
-        <form className="address-bar" onSubmit={(event) => { event.preventDefault(); navigate(); }}><ShieldCheck size={14} /><input aria-label="Address or search" value={urlInput} onChange={(event) => setUrlInput(event.target.value)} placeholder="Search or enter address" /><button type="submit"><ArrowRight size={15} /></button></form>
+        <form className="address-bar" onSubmit={(event) => { event.preventDefault(); navigate(); }}><ShieldCheck size={14} /><input ref={addressInputRef} aria-label="Address or search" value={urlInput} onChange={(event) => setUrlInput(event.target.value)} placeholder="Search or enter address" /><button type="submit"><ArrowRight size={15} /></button></form>
         <IconButton label="Browser menu"><MoreHorizontal size={16} /></IconButton>
       </div>
       <MediaDock media={media} onCommand={runMediaCommand} onRefresh={refreshMedia} />
@@ -140,6 +170,7 @@ export function App() {
         {agentRailOpen && <AgentRail activeView={agentView} onChange={setAgentView} onClose={() => setAgentRailOpen(false)} profiles={agents} localClis={localClis} sourceTabCount={browser.tabs.length} plan={orchestrationPlan} onProfilesChange={setAgents} onPlan={setOrchestrationPlan} />}
       </section>
     </main>
+    {commandPaletteOpen && <CommandPalette query={commandQuery} onQueryChange={setCommandQuery} onClose={() => setCommandPaletteOpen(false)} onExecute={executePaletteAction} />}
     {workspaceDrawerOpen && <WorkspaceDrawer name={workspaceName} status={workspaceStatus} workspaces={workspaces} onNameChange={setWorkspaceName} onSave={saveWorkspace} onRestore={restoreWorkspace} onClose={() => setWorkspaceDrawerOpen(false)} />}
     {onboarding && !onboarding.completed && <OnboardingSheet candidates={migrationCandidates} status={migrationStatus} onImport={importMigration} onFresh={completeFreshProfile} />}
   </div>;
@@ -147,6 +178,11 @@ export function App() {
 
 function WorkspaceDrawer({ name, status, workspaces, onNameChange, onSave, onRestore, onClose }: { name: string; status: string; workspaces: WorkspaceSnapshot[]; onNameChange: (name: string) => void; onSave: () => void; onRestore: (id: string) => void; onClose: () => void }) {
   return <aside className="workspace-drawer liquid-glass" aria-label="Saved workspaces"><header><div><p className="eyebrow">Local workspace snapshots</p><h2>Workspaces</h2></div><IconButton label="Close workspaces" onClick={onClose}><X size={15} /></IconButton></header><div className="workspace-drawer-content"><p>Save the current tabs and pane layout. A snapshot stores URLs and layout only; it does not duplicate cookies, credentials, or page storage.</p><div className="workspace-save"><input value={name} onChange={(event) => onNameChange(event.target.value)} placeholder="Workspace name" aria-label="Workspace name" /><button className="primary-action" onClick={onSave}>Save snapshot</button></div>{status && <small className="workspace-status">{status}</small>}<div className="workspace-list">{workspaces.length === 0 ? <div className="workspace-empty">No saved workspaces yet.</div> : workspaces.map((workspace) => <button key={workspace.id} onClick={() => onRestore(workspace.id)}><span><strong>{workspace.name}</strong><em>{workspace.tabs.length} tabs · {workspace.splitEnabled ? "split layout" : "single pane"}</em></span><b>Restore</b></button>)}</div></div></aside>;
+}
+
+function CommandPalette({ query, onQueryChange, onClose, onExecute }: { query: string; onQueryChange: (query: string) => void; onClose: () => void; onExecute: (action: string) => void }) {
+  const visibleActions = PALETTE_ACTIONS.filter((action) => action.label.toLowerCase().includes(query.trim().toLowerCase()));
+  return <section className="command-palette-backdrop" role="dialog" aria-modal="true" aria-label="Command palette" onMouseDown={onClose}><div className="command-palette liquid-glass" onMouseDown={(event) => event.stopPropagation()}><div className="command-palette-input"><Command size={16} /><input autoFocus value={query} onChange={(event) => onQueryChange(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && visibleActions[0]) onExecute(visibleActions[0].id); }} placeholder="Search browser actions" aria-label="Search browser actions" /><button onClick={onClose} aria-label="Close command palette"><X size={14} /></button></div><div className="command-palette-list">{visibleActions.length ? visibleActions.map((action) => <button key={action.id} onClick={() => onExecute(action.id)}><span>{action.label}</span><kbd>{action.hint}</kbd></button>) : <p>No matching browser action.</p>}</div></div></section>;
 }
 
 function OnboardingSheet({ candidates, status, onImport, onFresh }: { candidates: BrowserMigrationCandidate[]; status: string; onImport: (browserId: BrowserId) => void; onFresh: () => void }) {

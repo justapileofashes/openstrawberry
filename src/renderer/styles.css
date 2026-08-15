@@ -150,6 +150,17 @@ button:disabled { cursor: not-allowed; opacity: .35; }
 .workspace-list em { color: #858e95; font-size: 9px; font-style: normal; }
 .workspace-list b { font-family: ui-monospace, monospace; font-size: 9px; }
 .workspace-empty { border: 1px dashed rgba(255, 255, 255, .14); border-radius: 7px; padding: 14px; color: #818a90; font-size: 10px; text-align: center; }
+.command-palette-backdrop { position: fixed; inset: 0; z-index: 28; display: grid; place-items: start center; padding: 110px 20px 20px; background: rgba(0, 0, 0, .38); backdrop-filter: blur(5px); }
+.command-palette { width: min(560px, 100%); overflow: hidden; border: 1px solid rgba(255, 255, 255, .2); border-radius: 11px; background: rgba(20, 22, 24, .95); box-shadow: 0 24px 80px rgba(0, 0, 0, .48); }
+.command-palette-input { display: flex; align-items: center; gap: 8px; border-bottom: 1px solid rgba(255, 255, 255, .1); padding: 11px; color: #929aa0; }
+.command-palette-input input { min-width: 0; flex: 1; border: 0; outline: 0; background: transparent; color: #f1f3f4; font-size: 13px; }
+.command-palette-input button { display: grid; width: 25px; height: 25px; place-items: center; border: 0; border-radius: 5px; background: transparent; color: #929aa0; }
+.command-palette-input button:hover { background: rgba(255, 255, 255, .08); color: #fff; }
+.command-palette-list { display: grid; gap: 3px; padding: 7px; }
+.command-palette-list button { display: flex; align-items: center; justify-content: space-between; border: 0; border-radius: 6px; background: transparent; padding: 9px; color: #e5e8ea; text-align: left; font-size: 11px; }
+.command-palette-list button:hover { background: rgba(255, 255, 255, .09); }
+.command-palette-list kbd { color: #858d93; font-family: ui-monospace, monospace; font-size: 9px; }
+.command-palette-list p { margin: 8px; color: #858d93; font-size: 11px; text-align: center; }
 .empty-runs { display: flex; align-items: center; flex-direction: column; gap: 7px; padding: 42px 12px; color: #7d858c; text-align: center; }
 .empty-runs strong { color: #e5e7e9; font-size: 12px; }
 .empty-runs span { max-width: 190px; font-size: 11px; line-height: 1.5; }

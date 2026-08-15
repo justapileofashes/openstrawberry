@@ -12,6 +12,7 @@
 | Browser core | Create, select, close, navigate, back, forward, reload, stop, restore local tabs on launch, and retain pane-local browser state |
 | Workspace | Two-pane split browsing with tab drag targets, pane-local navigation, and visible active-pane state |
 | Workspace continuity | Named local snapshots save and restore a bounded set of tab URLs, split layout, and active pane; they do not clone site cookies, credentials, or page storage |
+| Browser productivity | Keyboard-accessible command palette with actions for tabs, address focus, split workspace, saved workspaces, and the Companion; supports Ctrl on Windows/Linux and Command on macOS |
 | Media deck | Detect compatible HTML video in the selected tab and expose play, pause, seek, mute, volume, and browser-native picture-in-picture commands |
 | Agent control plane | Separate local agent profiles, per-agent encrypted credential bindings when operating-system encryption is available, local CLI discovery, and review-first handoff planning |
 | Agent execution | Main-process-only OpenAI-compatible and Anthropic Messages provider calls, plus user-approved Codex, Claude Code, and OpenCode local runs; raw credentials are not exposed to the renderer |
