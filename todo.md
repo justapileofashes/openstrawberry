@@ -52,6 +52,7 @@
 - [ ] Add a reproducible release process that uploads signed macOS, Windows, and Linux installers with SHA-256 checksums and release notes.
 - [x] Configure the stable native app identity, Windows Start/desktop shortcut behavior, and Linux searchable desktop entry; validate the Linux DEB desktop registration.
 - [x] Document one-time graphical installation and post-install launch/pinning steps for macOS, Windows, and Linux.
+- [x] Add macOS, Windows, and Linux GitHub Release download buttons that resolve to the correct signed installer assets when a stable release is available.
 
 ## Security hardening review
 

@@ -5,8 +5,13 @@ import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const releaseDir = path.join(root, 'release');
-const supportedExtensions = new Set(['.dmg', '.exe', '.AppImage', '.deb', '.rpm']);
-const expectedPrefix = 'OpenStrawberry-';
+const expectedArtifacts = new Set([
+  'OpenStrawberry-mac-universal.dmg',
+  'OpenStrawberry-win-x64.exe',
+  'OpenStrawberry-linux-x86_64.AppImage',
+  'OpenStrawberry-linux-amd64.deb',
+  'OpenStrawberry-linux-x86_64.rpm',
+]);
 
 async function listArtifacts(directory) {
   const entries = await readdir(directory, { withFileTypes: true });
@@ -14,8 +19,7 @@ async function listArtifacts(directory) {
 
   for (const entry of entries) {
     if (!entry.isFile()) continue;
-    if (!supportedExtensions.has(path.extname(entry.name))) continue;
-    if (!entry.name.startsWith(expectedPrefix)) continue;
+    if (!expectedArtifacts.has(entry.name)) continue;
     artifacts.push(entry.name);
   }
 

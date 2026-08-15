@@ -8,13 +8,18 @@
 
 **OpenStrawberry’s only future installer source is [GitHub Releases](https://github.com/justapileofashes/openstrawberry/releases).** There is no public signed installer yet, so do not install binaries from forks, issue attachments, or unofficial mirrors. The current Linux DEB is a private smoke-test artifact and is intentionally not published as a user download.
 
-When the first signed release is available, choose the asset that matches your platform:
+When the first signed release is available, choose the installer button for your platform. These stable links will always download the matching asset from the latest signed GitHub Release; until that first release is published, GitHub will show that the asset is unavailable.
+
+[![Download for macOS](https://img.shields.io/badge/Download-macOS-black?style=for-the-badge&logo=apple)](https://github.com/justapileofashes/openstrawberry/releases/latest/download/OpenStrawberry-mac-universal.dmg)
+[![Download for Windows](https://img.shields.io/badge/Download-Windows-0078D4?style=for-the-badge&logo=windows)](https://github.com/justapileofashes/openstrawberry/releases/latest/download/OpenStrawberry-win-x64.exe)
+[![Download for Linux](https://img.shields.io/badge/Download-Linux-FCC624?style=for-the-badge&logo=linux&logoColor=black)](https://github.com/justapileofashes/openstrawberry/releases/latest/download/OpenStrawberry-linux-amd64.deb)
+[![All releases](https://img.shields.io/badge/View-All%20releases-6E40C9?style=for-the-badge&logo=github)](https://github.com/justapileofashes/openstrawberry/releases)
 
 | Platform | Download from GitHub Releases | Expected installation |
 |---|---|---|
-| macOS | `OpenStrawberry-<version>-mac-universal.dmg` | Open the DMG and drag OpenStrawberry to Applications. |
-| Windows | `OpenStrawberry-<version>-win-x64.exe` | Run the signed NSIS installer. |
-| Linux | `OpenStrawberry-<version>-linux-x86_64.AppImage`, `.deb`, or `.rpm` | Use AppImage for portable launch, or install the package native to your distribution. |
+| macOS | `OpenStrawberry-mac-universal.dmg` | Open the DMG and drag OpenStrawberry to Applications. |
+| Windows | `OpenStrawberry-win-x64.exe` | Run the signed NSIS installer. |
+| Linux | `OpenStrawberry-linux-x86_64.AppImage`, `.deb`, or `.rpm` | Use AppImage for portable launch, or install the package native to your distribution. |
 
 Every stable release will include `SHA256SUMS.txt`, release notes, and platform-specific signing information. Follow the full verification and installation guidance in [`docs/RELEASES.md`](docs/RELEASES.md).
 

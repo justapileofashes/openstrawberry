@@ -2,7 +2,7 @@
 
 ## Canonical download location
 
-OpenStrawberry installers will be published only through the repository’s [GitHub Releases page](https://github.com/justapileofashes/openstrawberry/releases). A latest-release shortcut will become available at `https://github.com/justapileofashes/openstrawberry/releases/latest` once the first signed stable release exists.
+OpenStrawberry installers will be published only through the repository’s [GitHub Releases page](https://github.com/justapileofashes/openstrawberry/releases). A latest-release shortcut will become available at `https://github.com/justapileofashes/openstrawberry/releases/latest` once the first signed stable release exists. The README’s macOS, Windows, and Linux badges use GitHub’s `releases/latest/download/<asset>` path, which keeps the OS-specific buttons stable across versions.
 
 > **Current availability:** no signed public installers have been released. Do not download or install the repository’s private Linux smoke-build output. It exists solely to validate Electron Builder configuration.
 
@@ -10,11 +10,11 @@ OpenStrawberry installers will be published only through the repository’s [Git
 
 | Your platform | Release asset | Install path |
 |---|---|---|
-| macOS (Apple Silicon or Intel) | `OpenStrawberry-<version>-mac-universal.dmg` | Open the disk image, drag OpenStrawberry to Applications, then open the app normally. |
-| Windows 10/11 x64 | `OpenStrawberry-<version>-win-x64.exe` | Run the signed NSIS installer; it installs per user and provides Start menu/desktop options. |
-| Linux, portable | `OpenStrawberry-<version>-linux-x86_64.AppImage` | Mark the file executable, then launch it. |
-| Debian/Ubuntu Linux | `OpenStrawberry-<version>-linux-amd64.deb` | Install with your distribution package manager. |
-| Fedora/RHEL/openSUSE Linux | `OpenStrawberry-<version>-linux-x86_64.rpm` | Install with your distribution package manager. |
+| macOS (Apple Silicon or Intel) | `OpenStrawberry-mac-universal.dmg` | Open the disk image, drag OpenStrawberry to Applications, then open the app normally. |
+| Windows 10/11 x64 | `OpenStrawberry-win-x64.exe` | Run the signed NSIS installer; it installs per user and provides Start menu/desktop options. |
+| Linux, portable | `OpenStrawberry-linux-x86_64.AppImage` | Mark the file executable, then launch it. |
+| Debian/Ubuntu Linux | `OpenStrawberry-linux-amd64.deb` | Install with your distribution package manager. |
+| Fedora/RHEL/openSUSE Linux | `OpenStrawberry-linux-x86_64.rpm` | Install with your distribution package manager. |
 
 ## No-terminal installation and launch
 
@@ -45,7 +45,7 @@ On Linux, `sha256sum -c SHA256SUMS.txt` is also supported.
 ### Windows PowerShell
 
 ```powershell
-Get-FileHash .\OpenStrawberry-<version>-win-x64.exe -Algorithm SHA256
+Get-FileHash .\OpenStrawberry-win-x64.exe -Algorithm SHA256
 ```
 
 Compare the displayed hash against the corresponding line in `SHA256SUMS.txt` from the same release.

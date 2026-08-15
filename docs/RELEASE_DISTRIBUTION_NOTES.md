@@ -14,9 +14,9 @@ Each published stable release must contain the following release assets where ap
 
 | Platform | User-facing asset | Trust requirement |
 |---|---|---|
-| macOS | Universal DMG | Developer ID signing and Apple notarization |
-| Windows | NSIS installer | Authenticode signing |
-| Linux | AppImage, DEB, and RPM | SHA-256 checksums and repository/package signing guidance |
+| macOS | `OpenStrawberry-mac-universal.dmg` | Developer ID signing and Apple notarization |
+| Windows | `OpenStrawberry-win-x64.exe` | Authenticode signing |
+| Linux | `OpenStrawberry-linux-x86_64.AppImage`, `OpenStrawberry-linux-amd64.deb`, and `OpenStrawberry-linux-x86_64.rpm` | SHA-256 checksums and repository/package signing guidance |
 | All platforms | `SHA256SUMS.txt` | Generated from the exact uploaded artifacts and attached to the same GitHub Release |
 
 ## References
