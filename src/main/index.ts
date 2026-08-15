@@ -113,5 +113,22 @@ registerTrustedHandler("migration:commit-password-export", async (rawImportId) =
   return migrationManager.commitPasswordExport(importId);
 });
 registerTrustedHandler("migration:discard-password-export", (rawImportId) => migrationManager?.discardPasswordExport(requireIdentifier(rawImportId, "Password import ID")));
+registerTrustedHandler("migration:select-bookmark-export", async (rawBrowserId) => {
+  const browserId = requireBrowserId(rawBrowserId);
+  if (!migrationManager) throw new Error("Migration is unavailable until OpenStrawberry has finished starting.");
+  const options: OpenDialogOptions = { title: "Select a browser bookmark export", buttonLabel: "Review selected HTML", properties: ["openFile"], filters: [{ name: "Browser bookmark export", extensions: ["html", "htm"] }] };
+  const selected = mainWindow ? await dialog.showOpenDialog(mainWindow, options) : await dialog.showOpenDialog(options);
+  if (selected.canceled || !selected.filePaths[0]) throw new Error("Bookmark export selection cancelled.");
+  return migrationManager.prepareBookmarkExport(browserId, selected.filePaths[0]);
+});
+registerTrustedHandler("migration:commit-bookmark-export", async (rawImportId) => {
+  const importId = requireIdentifier(rawImportId, "Bookmark import ID");
+  if (!migrationManager) throw new Error("Migration is unavailable until OpenStrawberry has finished starting.");
+  const approvalOptions = { type: "warning" as const, buttons: ["Cancel", "Import reviewed bookmarks"], defaultId: 0, cancelId: 0, title: "Approve bookmark-export import", message: "Copy reviewed HTML bookmarks locally?", detail: "OpenStrawberry will copy only compatible http(s) bookmarks from the selected HTML export into its own local storage. It will not read a Firefox database, Safari plist, passwords, cookies, sessions, payment data, account tokens, settings, or history." };
+  const response = mainWindow ? await dialog.showMessageBox(mainWindow, approvalOptions) : await dialog.showMessageBox(approvalOptions);
+  if (response.response !== 1) { migrationManager.discardBookmarkExport(importId); throw new Error("Bookmark import cancelled by the user."); }
+  return migrationManager.commitBookmarkExport(importId);
+});
+registerTrustedHandler("migration:discard-bookmark-export", (rawImportId) => migrationManager?.discardBookmarkExport(requireIdentifier(rawImportId, "Bookmark import ID")));
 registerTrustedHandler("migration:complete", (rawBrowserId) => migrationManager?.completeOnboarding(rawBrowserId === undefined ? undefined : requireBrowserId(rawBrowserId)) ?? { completed: true });
-app.on("window-all-closed", () => { migrationManager?.discardAllPendingPasswordExports(); if (process.platform !== "darwin") app.quit(); });
+app.on("window-all-closed", () => { migrationManager?.discardAllPendingPasswordExports(); migrationManager?.discardAllPendingBookmarkExports(); if (process.platform !== "darwin") app.quit(); });

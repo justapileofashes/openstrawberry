@@ -33,6 +33,22 @@ describe("password-export migration", () => {
     expect(persisted).toContain(Buffer.from("sealed:private-password", "utf8").toString("base64"));
   });
 
+  it("stages a selected HTML bookmark export and commits only compatible web bookmarks after review", () => {
+    const directory = temporaryDirectory();
+    const exportPath = join(directory, "Safari Bookmarks.html");
+    writeFileSync(exportPath, "<!DOCTYPE NETSCAPE-Bookmark-file-1><DL><p><DT><H3>Reference</H3><DL><p><DT><A HREF=\"https://developer.mozilla.org\">MDN</A><DT><A HREF=\"javascript:alert(1)\">Unsafe</A></DL><p></DL><p>", "utf8");
+    const manager = new MigrationManager(directory, testEncryptor);
+
+    const preview = manager.prepareBookmarkExport("safari", exportPath);
+    expect(preview).toMatchObject({ browser: "safari", fileName: "Safari Bookmarks.html", bookmarksFound: 1 });
+    const result = manager.commitBookmarkExport(preview.importId);
+    const persisted = readFileSync(join(directory, "manual-bookmark-imports.json"), "utf8");
+
+    expect(result.bookmarksImported).toBe(1);
+    expect(persisted).toContain("https://developer.mozilla.org");
+    expect(persisted).not.toContain("javascript:");
+  });
+
   it("rejects non-CSV and does not create an import review when OS encryption is unavailable", () => {
     const directory = temporaryDirectory();
     const exportPath = join(directory, "passwords.txt");

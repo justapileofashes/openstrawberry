@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { homedir, platform } from "node:os";
 import { basename, extname, join } from "node:path";
-import { extractChromiumBookmarks, extractChromiumDefaultSearch, type BrowserId, type BrowserMigrationCandidate, type MigrationImportResult, type OnboardingState, type PasswordExportImportResult, type PasswordExportPreview } from "../shared/migration.js";
+import { extractChromiumBookmarks, extractChromiumDefaultSearch, extractHtmlBookmarks, type BookmarkExportImportResult, type BookmarkExportPreview, type BrowserId, type BrowserMigrationCandidate, type MigrationImportResult, type MigratedBookmark, type OnboardingState, type PasswordExportImportResult, type PasswordExportPreview } from "../shared/migration.js";
 
 type SourceDefinition = { id: BrowserId; label: string; sourceDirectory: string; kind: "chromium" | "firefox" | "safari" };
 const MAX_BOOKMARK_FILE_BYTES = 25 * 1024 * 1024;
@@ -15,11 +15,14 @@ const MAX_USERNAME_LENGTH = 1_024;
 
 export type PasswordEncryptor = { isEncryptionAvailable(): boolean; encryptString(value: string): Buffer };
 type PendingPasswordImport = { browser: BrowserId; fileName: string; entries: PasswordExportEntry[]; createdAt: number };
+type PendingBookmarkImport = { browser: BrowserId; fileName: string; bookmarks: MigratedBookmark[]; createdAt: number };
 type PasswordExportEntry = { url: string; username: string; password: string };
 type StoredPasswordExport = { version: 1; imports: { browser: BrowserId; fileName: string; importedAt: number; entries: { url: string; username: string; password: string }[] }[] };
+type StoredBookmarkExport = { version: 1; imports: { browser: BrowserId; fileName: string; importedAt: number; bookmarks: MigratedBookmark[] }[] };
 
 export class MigrationManager {
   private readonly pendingPasswordImports = new Map<string, PendingPasswordImport>();
+  private readonly pendingBookmarkImports = new Map<string, PendingBookmarkImport>();
 
   public constructor(private readonly userDataPath: string, private readonly passwordEncryptor?: PasswordEncryptor) {}
 
@@ -55,6 +58,30 @@ export class MigrationManager {
     this.write("migrated-browser-data.json", { source: source.id, importedAt: Date.now(), bookmarks, ...(defaultSearchProvider ? { defaultSearchProvider } : {}) });
     return { browser: source.id, bookmarksImported: bookmarks.length, defaultSearchProvider, note: "Bookmarks and the displayed default-search name were copied into OpenStrawberry-owned local storage. Passwords, sessions, cookies, payment data, and history were not read." };
   }
+
+  public prepareBookmarkExport(browser: BrowserId, filePath: string): BookmarkExportPreview {
+    const extension = extname(filePath).toLowerCase();
+    if (extension !== ".html" && extension !== ".htm") throw new Error("Choose a browser-exported HTML bookmarks file.");
+    const bookmarks = extractHtmlBookmarks(this.readRegularUtf8File(filePath, MAX_BOOKMARK_FILE_BYTES));
+    if (bookmarks.length === 0) throw new Error("No compatible web bookmarks were found in this HTML export.");
+    const importId = randomUUID();
+    const fileName = basename(filePath).slice(0, 160);
+    this.pendingBookmarkImports.set(importId, { browser, fileName, bookmarks, createdAt: Date.now() });
+    this.prunePendingImports();
+    return { importId, browser, fileName, bookmarksFound: bookmarks.length, note: "OpenStrawberry read this user-selected HTML export only to prepare this review. No browser profile database, history, cookie, session, password, or account-token file was opened." };
+  }
+
+  public commitBookmarkExport(importId: string): BookmarkExportImportResult {
+    const pending = this.pendingBookmarkImports.get(importId);
+    if (!pending) throw new Error("This bookmark-import review has expired. Select the HTML export again to prepare a new review.");
+    const storage = this.readOwnJson<StoredBookmarkExport>("manual-bookmark-imports.json", { version: 1, imports: [] });
+    storage.imports.push({ browser: pending.browser, fileName: pending.fileName, importedAt: Date.now(), bookmarks: pending.bookmarks });
+    this.write("manual-bookmark-imports.json", storage);
+    this.pendingBookmarkImports.delete(importId);
+    return { browser: pending.browser, bookmarksImported: pending.bookmarks.length, note: "The reviewed HTML bookmarks were copied to OpenStrawberry-owned local storage. Passwords, cookies, sessions, payment data, account tokens, and history were not imported." };
+  }
+
+  public discardBookmarkExport(importId: string): void { this.pendingBookmarkImports.delete(importId); }
 
   public preparePasswordExport(browser: BrowserId, filePath: string): PasswordExportPreview {
     if (!this.passwordEncryptor?.isEncryptionAvailable()) throw new Error("Secure operating-system encryption is unavailable, so password exports cannot be imported.");
@@ -94,6 +121,7 @@ export class MigrationManager {
 
   public discardPasswordExport(importId: string): void { this.pendingPasswordImports.delete(importId); }
   public discardAllPendingPasswordExports(): void { this.pendingPasswordImports.clear(); }
+  public discardAllPendingBookmarkExports(): void { this.pendingBookmarkImports.clear(); }
 
   private sourceDefinitions(): SourceDefinition[] {
     const home = homedir();
@@ -127,6 +155,11 @@ export class MigrationManager {
   private prunePendingPasswordImports(): void {
     const cutoff = Date.now() - 10 * 60 * 1000;
     for (const [id, pending] of this.pendingPasswordImports) if (pending.createdAt < cutoff) this.pendingPasswordImports.delete(id);
+  }
+  private prunePendingImports(): void {
+    this.prunePendingPasswordImports();
+    const cutoff = Date.now() - 10 * 60 * 1000;
+    for (const [id, pending] of this.pendingBookmarkImports) if (pending.createdAt < cutoff) this.pendingBookmarkImports.delete(id);
   }
   private readRegularUtf8File(file: string, maxBytes: number): string {
     const entry = lstatSync(file);

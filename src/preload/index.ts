@@ -5,7 +5,7 @@ import type { MediaCommand, MediaState } from "../shared/media.js";
 import type { AgentProfileInput, AgentProfileSummary, LocalCliStatus } from "../shared/agent.js";
 import type { OrchestrationPlan, OrchestrationRequest } from "../shared/orchestration.js";
 import type { AgentRunRequest, AgentRunResult } from "../shared/agent-run.js";
-import type { BrowserId, BrowserMigrationCandidate, MigrationImportResult, OnboardingState, PasswordExportImportResult, PasswordExportPreview } from "../shared/migration.js";
+import type { BookmarkExportImportResult, BookmarkExportPreview, BrowserId, BrowserMigrationCandidate, MigrationImportResult, OnboardingState, PasswordExportImportResult, PasswordExportPreview } from "../shared/migration.js";
 
 contextBridge.exposeInMainWorld("openStrawberry", {
   browser: {
@@ -48,6 +48,9 @@ contextBridge.exposeInMainWorld("openStrawberry", {
     selectPasswordExport: (browserId: BrowserId): Promise<PasswordExportPreview> => ipcRenderer.invoke("migration:select-password-export", browserId),
     commitPasswordExport: (importId: string): Promise<PasswordExportImportResult> => ipcRenderer.invoke("migration:commit-password-export", importId),
     discardPasswordExport: (importId: string): Promise<void> => ipcRenderer.invoke("migration:discard-password-export", importId),
+    selectBookmarkExport: (browserId: BrowserId): Promise<BookmarkExportPreview> => ipcRenderer.invoke("migration:select-bookmark-export", browserId),
+    commitBookmarkExport: (importId: string): Promise<BookmarkExportImportResult> => ipcRenderer.invoke("migration:commit-bookmark-export", importId),
+    discardBookmarkExport: (importId: string): Promise<void> => ipcRenderer.invoke("migration:discard-bookmark-export", importId),
     complete: (browserId?: BrowserId): Promise<OnboardingState> => ipcRenderer.invoke("migration:complete", browserId)
   },
   app: { version: (): Promise<string> => ipcRenderer.invoke("app:version") }

@@ -3,7 +3,7 @@ import type { BrowserCommand, BrowserPaneId, BrowserSnapshot, BrowserViewport, W
 import type { MediaCommand, MediaState } from "../shared/media";
 import type { OrchestrationPlan, OrchestrationRequest } from "../shared/orchestration";
 import type { AgentRunRequest, AgentRunResult } from "../shared/agent-run";
-import type { BrowserId, BrowserMigrationCandidate, MigrationImportResult, OnboardingState, PasswordExportImportResult, PasswordExportPreview } from "../shared/migration";
+import type { BookmarkExportImportResult, BookmarkExportPreview, BrowserId, BrowserMigrationCandidate, MigrationImportResult, OnboardingState, PasswordExportImportResult, PasswordExportPreview } from "../shared/migration";
 
 declare global {
   interface Window {
@@ -26,7 +26,7 @@ declare global {
       workspaces: { list: () => Promise<WorkspaceSnapshot[]>; save: (name: string) => Promise<WorkspaceSnapshot | undefined>; restore: (id: string) => Promise<BrowserSnapshot | undefined> };
       agents: { list: () => Promise<AgentProfileSummary[]>; save: (input: AgentProfileInput) => Promise<AgentProfileSummary | undefined>; detectLocalClis: () => Promise<LocalCliStatus[]>; runProvider: (request: Omit<AgentRunRequest, "context">) => Promise<AgentRunResult>; runCli: (request: Omit<AgentRunRequest, "context">) => Promise<AgentRunResult> };
       orchestrator: { createPlan: (request: OrchestrationRequest) => Promise<OrchestrationPlan> };
-      migration: { state: () => Promise<OnboardingState>; detect: () => Promise<BrowserMigrationCandidate[]>; importBrowser: (browserId: BrowserId) => Promise<MigrationImportResult>; selectPasswordExport: (browserId: BrowserId) => Promise<PasswordExportPreview>; commitPasswordExport: (importId: string) => Promise<PasswordExportImportResult>; discardPasswordExport: (importId: string) => Promise<void>; complete: (browserId?: BrowserId) => Promise<OnboardingState> };
+      migration: { state: () => Promise<OnboardingState>; detect: () => Promise<BrowserMigrationCandidate[]>; importBrowser: (browserId: BrowserId) => Promise<MigrationImportResult>; selectPasswordExport: (browserId: BrowserId) => Promise<PasswordExportPreview>; commitPasswordExport: (importId: string) => Promise<PasswordExportImportResult>; discardPasswordExport: (importId: string) => Promise<void>; selectBookmarkExport: (browserId: BrowserId) => Promise<BookmarkExportPreview>; commitBookmarkExport: (importId: string) => Promise<BookmarkExportImportResult>; discardBookmarkExport: (importId: string) => Promise<void>; complete: (browserId?: BrowserId) => Promise<OnboardingState> };
       app: { version: () => Promise<string> };
     };
   }
