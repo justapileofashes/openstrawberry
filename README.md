@@ -4,6 +4,20 @@
 
 > This repository is an early native runtime foundation. It already contains an Electron desktop shell, real embedded Chromium tabs, durable split workspaces, an encrypted per-agent vault, approval-gated provider and selected local-CLI adapters, and a privacy-scoped first-launch migration flow. Production signing and several advanced browser capabilities remain planned milestones.
 
+## Download OpenStrawberry
+
+**OpenStrawberry’s only future installer source is [GitHub Releases](https://github.com/justapileofashes/openstrawberry/releases).** There is no public signed installer yet, so do not install binaries from forks, issue attachments, or unofficial mirrors. The current Linux DEB is a private smoke-test artifact and is intentionally not published as a user download.
+
+When the first signed release is available, choose the asset that matches your platform:
+
+| Platform | Download from GitHub Releases | Expected installation |
+|---|---|---|
+| macOS | `OpenStrawberry-<version>-mac-universal.dmg` | Open the DMG and drag OpenStrawberry to Applications. |
+| Windows | `OpenStrawberry-<version>-win-x64.exe` | Run the signed NSIS installer. |
+| Linux | `OpenStrawberry-<version>-linux-x86_64.AppImage`, `.deb`, or `.rpm` | Use AppImage for portable launch, or install the package native to your distribution. |
+
+Every stable release will include `SHA256SUMS.txt`, release notes, and platform-specific signing information. Follow the full verification and installation guidance in [`docs/RELEASES.md`](docs/RELEASES.md).
+
 ## Current capabilities
 
 | Area | Included now |
@@ -36,7 +50,7 @@ The development shell opens a real Chromium tab using the app-owned default prof
 pnpm package:dir
 ```
 
-Production installers require platform-specific signing and notarization credentials. See [`docs/INSTALLATION.md`](docs/INSTALLATION.md).
+Production installers require platform-specific signing and notarization credentials. See [`docs/INSTALLATION.md`](docs/INSTALLATION.md) and [`docs/RELEASES.md`](docs/RELEASES.md).
 
 ## Architecture and roadmap
 

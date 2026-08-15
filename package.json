@@ -14,7 +14,8 @@
     "test": "vitest run --config vitest.config.ts",
     "build": "vite build && tsc -p tsconfig.main.json",
     "package": "pnpm build && electron-builder",
-    "package:dir": "pnpm build && electron-builder --dir"
+    "package:dir": "pnpm build && electron-builder --dir",
+    "release:verify": "node scripts/release/verify-artifacts.mjs"
   },
   "dependencies": {
     "lucide-react": "latest",

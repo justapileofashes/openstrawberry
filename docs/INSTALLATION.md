@@ -8,6 +8,14 @@ OpenStrawberry is designed to install like a familiar desktop browser. The packa
 | Windows | Per-user NSIS EXE | Double-click installer, choose shortcut options, launch from Start menu |
 | Linux | AppImage, DEB, RPM | AppImage for portable launch; DEB/RPM for distribution-native installation |
 
+## GitHub Releases downloads
+
+The canonical installer page is [GitHub Releases](https://github.com/justapileofashes/openstrawberry/releases). The repository does **not** currently offer a signed public installer. When a stable release is published, users should download assets only from that page, select their platform-specific installer, and verify the attached `SHA256SUMS.txt` before installation.
+
+Do not treat files shared through forks, pull requests, issue comments, chat messages, or third-party mirrors as official OpenStrawberry installers. The current Linux build is a developer smoke-test artifact and is intentionally not attached to a GitHub Release.
+
+See [`RELEASES.md`](RELEASES.md) for the future asset names, verification commands, and signing expectations.
+
 ## Local test build
 
 ```bash

@@ -47,6 +47,9 @@
 - [ ] Add native macOS ICNS and Windows ICO conversions of the OpenStrawberry application icon.
 - [ ] Validate AppImage/RPM/macOS DMG/Windows NSIS artifacts on appropriate release runners.
 - [ ] Configure platform signing, macOS notarization, checksums, and release publishing; do not publish unsigned binaries.
+- [x] Add a GitHub Releases-first installer discovery path with clear platform download guidance and signed-release verification steps; no unsigned binary is presented as a public download.
+- [x] Add a local release-artifact checksum verification tool that writes `SHA256SUMS.txt` for eligible installer assets.
+- [ ] Add a reproducible release process that uploads signed macOS, Windows, and Linux installers with SHA-256 checksums and release notes.
 
 ## Security hardening review
 
