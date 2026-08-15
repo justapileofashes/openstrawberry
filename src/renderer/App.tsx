@@ -1,6 +1,6 @@
 /* OpenStrawberry desktop shell: monochrome technical chrome with Liquid Glass reserved for Companion and control surfaces. */
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { ArrowLeft, ArrowRight, Bot, CircleStop, Columns2, Command, Download, Globe2, LayoutPanelTop, Maximize2, MoreHorizontal, PanelRightClose, Pause, Play, Plus, RefreshCw, Settings2, ShieldCheck, Sparkles, Volume2, VolumeX, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Bot, CircleStop, Columns2, Command, Download, Globe2, LayoutPanelTop, Maximize2, MoreHorizontal, PanelRightClose, Pause, Play, Plus, RefreshCw, Search, Settings2, ShieldCheck, Sparkles, Volume2, VolumeX, X } from "lucide-react";
 import { TAB_GROUP_COLORS, type BrowserPaneId, type BrowserSnapshot, type BrowserTabGroup, type BrowserTabState, type TabGroupColor, type WorkspaceSnapshot } from "../shared/browser";
 import { defaultAgentProfiles, type AgentProfileInput, type AgentProfileSummary, type LocalCliStatus } from "../shared/agent";
 import { EMPTY_MEDIA_STATE, type MediaCommand, type MediaState } from "../shared/media";
@@ -9,13 +9,21 @@ import type { AgentRunResult } from "../shared/agent-run";
 import type { BookmarkExportPreview, BrowserId, BrowserMigrationCandidate, OnboardingState, PasswordExportPreview } from "../shared/migration";
 import { resolveBrowserShortcut } from "../shared/keyboard";
 import { downloadProgress } from "../shared/download";
+import { faviconUrlForTab } from "./browser-chrome.js";
 
 const EMPTY_SNAPSHOT: BrowserSnapshot = { activeTabId: null, activePaneId: "primary", splitEnabled: false, panes: [{ id: "primary", tabId: null }, { id: "secondary", tabId: null }], tabs: [], groups: [], downloads: [], privacy: { trackerBlockingEnabled: true, activeSiteException: false, activeTabBlockedRequests: 0 } };
 const PALETTE_ACTIONS = [{ id: "new-tab", label: "New tab", hint: "⌘/Ctrl T" }, { id: "focus-address", label: "Focus address bar", hint: "⌘/Ctrl L" }, { id: "toggle-split", label: "Toggle split workspace", hint: "⌘/Ctrl Shift S" }, { id: "reader-mode", label: "Toggle reader mode", hint: "" }, { id: "open-workspaces", label: "Open saved workspaces", hint: "" }, { id: "toggle-agents", label: "Toggle Companion", hint: "" }];
 const GROUP_COLORS: Record<TabGroupColor, string> = { slate: "#899198", blue: "#6aa5ff", violet: "#b18cff", rose: "#ff8aab", amber: "#f9c86c", emerald: "#6ad7ac" };
 
 function IconButton({ label, disabled, children, onClick }: { label: string; disabled?: boolean; children: ReactNode; onClick?: () => void }) {
-  return <button aria-label={label} disabled={disabled} onClick={onClick} className="icon-button">{children}</button>;
+  return <span className="icon-control-wrap"><button aria-label={label} disabled={disabled} onClick={onClick} className="icon-button">{children}</button><span className="control-tooltip" role="tooltip">{label}</span></span>;
+}
+
+function TabFavicon({ tab }: { tab: BrowserTabState }) {
+  const [failed, setFailed] = useState(false);
+  const faviconUrl = faviconUrlForTab(tab.url);
+  if (!faviconUrl || failed) return <Globe2 size={17} aria-hidden="true" />;
+  return <img src={faviconUrl} alt="" className="tab-favicon" onError={() => setFailed(true)} />;
 }
 
 export function App() {
@@ -183,32 +191,31 @@ export function App() {
   }, [browser.activePaneId, browser.splitEnabled, commandPaletteOpen]);
 
   return <div className="app-shell">
-    <aside className="side-nav" aria-label="OpenStrawberry navigation">
+    <aside className="side-nav tab-rail" aria-label="Open browser tabs">
       <div className="relay-mark" aria-label="OpenStrawberry"><span /><span /><span /></div>
-      <div className="side-actions">
-        <button className="side-action active" aria-label="Browser"><Globe2 size={17} /></button>
-        <button className={`side-action ${workspaceDrawerOpen ? "active" : ""}`} aria-label="Workspaces" onClick={() => setWorkspaceDrawerOpen((value) => !value)}><LayoutPanelTop size={17} /></button>
-        <button className={`side-action ${downloadDrawerOpen ? "active" : ""}`} aria-label="Downloads" onClick={() => setDownloadDrawerOpen((value) => !value)}><Download size={17} /></button>
-        <button className="side-action" aria-label="Settings"><Settings2 size={17} /></button>
+      <div className="side-actions tab-icons">
+        {visibleTabs.map((tab) => <span key={tab.id} className="tab-icon-wrap"><button draggable onDragStart={(event) => event.dataTransfer.setData("application/x-openstrawberry-tab", tab.id)} className={`tab-icon-control ${tab.id === browser.activeTabId ? "active" : ""}`} aria-label={`Switch to ${tab.title || "new tab"}`} aria-current={tab.id === browser.activeTabId ? "page" : undefined} onClick={() => assignToPane(tab.id, browser.activePaneId)}><TabFavicon tab={tab} />{tab.isLoading && <i className="tab-activity" />}</button><span className="control-tooltip" role="tooltip">{tab.title || "New tab"}</span></span>)}
       </div>
-      <button className="side-action command" aria-label="Open command palette" onClick={() => setCommandPaletteOpen(true)}><Command size={16} /></button>
+      <IconButton label="New tab" onClick={createTab}><Plus size={16} /></IconButton>
     </aside>
 
     <main className="browser-shell">
       <header className="product-bar">
         <div className="brand-lockup"><strong>Open</strong><span>Strawberry</span><em>LOCAL BROWSER</em></div>
         <div className="window-state"><ShieldCheck size={13} /> Local profile · agent vault locked</div>
+        <div className="top-workspace-controls" aria-label="Workspace controls">
+          <IconButton label="Workspaces" onClick={() => setWorkspaceDrawerOpen((value) => !value)}><LayoutPanelTop size={16} /></IconButton>
+          <IconButton label="Downloads" onClick={() => setDownloadDrawerOpen((value) => !value)}><Download size={16} /></IconButton>
+          <IconButton label="Settings"><Settings2 size={16} /></IconButton>
+          <IconButton label="Search workspace" onClick={() => setCommandPaletteOpen(true)}><Search size={16} /></IconButton>
+        </div>
         <div className="privacy-controls" aria-label="Tracker blocking controls"><button className={`privacy-toggle ${browser.privacy.trackerBlockingEnabled ? "active" : ""}`} onClick={() => setTrackerBlocking(!browser.privacy.trackerBlockingEnabled)} title="Toggle tracker blocking">{browser.privacy.trackerBlockingEnabled ? "Tracker block on" : "Tracker block off"}</button><button className="privacy-site-toggle" disabled={!activeSiteIsWeb} onClick={toggleTrackerSiteException} title="Toggle tracker blocking for the active site">{browser.privacy.activeSiteException ? "Allowed here" : "Block here"}</button>{browser.privacy.activeTabBlockedRequests > 0 && <span className="privacy-count" title="Blocked tracker requests in the active tab">{browser.privacy.activeTabBlockedRequests} blocked</span>}</div>
         <button className="agents-trigger" onClick={() => setAgentRailOpen((value) => !value)}><Bot size={14} /> Agents</button>
       </header>
-      <div className="tabs-row"><div className="tab-list">
-        {visibleTabs.map((tab) => <Tab key={tab.id} tab={tab} group={tab.groupId ? browser.groups.find((candidate) => candidate.id === tab.groupId) : undefined} active={tab.id === browser.activeTabId} onActivate={() => assignToPane(tab.id, browser.activePaneId)} onClose={() => void window.openStrawberry.browser.close(tab.id)} />)}
-        <IconButton label="New tab" onClick={createTab}><Plus size={15} /></IconButton>
-        <div className="pane-targets" aria-label="Split workspace targets">
-          {(["primary", "secondary"] as const).map((paneId) => <button key={paneId} className={`pane-target ${browser.activePaneId === paneId ? "active" : ""}`} onClick={() => void window.openStrawberry.browser.setActivePane(paneId)} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); const tabId = event.dataTransfer.getData("application/x-openstrawberry-tab"); if (tabId) assignToPane(tabId, paneId); }}><span>{paneId === "primary" ? "A" : "B"}</span></button>)}
-          <button className={`split-toggle ${browser.splitEnabled ? "active" : ""}`} onClick={() => void window.openStrawberry.browser.setSplit(!browser.splitEnabled)} aria-label={browser.splitEnabled ? "Close split view" : "Open split view"}><Columns2 size={14} /></button>
-        </div>
-      </div></div>
+      <div className="pane-toolbar" aria-label="Split workspace targets">
+        {(["primary", "secondary"] as const).map((paneId) => <button key={paneId} className={`pane-target ${browser.activePaneId === paneId ? "active" : ""}`} onClick={() => void window.openStrawberry.browser.setActivePane(paneId)} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); const tabId = event.dataTransfer.getData("application/x-openstrawberry-tab"); if (tabId) assignToPane(tabId, paneId); }}><span>{paneId === "primary" ? "A" : "B"}</span></button>)}
+        <button className={`split-toggle ${browser.splitEnabled ? "active" : ""}`} onClick={() => void window.openStrawberry.browser.setSplit(!browser.splitEnabled)} aria-label={browser.splitEnabled ? "Close split view" : "Open split view"}><Columns2 size={14} /></button>
+      </div>
       {browser.groups.length > 0 && <div className="tab-group-strip" aria-label="Tab groups">{browser.groups.map((group) => <button key={group.id} className={`tab-group-chip ${group.color} ${group.collapsed ? "collapsed" : ""}`} onClick={() => toggleTabGroup(group.id)}><i /><span>{group.name}</span><b>{group.tabIds.length}</b></button>)}</div>}
       <div className="address-bar-row">
         <div className="nav-controls">

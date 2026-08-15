@@ -42,6 +42,11 @@
 - [x] Add an explicitly configured tracker/ad blocking policy with transparent per-site controls.
 - [ ] Add a permissions and agent-vault center with auditable local settings.
 
+## Browser-first desktop renderer refinement
+
+ - [x] Port the approved favicon-only left tab rail, top-bar workspace controls, hover/focus tooltips, always-on Motion and Liquid Glass, simplified search control, and cohesive glassmorphism to the Electron renderer.
+ - [x] Validate the Electron renderer update in source and an unpacked native package so configured future installers include the revised interface.
+
 ## Release validation
 
 - [x] Validate an unpacked Linux Electron application and native DEB package build from the configured Electron Builder targets.
