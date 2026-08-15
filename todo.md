@@ -63,7 +63,7 @@
 - [x] Add focused automated coverage for main-process behavior, including IPC sender/payload gates, vault persistence, provider execution, and CLI execution boundaries; permission denial remains enforced by main-process configuration.
 - [x] Replace floating `latest` dependency ranges with reviewed versions that match the lockfile and support reproducible installs.
 - [x] Replace the remaining Vitest caret range with the reviewed exact lockfile version and re-run frozen-install validation.
-- [ ] Add a GitHub Actions quality workflow for install, type checking, unit tests, and production builds on pushes and pull requests.
+- [x] Add a GitHub Actions quality workflow for install, type checking, unit tests, and production builds on pushes and pull requests; first published run passed.
 - [x] Document maintainer recovery, release access, and a contributor path that reduces the current single-maintainer risk.
 - [x] Validate network-capable Linux installers plus unsigned Windows x64 and macOS x64 directory-package prerequisites; retain macOS universal/DMG, Windows NSIS, signing, notarization, and public installer release as explicit pending work.
 - [x] Reconcile the release-readiness review against the current ready-to-push branch and explicitly report the remaining workflow authorization and platform-signing prerequisites.
