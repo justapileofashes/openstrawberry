@@ -19,6 +19,12 @@ Each published stable release must contain the following release assets where ap
 | Linux | `OpenStrawberry-linux-x86_64.AppImage`, `OpenStrawberry-linux-amd64.deb`, and `OpenStrawberry-linux-x86_64.rpm` | SHA-256 checksums and repository/package signing guidance |
 | All platforms | `SHA256SUMS.txt` | Generated from the exact uploaded artifacts and attached to the same GitHub Release |
 
+## Validation record
+
+On **2026-08-15**, the project’s network-capable Linux validation produced the configured unsigned AppImage, DEB, and RPM assets. The DEB and RPM metadata reported the expected package name, architecture, maintainer, homepage, and local-first browser description, and `pnpm release:verify` generated SHA-256 sums from the produced files. A Windows x64 directory package and a macOS x64 `.app` directory package also completed with the configured native icons. These checks verify packaging prerequisites only; none of these artifacts was uploaded or presented as a public download.
+
+The configured universal macOS merge must run on macOS because Electron’s universal-packaging implementation is Darwin-only. The DMG, Windows NSIS installer, macOS signing/notarization, Windows Authenticode signing, and signed-release publication remain release-runner work, as specified above.
+
 ## References
 
 [1] [BrowserOS repository](https://github.com/browseros-ai/BrowserOS)

@@ -81,7 +81,7 @@
     },
     "linux": {
       "artifactName": "OpenStrawberry-linux-${arch}.${ext}",
-      "icon": "resources/icon.png",
+      "icon": "resources/linux-icons",
       "synopsis": "A local-first agentic desktop browser",
       "syncDesktopName": true,
       "target": [
@@ -90,6 +90,13 @@
         "rpm"
       ],
       "category": "Network"
+    },
+    "rpm": {
+      "compression": "xz",
+      "fpm": [
+        "--rpm-compression",
+        "xz"
+      ]
     }
   }
 }

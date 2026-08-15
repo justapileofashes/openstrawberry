@@ -45,6 +45,7 @@
 ## Release validation
 
 - [x] Validate an unpacked Linux Electron application and native DEB package build from the configured Electron Builder targets.
+- [x] Validate unsigned Linux AppImage, DEB, and RPM artifact generation on a network-capable Linux runner; inspect DEB/RPM metadata and generate checksums locally without publishing the artifacts.
 - [x] Replace Electron’s default Linux package icon with the OpenStrawberry PNG application icon.
 - [x] Add native macOS ICNS and Windows ICO conversions of the OpenStrawberry application icon.
 - [ ] Validate AppImage/RPM/macOS DMG/Windows NSIS artifacts on appropriate release runners.
@@ -63,7 +64,7 @@
 - [x] Replace floating `latest` dependency ranges with reviewed versions that match the lockfile and support reproducible installs.
 - [ ] Add a GitHub Actions quality workflow for install, type checking, unit tests, and production builds on pushes and pull requests.
 - [x] Document maintainer recovery, release access, and a contributor path that reduces the current single-maintainer risk.
-- [ ] Validate packaging on a network-capable release runner and retain signing/notarization as an explicit prerequisite for any public installer release.
+- [x] Validate network-capable Linux installers plus unsigned Windows x64 and macOS x64 directory-package prerequisites; retain macOS universal/DMG, Windows NSIS, signing, notarization, and public installer release as explicit pending work.
 
 ## Security hardening review
 
