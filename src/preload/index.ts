@@ -5,7 +5,7 @@ import type { MediaCommand, MediaState } from "../shared/media.js";
 import type { AgentProfileInput, AgentProfileSummary, LocalCliStatus } from "../shared/agent.js";
 import type { OrchestrationPlan, OrchestrationRequest } from "../shared/orchestration.js";
 import type { AgentRunRequest, AgentRunResult } from "../shared/agent-run.js";
-import type { BrowserId, BrowserMigrationCandidate, MigrationImportResult, OnboardingState } from "../shared/migration.js";
+import type { BrowserId, BrowserMigrationCandidate, MigrationImportResult, OnboardingState, PasswordExportImportResult, PasswordExportPreview } from "../shared/migration.js";
 
 contextBridge.exposeInMainWorld("openStrawberry", {
   browser: {
@@ -45,6 +45,9 @@ contextBridge.exposeInMainWorld("openStrawberry", {
     state: (): Promise<OnboardingState> => ipcRenderer.invoke("migration:state"),
     detect: (): Promise<BrowserMigrationCandidate[]> => ipcRenderer.invoke("migration:detect"),
     importBrowser: (browserId: BrowserId): Promise<MigrationImportResult> => ipcRenderer.invoke("migration:import", browserId),
+    selectPasswordExport: (browserId: BrowserId): Promise<PasswordExportPreview> => ipcRenderer.invoke("migration:select-password-export", browserId),
+    commitPasswordExport: (importId: string): Promise<PasswordExportImportResult> => ipcRenderer.invoke("migration:commit-password-export", importId),
+    discardPasswordExport: (importId: string): Promise<void> => ipcRenderer.invoke("migration:discard-password-export", importId),
     complete: (browserId?: BrowserId): Promise<OnboardingState> => ipcRenderer.invoke("migration:complete", browserId)
   },
   app: { version: (): Promise<string> => ipcRenderer.invoke("app:version") }

@@ -6,7 +6,7 @@ import { defaultAgentProfiles, type AgentProfileInput, type AgentProfileSummary,
 import { EMPTY_MEDIA_STATE, type MediaCommand, type MediaState } from "../shared/media";
 import type { OrchestrationPlan } from "../shared/orchestration";
 import type { AgentRunResult } from "../shared/agent-run";
-import type { BrowserId, BrowserMigrationCandidate, OnboardingState } from "../shared/migration";
+import type { BrowserId, BrowserMigrationCandidate, OnboardingState, PasswordExportPreview } from "../shared/migration";
 import { resolveBrowserShortcut } from "../shared/keyboard";
 import { downloadProgress } from "../shared/download";
 
@@ -29,6 +29,7 @@ export function App() {
   const [onboarding, setOnboarding] = useState<OnboardingState | null>(null);
   const [migrationCandidates, setMigrationCandidates] = useState<BrowserMigrationCandidate[]>([]);
   const [migrationStatus, setMigrationStatus] = useState("");
+  const [passwordExportPreview, setPasswordExportPreview] = useState<PasswordExportPreview | null>(null);
   const [workspaceDrawerOpen, setWorkspaceDrawerOpen] = useState(false);
   const [workspaceName, setWorkspaceName] = useState("");
   const [workspaces, setWorkspaces] = useState<WorkspaceSnapshot[]>([]);
@@ -66,6 +67,21 @@ export function App() {
   const importMigration = (browserId: BrowserId) => {
     setMigrationStatus("Waiting for native approval…");
     void window.openStrawberry.migration.importBrowser(browserId).then((result) => window.openStrawberry.migration.complete(result.browser).then((state) => { setMigrationStatus(""); setOnboarding(state); })).catch((error: unknown) => setMigrationStatus(error instanceof Error ? error.message : "The selected browser could not be migrated."));
+  };
+  const selectPasswordExport = (browserId: BrowserId) => {
+    setMigrationStatus("Choose a browser-generated password CSV in the native file picker…");
+    void window.openStrawberry.migration.selectPasswordExport(browserId).then((preview) => { setMigrationStatus(""); setPasswordExportPreview(preview); }).catch((error: unknown) => setMigrationStatus(error instanceof Error ? error.message : "The password export could not be reviewed."));
+  };
+  const commitPasswordExport = () => {
+    if (!passwordExportPreview) return;
+    setMigrationStatus("Waiting for native encryption approval…");
+    void window.openStrawberry.migration.commitPasswordExport(passwordExportPreview.importId).then((result) => { setPasswordExportPreview(null); setMigrationStatus(result.note); }).catch((error: unknown) => { setPasswordExportPreview(null); setMigrationStatus(error instanceof Error ? error.message : "The password export was not imported."); });
+  };
+  const discardPasswordExport = () => {
+    if (!passwordExportPreview) return;
+    void window.openStrawberry.migration.discardPasswordExport(passwordExportPreview.importId);
+    setPasswordExportPreview(null);
+    setMigrationStatus("Password-export review discarded. The selected CSV was not imported.");
   };
   const saveWorkspace = () => {
     setWorkspaceStatus("");
@@ -176,7 +192,7 @@ export function App() {
     {commandPaletteOpen && <CommandPalette query={commandQuery} onQueryChange={setCommandQuery} onClose={() => setCommandPaletteOpen(false)} onExecute={executePaletteAction} />}
     {downloadDrawerOpen && <DownloadDrawer downloads={browser.downloads} onReveal={(id) => void window.openStrawberry.browser.revealDownload(id)} onClose={() => setDownloadDrawerOpen(false)} />}
     {workspaceDrawerOpen && <WorkspaceDrawer name={workspaceName} status={workspaceStatus} workspaces={workspaces} onNameChange={setWorkspaceName} onSave={saveWorkspace} onRestore={restoreWorkspace} onClose={() => setWorkspaceDrawerOpen(false)} />}
-    {onboarding && !onboarding.completed && <OnboardingSheet candidates={migrationCandidates} status={migrationStatus} onImport={importMigration} onFresh={completeFreshProfile} />}
+    {onboarding && !onboarding.completed && <OnboardingSheet candidates={migrationCandidates} status={migrationStatus} passwordPreview={passwordExportPreview} onImport={importMigration} onSelectPasswordExport={selectPasswordExport} onCommitPasswordExport={commitPasswordExport} onDiscardPasswordExport={discardPasswordExport} onFresh={completeFreshProfile} />}
   </div>;
 }
 
@@ -193,8 +209,9 @@ function DownloadDrawer({ downloads, onReveal, onClose }: { downloads: BrowserSn
   return <aside className="download-drawer liquid-glass" aria-label="Downloads"><header><div><p className="eyebrow">Local download activity</p><h2>Downloads</h2></div><IconButton label="Close downloads" onClick={onClose}><X size={15} /></IconButton></header><div className="download-drawer-content">{downloads.length === 0 ? <div className="workspace-empty">No downloads in this session.</div> : downloads.map((download) => { const progress = downloadProgress(download.receivedBytes, download.totalBytes); return <article className="download-record" key={download.id}><div><strong>{download.filename}</strong><span>{download.state === "completed" ? "Completed" : download.state === "cancelled" ? "Cancelled" : progress === null ? "Downloading…" : `${progress}% downloaded`}</span></div>{download.state === "progressing" && <div className="download-progress"><i style={{ width: `${progress ?? 18}%` }} /></div>}{download.state === "completed" && <button className="secondary-action" onClick={() => onReveal(download.id)}>Reveal in folder</button>}</article>; })}</div></aside>;
 }
 
-function OnboardingSheet({ candidates, status, onImport, onFresh }: { candidates: BrowserMigrationCandidate[]; status: string; onImport: (browserId: BrowserId) => void; onFresh: () => void }) {
-  return <section className="onboarding-backdrop" role="dialog" aria-modal="true" aria-label="Set up OpenStrawberry"><div className="onboarding-sheet liquid-glass"><p className="eyebrow">First launch · local profile</p><h1>Bring bookmarks, not a shadow copy.</h1><p>Choose a browser to import compatible bookmarks and its displayed default-search name, or start with a fresh OpenStrawberry profile. Passwords, sessions, cookies, payment data, account tokens, and history are never read during this setup.</p><div className="migration-list">{candidates.map((candidate) => <button key={candidate.id} disabled={!candidate.detected || Boolean(status)} onClick={() => onImport(candidate.id)}><span><strong>{candidate.label}</strong><em>{candidate.detected ? `${candidate.profileCount} profile${candidate.profileCount === 1 ? "" : "s"} detected · ${candidate.bookmarkImport === "supported" ? "bookmark import ready" : "export file required"}` : "Not detected"}</em></span><b>{candidate.detected ? "Select" : "Unavailable"}</b></button>)}</div>{status && <p className="migration-status">{status}</p>}<button className="secondary-action fresh-profile" onClick={onFresh}>Start with a fresh local profile</button><small>Explicit password-file import and broader history/settings migration are separate opt-in steps, not part of this first-launch read.</small></div></section>;
+function OnboardingSheet({ candidates, status, passwordPreview, onImport, onSelectPasswordExport, onCommitPasswordExport, onDiscardPasswordExport, onFresh }: { candidates: BrowserMigrationCandidate[]; status: string; passwordPreview: PasswordExportPreview | null; onImport: (browserId: BrowserId) => void; onSelectPasswordExport: (browserId: BrowserId) => void; onCommitPasswordExport: () => void; onDiscardPasswordExport: () => void; onFresh: () => void }) {
+  if (passwordPreview) return <section className="onboarding-backdrop" role="dialog" aria-modal="true" aria-label="Review password export"><div className="onboarding-sheet liquid-glass"><p className="eyebrow">Password export · review before import</p><h1>Import a selected export, never a browser vault.</h1><p><strong>{passwordPreview.fileName}</strong> contains {passwordPreview.entriesFound} compatible login{passwordPreview.entriesFound === 1 ? "" : "s"} across {passwordPreview.distinctSites} site{passwordPreview.distinctSites === 1 ? "" : "s"}. Password values remain in the main process and are not shown here.</p><div className="orchestration-note"><ShieldCheck size={15} /><span>{passwordPreview.note}</span></div><p>Confirming will encrypt the reviewed entries in OpenStrawberry-owned local storage using operating-system-backed protection. This release stages them only: it does not expose, autofill, sync, or send them to websites or agents.</p>{status && <p className="migration-status">{status}</p>}<div className="workspace-save"><button className="secondary-action" onClick={onDiscardPasswordExport}>Discard selected CSV</button><button className="primary-action" onClick={onCommitPasswordExport} disabled={Boolean(status)}>Encrypt and import</button></div><small>Delete the original readable CSV after import. Browser CSV exports are not encrypted.</small></div></section>;
+  return <section className="onboarding-backdrop" role="dialog" aria-modal="true" aria-label="Set up OpenStrawberry"><div className="onboarding-sheet liquid-glass"><p className="eyebrow">First launch · local profile</p><h1>Bring bookmarks, not a shadow copy.</h1><p>Choose a browser to import compatible bookmarks and its displayed default-search name, or start with a fresh OpenStrawberry profile. Passwords, sessions, cookies, payment data, account tokens, and history are never read during this setup.</p><div className="migration-list">{candidates.map((candidate) => <div key={candidate.id} className="migration-choice"><button disabled={!candidate.detected || Boolean(status)} onClick={() => onImport(candidate.id)}><span><strong>{candidate.label}</strong><em>{candidate.detected ? `${candidate.profileCount} profile${candidate.profileCount === 1 ? "" : "s"} detected · ${candidate.bookmarkImport === "supported" ? "bookmark import ready" : "export file required"}` : "Not detected"}</em></span><b>{candidate.detected ? "Select" : "Unavailable"}</b></button>{candidate.detected && <button className="secondary-action password-export-action" disabled={Boolean(status)} onClick={() => onSelectPasswordExport(candidate.id)}>Review exported password CSV</button>}</div>)}</div>{status && <p className="migration-status">{status}</p>}<button className="secondary-action fresh-profile" onClick={onFresh}>Start with a fresh local profile</button><small>Passwords require a separate user-selected CSV and review step. OpenStrawberry never reads browser password databases, cookies, sessions, payment data, account tokens, or history.</small></div></section>;
 }
 
 function Tab({ tab, active, onActivate, onClose }: { tab: BrowserTabState; active: boolean; onActivate: () => void; onClose: () => void }) {

@@ -1,5 +1,5 @@
 /* OpenStrawberry main process: native browser views and a minimal trusted IPC surface. */
-import { app, BrowserWindow, dialog, ipcMain, session, type IpcMainInvokeEvent } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, safeStorage, session, type IpcMainInvokeEvent, type OpenDialogOptions } from "electron";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname, join } from "node:path";
 import { BrowserManager } from "./browser-manager.js";
@@ -42,7 +42,7 @@ function createWindow(): void {
   void mainWindow.loadURL(rendererUrl);
   mainWindow.on("closed", () => { browserManager?.destroy(); browserManager = null; mainWindow = null; });
 }
-app.whenReady().then(() => { session.defaultSession.setPermissionRequestHandler((_wc, _permission, callback) => callback(false)); agentRegistry = new AgentRegistry(join(app.getPath("userData"), "agents.json"), join(app.getPath("userData"), "agent-vault.json")); providerRunner = new ProviderRunner(agentRegistry); cliRunner = new CliRunner(agentRegistry, join(app.getPath("userData"), "agent-workspaces")); migrationManager = new MigrationManager(app.getPath("userData")); createWindow(); app.on("activate", () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); }); });
+app.whenReady().then(() => { session.defaultSession.setPermissionRequestHandler((_wc, _permission, callback) => callback(false)); agentRegistry = new AgentRegistry(join(app.getPath("userData"), "agents.json"), join(app.getPath("userData"), "agent-vault.json")); providerRunner = new ProviderRunner(agentRegistry); cliRunner = new CliRunner(agentRegistry, join(app.getPath("userData"), "agent-workspaces")); migrationManager = new MigrationManager(app.getPath("userData"), safeStorage); createWindow(); app.on("activate", () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); }); });
 registerTrustedHandler("browser:ready", () => browserManager?.initialize());
 registerTrustedHandler("browser:create", (input, paneId) => browserManager?.createTab(input, paneId === undefined ? undefined : requirePane(paneId)));
 registerTrustedHandler("browser:activate", (id, paneId) => browserManager?.activateTab(requireIdentifier(id, "Tab ID"), paneId === undefined ? undefined : requirePane(paneId)));
@@ -96,5 +96,22 @@ registerTrustedHandler("migration:import", async (rawBrowserId) => {
   if (response.response !== 1) throw new Error("Migration cancelled by the user.");
   return migrationManager.importBrowser(browserId);
 });
+registerTrustedHandler("migration:select-password-export", async (rawBrowserId) => {
+  const browserId = requireBrowserId(rawBrowserId);
+  if (!migrationManager) throw new Error("Migration is unavailable until OpenStrawberry has finished starting.");
+  const options: OpenDialogOptions = { title: "Select a browser password export", buttonLabel: "Review selected CSV", properties: ["openFile"], filters: [{ name: "Browser password export", extensions: ["csv"] }] };
+  const selected = mainWindow ? await dialog.showOpenDialog(mainWindow, options) : await dialog.showOpenDialog(options);
+  if (selected.canceled || !selected.filePaths[0]) throw new Error("Password export selection cancelled.");
+  return migrationManager.preparePasswordExport(browserId, selected.filePaths[0]);
+});
+registerTrustedHandler("migration:commit-password-export", async (rawImportId) => {
+  const importId = requireIdentifier(rawImportId, "Password import ID");
+  if (!migrationManager) throw new Error("Migration is unavailable until OpenStrawberry has finished starting.");
+  const approvalOptions = { type: "warning" as const, buttons: ["Cancel", "Encrypt and import"], defaultId: 0, cancelId: 0, title: "Approve password-export import", message: "Encrypt reviewed password entries locally?", detail: "OpenStrawberry will encrypt the selected CSV entries using operating-system-backed protection in its own local storage. Passwords will not be shown in the interface, sent to websites, providers, or synced. This release stages imports only and does not yet autofill them." };
+  const response = mainWindow ? await dialog.showMessageBox(mainWindow, approvalOptions) : await dialog.showMessageBox(approvalOptions);
+  if (response.response !== 1) { migrationManager.discardPasswordExport(importId); throw new Error("Password import cancelled by the user."); }
+  return migrationManager.commitPasswordExport(importId);
+});
+registerTrustedHandler("migration:discard-password-export", (rawImportId) => migrationManager?.discardPasswordExport(requireIdentifier(rawImportId, "Password import ID")));
 registerTrustedHandler("migration:complete", (rawBrowserId) => migrationManager?.completeOnboarding(rawBrowserId === undefined ? undefined : requireBrowserId(rawBrowserId)) ?? { completed: true });
-app.on("window-all-closed", () => { if (process.platform !== "darwin") app.quit(); });
+app.on("window-all-closed", () => { migrationManager?.discardAllPendingPasswordExports(); if (process.platform !== "darwin") app.quit(); });
