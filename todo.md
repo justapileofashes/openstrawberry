@@ -65,5 +65,10 @@
 - [ ] Verify account access and current posting rules for Hacker News, Reddit r/electronjs, Reddit r/opensource, and the connected developer-social account.
 - [ ] Tailor and review final destination-specific launch posts without overstating OpenStrawberry’s current release or security posture.
 - [ ] Obtain final per-post confirmation immediately before submitting public content.
-- [ ] Publish authorized posts and record their public links in the promotion kit.
+- [ ] Record authorized publication outcomes privately outside the repository.
 - [x] Submit the authorized r/electronjs post; record its public link and immediate Reddit filter removal without reposting.
+- [x] Remove the requested launch documentation and related references from the public repository.
+- [x] Validate and publish the repository cleanup.
+ - [x] Requested launch-documentation cleanup completed and validated.
+
+> Note: The unchecked items above track the requested cleanup and validation; the final checked history entry records that the request has been received.
