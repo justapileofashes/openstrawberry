@@ -21,6 +21,7 @@
 - [x] Add a visible review-first multi-agent orchestration plan with scoped handoff steps.
 - [x] Add an audited provider execution adapter with main-process credential use, HTTPS-only calls, bounded requests, native approval, and redacted renderer results.
 - [x] Add audited explicit-approval local execution adapters for Codex, Claude Code, and OpenCode; keep Qwen Code and Kimi Code detection-only pending additional protocol verification.
+- [x] Add explicit-approval Qwen Code and Kimi Code local runtime adapters with allowlisted executable names, restricted environments, bounded execution, and focused unit tests.
 
 ## First-launch migration and workspace continuity
 

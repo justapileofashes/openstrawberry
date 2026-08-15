@@ -17,6 +17,25 @@ describe("CLI runner environment boundary", () => {
     expect(createRestrictedCliEnvironment(undefined, "unused", { PATH: "/safe/bin" })).toEqual({ PATH: "/safe/bin" });
   });
 
+  it("adds only explicit runtime overrides after filtering the inherited environment", () => {
+    const environment = createRestrictedCliEnvironment("KIMI_MODEL_API_KEY", "agent-key", {
+      PATH: "/safe/bin",
+      HOME: "/user/home",
+      GITHUB_TOKEN: "must-not-pass",
+    }, {
+      KIMI_CODE_HOME: "/private/workspace/.openstrawberry-cli-state",
+      KIMI_DISABLE_TELEMETRY: "1",
+    });
+
+    expect(environment).toEqual({
+      PATH: "/safe/bin",
+      HOME: "/user/home",
+      KIMI_MODEL_API_KEY: "agent-key",
+      KIMI_CODE_HOME: "/private/workspace/.openstrawberry-cli-state",
+      KIMI_DISABLE_TELEMETRY: "1",
+    });
+  });
+
   it("fails closed with a redacted result when an allowlisted executable is unavailable", async () => {
     const registry = {
       resolveCliCredential: () => ({

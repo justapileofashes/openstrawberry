@@ -22,11 +22,19 @@ export class CliRunner {
       const executable = this.registry.resolveCliExecutable(command);
       if (!executable) throw new Error(`The approved local ${command} CLI was not found on this device.`);
       const prompt = buildContextualPrompt(request.prompt, request.context.selectedTabUrls, request.context.artifactText);
-      const invocation = buildCliInvocation(command, prompt);
+      const invocation = buildCliInvocation(command, prompt, profile);
       const workspace = join(this.workspaceRoot, profile.id.replace(/[^a-zA-Z0-9_-]/g, "_"));
       mkdirSync(workspace, { recursive: true, mode: 0o700 });
       try { chmodSync(workspace, 0o700); } catch { /* Best-effort on platforms without POSIX modes. */ }
-      const env = createRestrictedCliEnvironment(invocation.credentialEnv, apiKey, process.env);
+      const stateDirectory = join(workspace, ".openstrawberry-cli-state");
+      mkdirSync(stateDirectory, { recursive: true, mode: 0o700 });
+      try { chmodSync(stateDirectory, 0o700); } catch { /* Best-effort on platforms without POSIX modes. */ }
+      const isolatedStateEnvironment: Record<string, string> = command === "qwen"
+        ? { HOME: stateDirectory, USERPROFILE: stateDirectory }
+        : command === "kimi"
+          ? { KIMI_CODE_HOME: stateDirectory }
+          : {};
+      const env = createRestrictedCliEnvironment(invocation.credentialEnv, apiKey, process.env, { ...invocation.environment, ...isolatedStateEnvironment });
       const text = await this.spawnBounded(executable, invocation.args, workspace, env, apiKey);
       return { agentId: profile.id, provider: profile.provider, model: profile.model, text, startedAt, completedAt: Date.now(), status: "completed" };
     } catch (error) {
@@ -58,9 +66,15 @@ export class CliRunner {
   }
 }
 
-export function createRestrictedCliEnvironment(credentialEnv: string | undefined, apiKey: string, sourceEnvironment: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+export function createRestrictedCliEnvironment(
+  credentialEnv: string | undefined,
+  apiKey: string,
+  sourceEnvironment: NodeJS.ProcessEnv,
+  additionalEnvironment: Readonly<Record<string, string>> = {},
+): NodeJS.ProcessEnv {
   const environment: NodeJS.ProcessEnv = {};
   for (const key of SAFE_ENV_KEYS) if (sourceEnvironment[key]) environment[key] = sourceEnvironment[key];
   if (credentialEnv) environment[credentialEnv] = apiKey;
+  Object.assign(environment, additionalEnvironment);
   return environment;
 }

@@ -35,7 +35,7 @@ Every stable release will include `SHA256SUMS.txt`, release notes, and platform-
 | Media deck | Detect compatible HTML video in the selected tab and expose play, pause, seek, mute, volume, and browser-native picture-in-picture commands |
 | Downloads | Session download panel with progress and completion state; completed files can be revealed through a main-process action without exposing local paths to the renderer |
 | Agent control plane | Separate local agent profiles, per-agent encrypted credential bindings when operating-system encryption is available, local CLI discovery, and review-first handoff planning |
-| Agent execution | Main-process-only OpenAI-compatible and Anthropic Messages provider calls, plus user-approved Codex, Claude Code, and OpenCode local runs; raw credentials are not exposed to the renderer |
+| Agent execution | Main-process-only OpenAI-compatible and Anthropic Messages provider calls, plus user-approved Codex, Claude Code, Qwen Code, Kimi Code, and OpenCode local runs; raw credentials are not exposed to the renderer |
 | First launch | Detects requested browser families; allows a user-approved Chromium bookmark and displayed default-search-name import, or a fresh local profile |
 | UI | OpenStrawberry dark Liquid Glass browser chrome and an Agents / Orchestrate / Runs control surface |
 | Security baseline | Sandboxed guest pages, context isolation, disabled Node integration, explicit navigation scheme policy, and minimal IPC |
@@ -72,7 +72,7 @@ OpenStrawberry is looking for contributors who care about local-first browser to
 
 ## Status and scope
 
-OpenStrawberry is intentionally building browser fundamentals before broad autonomy. It does **not** copy passwords, login sessions, cookies, payment data, browser history, or account tokens from another browser; password import must remain a separate user-selected export-file flow. It also does **not** yet execute Qwen Code or Kimi Code, provide fully automated multi-agent plan execution, bypass CAPTCHA/DRM, create a cross-site external video overlay when a site blocks native picture-in-picture, or include a production signed installer. Those features remain explicit, security-reviewed milestones.
+OpenStrawberry is intentionally building browser fundamentals before broad autonomy. It does **not** copy passwords, login sessions, cookies, payment data, browser history, or account tokens from another browser; password import must remain a separate user-selected export-file flow. It also does **not** yet provide fully automated multi-agent plan execution, bypass CAPTCHA/DRM, create a cross-site external video overlay when a site blocks native picture-in-picture, or include a production signed installer. Those features remain explicit, security-reviewed milestones.
 
 ## License
 
