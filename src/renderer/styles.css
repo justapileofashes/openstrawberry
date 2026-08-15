@@ -117,6 +117,21 @@ button:disabled { cursor: not-allowed; opacity: .35; }
 .run-result span { color: #8b9399; font-family: ui-monospace, monospace; font-size: 8px; }
 .run-result pre, .run-result p { max-height: 270px; overflow: auto; margin: 10px 0 0; white-space: pre-wrap; color: #c9ced2; font: 11px/1.5 ui-monospace, monospace; }
 .run-result p { color: #d2a9a9; }
+.onboarding-backdrop { position: fixed; inset: 0; z-index: 30; display: grid; place-items: center; padding: 20px; background: rgba(2, 2, 3, .7); backdrop-filter: blur(14px); }
+.onboarding-sheet { width: min(560px, 100%); border: 1px solid rgba(255, 255, 255, .18); border-radius: 14px; background: linear-gradient(145deg, rgba(31, 32, 34, .92), rgba(9, 10, 11, .94)); padding: 22px; box-shadow: 0 28px 80px rgba(0, 0, 0, .5); }
+.onboarding-sheet h1 { margin: 6px 0 8px; font-size: 23px; letter-spacing: -.04em; }
+.onboarding-sheet > p:not(.eyebrow) { margin: 0; color: #a6adb2; font-size: 12px; line-height: 1.55; }
+.migration-list { display: grid; gap: 6px; margin: 17px 0 12px; }
+.migration-list button { display: flex; align-items: center; justify-content: space-between; gap: 14px; width: 100%; border: 1px solid rgba(255, 255, 255, .1); border-radius: 8px; background: rgba(0, 0, 0, .2); padding: 10px; text-align: left; color: #e8eaec; transition: border-color .16s ease, background .16s ease; }
+.migration-list button:not(:disabled):hover { border-color: rgba(255, 255, 255, .34); background: rgba(255, 255, 255, .06); }
+.migration-list button:disabled { cursor: default; opacity: .45; }
+.migration-list span { display: grid; gap: 2px; }
+.migration-list strong { font-size: 12px; }
+.migration-list em { color: #8e979d; font-size: 10px; font-style: normal; }
+.migration-list b { color: #cdd2d5; font-size: 10px; font-weight: 600; }
+.migration-status { margin: 0 0 9px; color: #d6b1b1; font-size: 10px; line-height: 1.4; }
+.fresh-profile { width: 100%; justify-content: center; }
+.onboarding-sheet small { display: block; margin-top: 12px; color: #717a81; font-size: 9px; line-height: 1.45; }
 .empty-runs { display: flex; align-items: center; flex-direction: column; gap: 7px; padding: 42px 12px; color: #7d858c; text-align: center; }
 .empty-runs strong { color: #e5e7e9; font-size: 12px; }
 .empty-runs span { max-width: 190px; font-size: 11px; line-height: 1.5; }

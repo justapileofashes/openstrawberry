@@ -2,7 +2,7 @@
 
 **OpenStrawberry** is a local-first desktop browser foundation for real Chromium browsing, secure profile handling, split-pane workspaces, a persistent Companion, and future multi-agent orchestration.
 
-> This repository is an early native runtime foundation. It already contains an Electron desktop shell, a real embedded Chromium tab lifecycle, navigation controls, typed renderer-to-main IPC, a Liquid Glass browser UI, and the initial Companion/Orchestrator UI foundation. Migration, picture-in-picture, the encrypted vault, real agent adapters, and production signing remain planned milestones.
+> This repository is an early native runtime foundation. It already contains an Electron desktop shell, real embedded Chromium tabs, durable split workspaces, an encrypted per-agent vault, approval-gated provider and selected local-CLI adapters, and a privacy-scoped first-launch migration flow. Production signing and several advanced browser capabilities remain planned milestones.
 
 ## Current capabilities
 
@@ -13,6 +13,8 @@
 | Workspace | Two-pane split browsing with tab drag targets, pane-local navigation, and visible active-pane state |
 | Media deck | Detect compatible HTML video in the selected tab and expose play, pause, seek, mute, volume, and browser-native picture-in-picture commands |
 | Agent control plane | Separate local agent profiles, per-agent encrypted credential bindings when operating-system encryption is available, local CLI discovery, and review-first handoff planning |
+| Agent execution | Main-process-only OpenAI-compatible and Anthropic Messages provider calls, plus user-approved Codex, Claude Code, and OpenCode local runs; raw credentials are not exposed to the renderer |
+| First launch | Detects requested browser families; allows a user-approved Chromium bookmark and displayed default-search-name import, or a fresh local profile |
 | UI | OpenStrawberry dark Liquid Glass browser chrome and an Agents / Orchestrate / Runs control surface |
 | Security baseline | Sandboxed guest pages, context isolation, disabled Node integration, explicit navigation scheme policy, and minimal IPC |
 | Distribution configuration | Electron Builder targets for macOS DMG, Windows NSIS, Linux AppImage/DEB/RPM |
@@ -40,7 +42,7 @@ Read [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the runtime boundary and
 
 ## Status and scope
 
-OpenStrawberry is intentionally building browser fundamentals before autonomous agents. It does **not** yet import passwords, copy login sessions, call provider APIs, run coding agents, bypass CAPTCHA/DRM, create a cross-site external video overlay when a site blocks native picture-in-picture, or include a production signed installer. Those features are tracked as explicit, security-reviewed milestones.
+OpenStrawberry is intentionally building browser fundamentals before broad autonomy. It does **not** copy passwords, login sessions, cookies, payment data, browser history, or account tokens from another browser; password import must remain a separate user-selected export-file flow. It also does **not** yet execute Qwen Code or Kimi Code, provide fully automated multi-agent plan execution, bypass CAPTCHA/DRM, create a cross-site external video overlay when a site blocks native picture-in-picture, or include a production signed installer. Those features remain explicit, security-reviewed milestones.
 
 ## License
 

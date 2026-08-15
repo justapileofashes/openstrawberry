@@ -3,6 +3,7 @@ import type { BrowserCommand, BrowserPaneId, BrowserSnapshot, BrowserViewport } 
 import type { MediaCommand, MediaState } from "../shared/media";
 import type { OrchestrationPlan, OrchestrationRequest } from "../shared/orchestration";
 import type { AgentRunRequest, AgentRunResult } from "../shared/agent-run";
+import type { BrowserId, BrowserMigrationCandidate, MigrationImportResult, OnboardingState } from "../shared/migration";
 
 declare global {
   interface Window {
@@ -22,6 +23,7 @@ declare global {
       media: { state: () => Promise<MediaState | undefined>; command: (command: MediaCommand) => Promise<MediaState | undefined> };
       agents: { list: () => Promise<AgentProfileSummary[]>; save: (input: AgentProfileInput) => Promise<AgentProfileSummary | undefined>; detectLocalClis: () => Promise<LocalCliStatus[]>; runProvider: (request: Omit<AgentRunRequest, "context">) => Promise<AgentRunResult>; runCli: (request: Omit<AgentRunRequest, "context">) => Promise<AgentRunResult> };
       orchestrator: { createPlan: (request: OrchestrationRequest) => Promise<OrchestrationPlan> };
+      migration: { state: () => Promise<OnboardingState>; detect: () => Promise<BrowserMigrationCandidate[]>; importBrowser: (browserId: BrowserId) => Promise<MigrationImportResult>; complete: (browserId?: BrowserId) => Promise<OnboardingState> };
       app: { version: () => Promise<string> };
     };
   }

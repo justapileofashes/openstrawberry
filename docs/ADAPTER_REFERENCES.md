@@ -33,3 +33,11 @@ OpenStrawberry will invoke local coding CLIs only through their documented nonin
 ## OpenStrawberry local-CLI safety boundary
 
 The first local execution adapter intentionally supports only **Codex**, **Claude Code**, and **OpenCode**, because their non-interactive command forms have been documented and incorporated into unit-tested invocation contracts. Qwen Code and Kimi Code remain detectable in the UI but are not executable until their non-interactive operation and guardrails are verified. Every supported CLI run requires a fresh native approval, executes without a shell, starts in an app-owned per-agent workspace, has a 120-second wall-clock limit, bounds captured output to 1 MB, and redacts the configured key from returned output. A command’s own permissions still apply; users should review its locally installed version and configuration before approving a run.
+
+## Migration evidence and privacy boundary
+
+Google documents exports for Chrome data including bookmarks, history, search engines, and settings, while directing password export to the user’s Password Manager settings.[7] Mozilla separately exposes login-data export rather than implying an application may copy a protected login store directly.[8] OpenStrawberry therefore treats profile detection as a local discovery step, imports compatible bookmark data only after a user selects a source, and will accept credentials only from a password file the user knowingly chooses in a later, dedicated import screen. It will not copy browser cookies, live sessions, account tokens, payment data, or encrypted password databases.
+
+[7] Google, [Export your data from Chrome](https://support.google.com/chrome/answer/10248834?hl=en).
+
+[8] Mozilla Support, [Export login data from Firefox](https://support.mozilla.org/en-US/kb/export-login-data-firefox).

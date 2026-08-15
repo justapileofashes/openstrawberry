@@ -6,6 +6,7 @@ import { defaultAgentProfiles, type AgentProfileInput, type AgentProfileSummary,
 import { EMPTY_MEDIA_STATE, type MediaCommand, type MediaState } from "../shared/media";
 import type { OrchestrationPlan } from "../shared/orchestration";
 import type { AgentRunResult } from "../shared/agent-run";
+import type { BrowserId, BrowserMigrationCandidate, OnboardingState } from "../shared/migration";
 
 const EMPTY_SNAPSHOT: BrowserSnapshot = { activeTabId: null, activePaneId: "primary", splitEnabled: false, panes: [{ id: "primary", tabId: null }, { id: "secondary", tabId: null }], tabs: [], downloads: [] };
 
@@ -22,6 +23,9 @@ export function App() {
   const [localClis, setLocalClis] = useState<LocalCliStatus[]>([]);
   const [orchestrationPlan, setOrchestrationPlan] = useState<OrchestrationPlan | null>(null);
   const [media, setMedia] = useState<MediaState>(EMPTY_MEDIA_STATE);
+  const [onboarding, setOnboarding] = useState<OnboardingState | null>(null);
+  const [migrationCandidates, setMigrationCandidates] = useState<BrowserMigrationCandidate[]>([]);
+  const [migrationStatus, setMigrationStatus] = useState("");
   const primaryViewportRef = useRef<HTMLDivElement>(null);
   const secondaryViewportRef = useRef<HTMLDivElement>(null);
   const activeTab = browser.tabs.find((tab) => tab.id === browser.activeTabId) ?? null;
@@ -40,6 +44,16 @@ export function App() {
     void window.openStrawberry.agents.list().then(setAgents);
     void window.openStrawberry.agents.detectLocalClis().then(setLocalClis);
   }, []);
+
+  useEffect(() => {
+    void Promise.all([window.openStrawberry.migration.state(), window.openStrawberry.migration.detect()]).then(([state, candidates]) => { setOnboarding(state); setMigrationCandidates(candidates); });
+  }, []);
+
+  const completeFreshProfile = () => { void window.openStrawberry.migration.complete().then(setOnboarding); };
+  const importMigration = (browserId: BrowserId) => {
+    setMigrationStatus("Waiting for native approval…");
+    void window.openStrawberry.migration.importBrowser(browserId).then((result) => window.openStrawberry.migration.complete(result.browser).then((state) => { setMigrationStatus(""); setOnboarding(state); })).catch((error: unknown) => setMigrationStatus(error instanceof Error ? error.message : "The selected browser could not be migrated."));
+  };
 
   useEffect(() => setUrlInput(activeTab?.url ?? ""), [activeTab?.id, activeTab?.url]);
 
@@ -112,7 +126,12 @@ export function App() {
         {agentRailOpen && <AgentRail activeView={agentView} onChange={setAgentView} onClose={() => setAgentRailOpen(false)} profiles={agents} localClis={localClis} sourceTabCount={browser.tabs.length} plan={orchestrationPlan} onProfilesChange={setAgents} onPlan={setOrchestrationPlan} />}
       </section>
     </main>
+    {onboarding && !onboarding.completed && <OnboardingSheet candidates={migrationCandidates} status={migrationStatus} onImport={importMigration} onFresh={completeFreshProfile} />}
   </div>;
+}
+
+function OnboardingSheet({ candidates, status, onImport, onFresh }: { candidates: BrowserMigrationCandidate[]; status: string; onImport: (browserId: BrowserId) => void; onFresh: () => void }) {
+  return <section className="onboarding-backdrop" role="dialog" aria-modal="true" aria-label="Set up OpenStrawberry"><div className="onboarding-sheet liquid-glass"><p className="eyebrow">First launch · local profile</p><h1>Bring bookmarks, not a shadow copy.</h1><p>Choose a browser to import compatible bookmarks and its displayed default-search name, or start with a fresh OpenStrawberry profile. Passwords, sessions, cookies, payment data, account tokens, and history are never read during this setup.</p><div className="migration-list">{candidates.map((candidate) => <button key={candidate.id} disabled={!candidate.detected || Boolean(status)} onClick={() => onImport(candidate.id)}><span><strong>{candidate.label}</strong><em>{candidate.detected ? `${candidate.profileCount} profile${candidate.profileCount === 1 ? "" : "s"} detected · ${candidate.bookmarkImport === "supported" ? "bookmark import ready" : "export file required"}` : "Not detected"}</em></span><b>{candidate.detected ? "Select" : "Unavailable"}</b></button>)}</div>{status && <p className="migration-status">{status}</p>}<button className="secondary-action fresh-profile" onClick={onFresh}>Start with a fresh local profile</button><small>Explicit password-file import and broader history/settings migration are separate opt-in steps, not part of this first-launch read.</small></div></section>;
 }
 
 function Tab({ tab, active, onActivate, onClose }: { tab: BrowserTabState; active: boolean; onActivate: () => void; onClose: () => void }) {

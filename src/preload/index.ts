@@ -5,6 +5,7 @@ import type { MediaCommand, MediaState } from "../shared/media.js";
 import type { AgentProfileInput, AgentProfileSummary, LocalCliStatus } from "../shared/agent.js";
 import type { OrchestrationPlan, OrchestrationRequest } from "../shared/orchestration.js";
 import type { AgentRunRequest, AgentRunResult } from "../shared/agent-run.js";
+import type { BrowserId, BrowserMigrationCandidate, MigrationImportResult, OnboardingState } from "../shared/migration.js";
 
 contextBridge.exposeInMainWorld("openStrawberry", {
   browser: {
@@ -32,6 +33,12 @@ contextBridge.exposeInMainWorld("openStrawberry", {
   },
   orchestrator: {
     createPlan: (request: OrchestrationRequest): Promise<OrchestrationPlan> => ipcRenderer.invoke("orchestrator:create-plan", request)
+  },
+  migration: {
+    state: (): Promise<OnboardingState> => ipcRenderer.invoke("migration:state"),
+    detect: (): Promise<BrowserMigrationCandidate[]> => ipcRenderer.invoke("migration:detect"),
+    importBrowser: (browserId: BrowserId): Promise<MigrationImportResult> => ipcRenderer.invoke("migration:import", browserId),
+    complete: (browserId?: BrowserId): Promise<OnboardingState> => ipcRenderer.invoke("migration:complete", browserId)
   },
   app: { version: (): Promise<string> => ipcRenderer.invoke("app:version") }
 });

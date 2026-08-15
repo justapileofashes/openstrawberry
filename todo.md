@@ -21,3 +21,11 @@
 - [x] Add a visible review-first multi-agent orchestration plan with scoped handoff steps.
 - [x] Add an audited provider execution adapter with main-process credential use, HTTPS-only calls, bounded requests, native approval, and redacted renderer results.
 - [x] Add audited explicit-approval local execution adapters for Codex, Claude Code, and OpenCode; keep Qwen Code and Kimi Code detection-only pending additional protocol verification.
+
+## First-launch migration and workspace continuity
+
+- [x] Detect Chrome, Edge, Brave, Firefox, and Safari profile presence on supported platforms without reading protected data during discovery.
+- [x] Add a first-launch browser-choice flow with user-approved Chromium bookmark and displayed default-search-name import into app-owned storage.
+- [ ] Add a dedicated password export-file import flow with a clear review screen; never copy browser password databases, cookies, sessions, or account tokens.
+- [ ] Add manual export-file imports for Firefox and Safari bookmarks/settings, plus a user-scoped history import policy.
+- [ ] Add named workspace snapshots and tab groups.
