@@ -8,6 +8,7 @@ import { ProviderRunner } from "./provider-runner.js";
 import { CliRunner } from "./cli-runner.js";
 import { MigrationManager } from "./migration-manager.js";
 import { createOrchestrationPlan } from "./orchestrator.js";
+import { assertTrustedRendererId } from "./ipc-security.js";
 import { DESKTOP_APP_ID, DESKTOP_APP_NAME } from "../shared/desktop-shell.js";
 import { parseAgentProfileInput, parseAgentRunRequest, parseMediaCommand, parseOrchestrationRequest, parseViewport, requireBoolean, requireBrowserId, requireCommand, requireIdentifier, requirePane, requireString } from "../shared/ipc-validation.js";
 
@@ -24,7 +25,7 @@ app.setName(DESKTOP_APP_NAME);
 app.setAppUserModelId(DESKTOP_APP_ID);
 
 function assertTrustedRenderer(event: IpcMainInvokeEvent): void {
-  if (!mainWindow || event.sender.id !== mainWindow.webContents.id) throw new Error("Rejected IPC request from an untrusted renderer.");
+  assertTrustedRendererId(event.sender.id, mainWindow?.webContents.id);
 }
 function registerTrustedHandler(channel: string, handler: (...args: unknown[]) => unknown): void {
   ipcMain.handle(channel, (event, ...args) => { assertTrustedRenderer(event); return handler(...args); });

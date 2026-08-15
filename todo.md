@@ -54,6 +54,15 @@
 - [x] Document one-time graphical installation and post-install launch/pinning steps for macOS, Windows, and Linux.
 - [x] Add macOS, Windows, and Linux GitHub Release download buttons that resolve to the correct signed installer assets when a stable release is available.
 
+## Release-readiness remediation
+
+- [x] Remove or disable OS-specific installer-asset links until a real signed GitHub Release exists, and place an explicit no-stable-release banner before any download affordance.
+- [x] Add focused automated coverage for main-process behavior, including IPC sender/payload gates, vault persistence, provider execution, and CLI execution boundaries; permission denial remains enforced by main-process configuration.
+- [x] Replace floating `latest` dependency ranges with reviewed versions that match the lockfile and support reproducible installs.
+- [ ] Add a GitHub Actions quality workflow for install, type checking, unit tests, and production builds on pushes and pull requests.
+- [x] Document maintainer recovery, release access, and a contributor path that reduces the current single-maintainer risk.
+- [ ] Validate packaging on a network-capable release runner and retain signing/notarization as an explicit prerequisite for any public installer release.
+
 ## Security hardening review
 
 - [x] Audit Electron window, BrowserView, preload, IPC, navigation, and permission boundaries against the current security checklist.

@@ -2,7 +2,7 @@
 
 ## Canonical download location
 
-OpenStrawberry installers will be published only through the repository’s [GitHub Releases page](https://github.com/justapileofashes/openstrawberry/releases). A latest-release shortcut will become available at `https://github.com/justapileofashes/openstrawberry/releases/latest` once the first signed stable release exists. The README’s macOS, Windows, and Linux badges use GitHub’s `releases/latest/download/<asset>` path, which keeps the OS-specific buttons stable across versions.
+OpenStrawberry installers will be published only through the repository’s [GitHub Releases page](https://github.com/justapileofashes/openstrawberry/releases). A latest-release shortcut will become available at `https://github.com/justapileofashes/openstrawberry/releases/latest` once the first signed stable release exists. OS-specific README buttons will be enabled only after the first signed release makes their `releases/latest/download/<asset>` destinations valid.
 
 > **Current availability:** no signed public installers have been released. Do not download or install the repository’s private Linux smoke-build output. It exists solely to validate Electron Builder configuration.
 
@@ -73,3 +73,7 @@ pnpm release:verify
 The verification step produces `release/SHA256SUMS.txt` for eligible installer artifacts. It is a packaging integrity check, not a substitute for macOS notarization, Windows Authenticode, or a secure release runner.
 
 Use the release checklist in [`INSTALLATION.md`](INSTALLATION.md) and [`RELEASE_DISTRIBUTION_NOTES.md`](RELEASE_DISTRIBUTION_NOTES.md) before drafting or publishing any GitHub Release.
+
+## Continuous quality gate
+
+The repository’s [`Quality` workflow](../.github/workflows/quality.yml) runs a frozen dependency install, `pnpm check`, `pnpm test`, and `pnpm build` on every push to `main` and every pull request targeting `main`. It verifies source quality only; a release pipeline still needs trusted platform runners, signing credentials, notarization, checksum attachment, and release review before it can publish installer assets.

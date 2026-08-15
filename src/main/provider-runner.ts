@@ -7,13 +7,21 @@ const RUN_TIMEOUT_MS = 90_000;
 const MAX_PROVIDER_RESPONSE_BYTES = 1_000_000;
 const MAX_ERROR_MESSAGE_LENGTH = 1_200;
 
+export function redactProviderError(message: string, credential: string | undefined): string {
+  const credentialPattern = credential ? credential.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") : "";
+  const redacted = credentialPattern ? message.replace(new RegExp(credentialPattern, "g"), "[redacted credential]") : message;
+  return redacted.slice(0, MAX_ERROR_MESSAGE_LENGTH);
+}
+
 export class ProviderRunner {
   public constructor(private readonly registry: AgentRegistry) {}
 
   public async run(request: AgentRunRequest): Promise<AgentRunResult> {
     const startedAt = Date.now();
+    let credential: string | undefined;
     try {
       const { profile, apiKey } = this.registry.resolveProviderCredential(request.agentId);
+      credential = apiKey;
       const baseUrl = resolveProviderBaseUrl(profile);
       const prompt = buildContextualPrompt(request.prompt, request.context.selectedTabUrls, request.context.artifactText);
       const controller = new AbortController();
@@ -33,7 +41,7 @@ export class ProviderRunner {
       } finally { clearTimeout(timeout); }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Provider run failed.";
-      return { agentId: request.agentId, provider: "redacted", model: "redacted", text: "", startedAt, completedAt: Date.now(), status: "failed", error: message.slice(0, MAX_ERROR_MESSAGE_LENGTH) };
+      return { agentId: request.agentId, provider: "redacted", model: "redacted", text: "", startedAt, completedAt: Date.now(), status: "failed", error: redactProviderError(message, credential) };
     }
   }
 

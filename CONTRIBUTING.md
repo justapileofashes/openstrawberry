@@ -45,3 +45,7 @@ Use small, descriptive commits. Explain user-visible behavior, security implicat
 ## Conduct
 
 Participation is governed by the project [Code of Conduct](CODE_OF_CONDUCT.md).
+
+## Maintainer path
+
+OpenStrawberry is actively seeking contributors who can become long-term maintainers. Start with small, reviewable changes, run the required local checks, and participate in security and release-review discussions. Administrative access, private security-advisory access, and signing credentials are granted only through the continuity process in [`docs/MAINTAINERS.md`](docs/MAINTAINERS.md).

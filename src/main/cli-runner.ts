@@ -26,19 +26,12 @@ export class CliRunner {
       const workspace = join(this.workspaceRoot, profile.id.replace(/[^a-zA-Z0-9_-]/g, "_"));
       mkdirSync(workspace, { recursive: true, mode: 0o700 });
       try { chmodSync(workspace, 0o700); } catch { /* Best-effort on platforms without POSIX modes. */ }
-      const env = this.createCliEnvironment(invocation.credentialEnv, apiKey);
+      const env = createRestrictedCliEnvironment(invocation.credentialEnv, apiKey, process.env);
       const text = await this.spawnBounded(executable, invocation.args, workspace, env, apiKey);
       return { agentId: profile.id, provider: profile.provider, model: profile.model, text, startedAt, completedAt: Date.now(), status: "completed" };
     } catch (error) {
       return { agentId: request.agentId, provider: "redacted", model: "redacted", text: "", startedAt, completedAt: Date.now(), status: "failed", error: error instanceof Error ? error.message : "Local CLI run failed." };
     }
-  }
-
-  private createCliEnvironment(credentialEnv: string | undefined, apiKey: string): NodeJS.ProcessEnv {
-    const environment: NodeJS.ProcessEnv = {};
-    for (const key of SAFE_ENV_KEYS) if (process.env[key]) environment[key] = process.env[key];
-    if (credentialEnv) environment[credentialEnv] = apiKey;
-    return environment;
   }
 
   private spawnBounded(command: string, args: string[], cwd: string, env: NodeJS.ProcessEnv, apiKey: string): Promise<string> {
@@ -63,4 +56,11 @@ export class CliRunner {
       });
     });
   }
+}
+
+export function createRestrictedCliEnvironment(credentialEnv: string | undefined, apiKey: string, sourceEnvironment: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const environment: NodeJS.ProcessEnv = {};
+  for (const key of SAFE_ENV_KEYS) if (sourceEnvironment[key]) environment[key] = sourceEnvironment[key];
+  if (credentialEnv) environment[credentialEnv] = apiKey;
+  return environment;
 }

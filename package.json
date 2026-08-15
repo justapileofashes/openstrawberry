@@ -18,23 +18,23 @@
     "release:verify": "node scripts/release/verify-artifacts.mjs"
   },
   "dependencies": {
-    "lucide-react": "latest",
-    "react": "latest",
-    "react-dom": "latest"
+    "lucide-react": "1.31.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
   },
   "devDependencies": {
-    "@types/node": "latest",
-    "@types/react": "latest",
-    "@types/react-dom": "latest",
-    "@vitejs/plugin-react": "latest",
-    "concurrently": "latest",
-    "cross-env": "latest",
-    "electron": "latest",
-    "electron-builder": "latest",
-    "typescript": "latest",
+    "@types/node": "26.2.0",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.4",
+    "@vitejs/plugin-react": "6.0.5",
+    "concurrently": "10.0.4",
+    "cross-env": "10.1.0",
+    "electron": "43.4.0",
+    "electron-builder": "26.15.3",
+    "typescript": "7.0.2",
     "vitest": "^4.1.10",
-    "vite": "latest",
-    "wait-on": "latest"
+    "vite": "8.2.1",
+    "wait-on": "9.1.0"
   },
   "build": {
     "appId": "io.openstrawberry.browser",

@@ -1,19 +1,18 @@
 # OpenStrawberry
 
+[![Quality](https://github.com/justapileofashes/openstrawberry/actions/workflows/quality.yml/badge.svg)](https://github.com/justapileofashes/openstrawberry/actions/workflows/quality.yml)
+
 **OpenStrawberry** is a local-first desktop browser foundation for real Chromium browsing, secure profile handling, split-pane workspaces, a persistent Companion, and future multi-agent orchestration.
 
 > This repository is an early native runtime foundation. It already contains an Electron desktop shell, real embedded Chromium tabs, durable split workspaces, an encrypted per-agent vault, approval-gated provider and selected local-CLI adapters, and a privacy-scoped first-launch migration flow. Production signing and several advanced browser capabilities remain planned milestones.
 
 ## Download OpenStrawberry
 
-**OpenStrawberry’s only future installer source is [GitHub Releases](https://github.com/justapileofashes/openstrawberry/releases).** There is no public signed installer yet, so do not install binaries from forks, issue attachments, or unofficial mirrors. The current Linux DEB is a private smoke-test artifact and is intentionally not published as a user download.
+> **No stable installer is available yet.** OpenStrawberry will publish signed platform installers only through [GitHub Releases](https://github.com/justapileofashes/openstrawberry/releases). Do not install binaries from forks, issue attachments, or unofficial mirrors. The current Linux DEB is a private smoke-test artifact and is intentionally not published as a user download.
 
-When the first signed release is available, choose the installer button for your platform. These stable links will always download the matching asset from the latest signed GitHub Release; until that first release is published, GitHub will show that the asset is unavailable.
+When the first signed release is available, this section will offer separate macOS, Windows, and Linux installer buttons. Until then, the single release-status link below is deliberately non-downloadable and leads only to the repository’s release page.
 
-[![Download for macOS](https://img.shields.io/badge/Download-macOS-black?style=for-the-badge&logo=apple)](https://github.com/justapileofashes/openstrawberry/releases/latest/download/OpenStrawberry-mac-universal.dmg)
-[![Download for Windows](https://img.shields.io/badge/Download-Windows-0078D4?style=for-the-badge&logo=windows)](https://github.com/justapileofashes/openstrawberry/releases/latest/download/OpenStrawberry-win-x64.exe)
-[![Download for Linux](https://img.shields.io/badge/Download-Linux-FCC624?style=for-the-badge&logo=linux&logoColor=black)](https://github.com/justapileofashes/openstrawberry/releases/latest/download/OpenStrawberry-linux-amd64.deb)
-[![All releases](https://img.shields.io/badge/View-All%20releases-6E40C9?style=for-the-badge&logo=github)](https://github.com/justapileofashes/openstrawberry/releases)
+[![Installer status: not released](https://img.shields.io/badge/Installer%20status-Not%20released-6b7280?style=for-the-badge&logo=github)](https://github.com/justapileofashes/openstrawberry/releases)
 
 | Platform | Download from GitHub Releases | Expected installation |
 |---|---|---|
@@ -64,6 +63,8 @@ The native main process owns browser views, sessions, permissions, native window
 Read [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the runtime boundary and [`docs/OPENSTRAWBERRY_PLAN.md`](docs/OPENSTRAWBERRY_PLAN.md) for the research-aligned browser and agent roadmap.
 
 Read [`docs/SECURITY.md`](docs/SECURITY.md) for the enforced security controls, review evidence, residual risks, and responsible disclosure guidance.
+
+Read [`docs/MAINTAINERS.md`](docs/MAINTAINERS.md) for the current maintainer-continuity, signing-access, and recovery expectations.
 
 ## Get involved
 
