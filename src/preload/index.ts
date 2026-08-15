@@ -22,6 +22,8 @@ contextBridge.exposeInMainWorld("openStrawberry", {
     assignTabGroup: (input: { tabId: string; groupId?: string }): Promise<BrowserSnapshot | undefined> => ipcRenderer.invoke("browser:assign-tab-group", input),
     toggleTabGroup: (id: string): Promise<BrowserSnapshot | undefined> => ipcRenderer.invoke("browser:toggle-tab-group", id),
     deleteTabGroup: (id: string): Promise<BrowserSnapshot | undefined> => ipcRenderer.invoke("browser:delete-tab-group", id),
+    setTrackerBlocking: (enabled: boolean): Promise<BrowserSnapshot | undefined> => ipcRenderer.invoke("browser:set-tracker-blocking", enabled),
+    toggleTrackerSiteException: (): Promise<BrowserSnapshot | undefined> => ipcRenderer.invoke("browser:toggle-tracker-site-exception"),
     revealDownload: (id: string): Promise<boolean> => ipcRenderer.invoke("browser:reveal-download", id),
     toggleReaderMode: (): Promise<boolean> => ipcRenderer.invoke("browser:toggle-reader"),
     onState: (listener: (snapshot: BrowserSnapshot) => void): (() => void) => { const handler = (_event: Electron.IpcRendererEvent, snapshot: BrowserSnapshot) => listener(snapshot); ipcRenderer.on("browser:state", handler); return () => ipcRenderer.removeListener("browser:state", handler); }

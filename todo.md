@@ -39,7 +39,7 @@
 - [x] Add keyboard shortcuts for address focus, tabs, split workspace, and command palette.
 - [x] Add a visible download manager with per-item state and main-process-only local reveal actions.
 - [x] Add a local text-only reader mode for the selected browser tab with no network or provider handoff.
-- [ ] Add an explicitly configured tracker/ad blocking policy with transparent per-site controls.
+- [x] Add an explicitly configured tracker/ad blocking policy with transparent per-site controls.
 - [ ] Add a permissions and agent-vault center with auditable local settings.
 
 ## Release validation

@@ -10,7 +10,7 @@ import type { BookmarkExportPreview, BrowserId, BrowserMigrationCandidate, Onboa
 import { resolveBrowserShortcut } from "../shared/keyboard";
 import { downloadProgress } from "../shared/download";
 
-const EMPTY_SNAPSHOT: BrowserSnapshot = { activeTabId: null, activePaneId: "primary", splitEnabled: false, panes: [{ id: "primary", tabId: null }, { id: "secondary", tabId: null }], tabs: [], groups: [], downloads: [] };
+const EMPTY_SNAPSHOT: BrowserSnapshot = { activeTabId: null, activePaneId: "primary", splitEnabled: false, panes: [{ id: "primary", tabId: null }, { id: "secondary", tabId: null }], tabs: [], groups: [], downloads: [], privacy: { trackerBlockingEnabled: true, activeSiteException: false, activeTabBlockedRequests: 0 } };
 const PALETTE_ACTIONS = [{ id: "new-tab", label: "New tab", hint: "⌘/Ctrl T" }, { id: "focus-address", label: "Focus address bar", hint: "⌘/Ctrl L" }, { id: "toggle-split", label: "Toggle split workspace", hint: "⌘/Ctrl Shift S" }, { id: "reader-mode", label: "Toggle reader mode", hint: "" }, { id: "open-workspaces", label: "Open saved workspaces", hint: "" }, { id: "toggle-agents", label: "Toggle Companion", hint: "" }];
 const GROUP_COLORS: Record<TabGroupColor, string> = { slate: "#899198", blue: "#6aa5ff", violet: "#b18cff", rose: "#ff8aab", amber: "#f9c86c", emerald: "#6ad7ac" };
 
@@ -39,6 +39,7 @@ export function App() {
   const [groupName, setGroupName] = useState("Focus");
   const [groupColor, setGroupColor] = useState<TabGroupColor>("violet");
   const [groupStatus, setGroupStatus] = useState("");
+  const [privacyStatus, setPrivacyStatus] = useState("");
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [commandQuery, setCommandQuery] = useState("");
   const [downloadDrawerOpen, setDownloadDrawerOpen] = useState(false);
@@ -47,6 +48,7 @@ export function App() {
   const addressInputRef = useRef<HTMLInputElement>(null);
   const activeTab = browser.tabs.find((tab) => tab.id === browser.activeTabId) ?? null;
   const visibleTabs = browser.tabs.filter((tab) => !tab.groupId || !browser.groups.find((group) => group.id === tab.groupId)?.collapsed);
+  const activeSiteIsWeb = Boolean(activeTab?.url && /^https?:\/\//i.test(activeTab.url));
   const refreshMedia = useCallback(() => { void window.openStrawberry.media.state().then((state) => { if (state) setMedia(state); }); }, []);
 
   useEffect(() => {
@@ -124,6 +126,8 @@ export function App() {
   };
   const toggleTabGroup = (id: string) => { void window.openStrawberry.browser.toggleTabGroup(id).then((snapshot) => { if (snapshot) setBrowser(snapshot); }).catch((error: unknown) => setGroupStatus(error instanceof Error ? error.message : "Could not toggle tab group.")); };
   const deleteTabGroup = (id: string) => { void window.openStrawberry.browser.deleteTabGroup(id).then((snapshot) => { if (snapshot) setBrowser(snapshot); setGroupStatus("Tab group removed; its tabs remain open."); }).catch((error: unknown) => setGroupStatus(error instanceof Error ? error.message : "Could not remove tab group.")); };
+  const setTrackerBlocking = (enabled: boolean) => { void window.openStrawberry.browser.setTrackerBlocking(enabled).then((snapshot) => { if (snapshot) setBrowser(snapshot); setPrivacyStatus(enabled ? "Tracker blocking is on for new third-party requests." : "Tracker blocking is off for this local browser profile."); }).catch((error: unknown) => setPrivacyStatus(error instanceof Error ? error.message : "Could not change tracker blocking.")); };
+  const toggleTrackerSiteException = () => { void window.openStrawberry.browser.toggleTrackerSiteException().then((snapshot) => { if (snapshot) setBrowser(snapshot); setPrivacyStatus(snapshot?.privacy.activeSiteException ? "Tracker blocking is allowed for this site." : "Tracker blocking is active for this site."); }).catch((error: unknown) => setPrivacyStatus(error instanceof Error ? error.message : "Could not change this site’s exception.")); };
 
   useEffect(() => setUrlInput(activeTab?.url ?? ""), [activeTab?.id, activeTab?.url]);
 
@@ -194,6 +198,7 @@ export function App() {
       <header className="product-bar">
         <div className="brand-lockup"><strong>Open</strong><span>Strawberry</span><em>LOCAL BROWSER</em></div>
         <div className="window-state"><ShieldCheck size={13} /> Local profile · agent vault locked</div>
+        <div className="privacy-controls" aria-label="Tracker blocking controls"><button className={`privacy-toggle ${browser.privacy.trackerBlockingEnabled ? "active" : ""}`} onClick={() => setTrackerBlocking(!browser.privacy.trackerBlockingEnabled)} title="Toggle tracker blocking">{browser.privacy.trackerBlockingEnabled ? "Tracker block on" : "Tracker block off"}</button><button className="privacy-site-toggle" disabled={!activeSiteIsWeb} onClick={toggleTrackerSiteException} title="Toggle tracker blocking for the active site">{browser.privacy.activeSiteException ? "Allowed here" : "Block here"}</button>{browser.privacy.activeTabBlockedRequests > 0 && <span className="privacy-count" title="Blocked tracker requests in the active tab">{browser.privacy.activeTabBlockedRequests} blocked</span>}</div>
         <button className="agents-trigger" onClick={() => setAgentRailOpen((value) => !value)}><Bot size={14} /> Agents</button>
       </header>
       <div className="tabs-row"><div className="tab-list">
@@ -225,7 +230,7 @@ export function App() {
     </main>
     {commandPaletteOpen && <CommandPalette query={commandQuery} onQueryChange={setCommandQuery} onClose={() => setCommandPaletteOpen(false)} onExecute={executePaletteAction} />}
     {downloadDrawerOpen && <DownloadDrawer downloads={browser.downloads} onReveal={(id) => void window.openStrawberry.browser.revealDownload(id)} onClose={() => setDownloadDrawerOpen(false)} />}
-    {workspaceDrawerOpen && <WorkspaceDrawer name={workspaceName} status={workspaceStatus} workspaces={workspaces} onNameChange={setWorkspaceName} onSave={saveWorkspace} onRestore={restoreWorkspace} onClose={() => setWorkspaceDrawerOpen(false)}><TabGroupPanel groups={browser.groups} activeTab={activeTab} name={groupName} color={groupColor} status={groupStatus} onNameChange={setGroupName} onColorChange={setGroupColor} onCreate={createTabGroup} onAssign={assignActiveTabToGroup} onToggle={toggleTabGroup} onDelete={deleteTabGroup} /></WorkspaceDrawer>}
+    {workspaceDrawerOpen && <WorkspaceDrawer name={workspaceName} status={workspaceStatus} workspaces={workspaces} onNameChange={setWorkspaceName} onSave={saveWorkspace} onRestore={restoreWorkspace} onClose={() => setWorkspaceDrawerOpen(false)}><TabGroupPanel groups={browser.groups} activeTab={activeTab} name={groupName} color={groupColor} status={groupStatus} onNameChange={setGroupName} onColorChange={setGroupColor} onCreate={createTabGroup} onAssign={assignActiveTabToGroup} onToggle={toggleTabGroup} onDelete={deleteTabGroup} /><PrivacyPanel enabled={browser.privacy.trackerBlockingEnabled} activeSiteIsWeb={activeSiteIsWeb} activeSiteException={browser.privacy.activeSiteException} blockedRequests={browser.privacy.activeTabBlockedRequests} status={privacyStatus} onEnabledChange={setTrackerBlocking} onToggleSiteException={toggleTrackerSiteException} /></WorkspaceDrawer>}
     {onboarding && !onboarding.completed && <OnboardingSheet candidates={migrationCandidates} status={migrationStatus} passwordPreview={passwordExportPreview} bookmarkPreview={bookmarkExportPreview} onImport={importMigration} onSelectPasswordExport={selectPasswordExport} onCommitPasswordExport={commitPasswordExport} onDiscardPasswordExport={discardPasswordExport} onSelectBookmarkExport={selectBookmarkExport} onCommitBookmarkExport={commitBookmarkExport} onDiscardBookmarkExport={discardBookmarkExport} onFresh={completeFreshProfile} />}
   </div>;
 }
@@ -236,6 +241,10 @@ function WorkspaceDrawer({ name, status, workspaces, onNameChange, onSave, onRes
 
 function TabGroupPanel({ groups, activeTab, name, color, status, onNameChange, onColorChange, onCreate, onAssign, onToggle, onDelete }: { groups: BrowserTabGroup[]; activeTab: BrowserTabState | null; name: string; color: TabGroupColor; status: string; onNameChange: (value: string) => void; onColorChange: (value: TabGroupColor) => void; onCreate: () => void; onAssign: (groupId?: string) => void; onToggle: (id: string) => void; onDelete: (id: string) => void }) {
   return <section className="tab-group-panel" aria-label="Tab groups"><p className="eyebrow">Local tab groups</p><p>Group the active tab, collapse a focused set from the tab strip, and retain groups in saved workspaces.</p><div className="workspace-save"><input value={name} onChange={(event) => onNameChange(event.target.value)} placeholder="Group name" aria-label="Tab group name" /><select value={color} onChange={(event) => onColorChange(event.target.value as TabGroupColor)} aria-label="Tab group color">{TAB_GROUP_COLORS.map((value) => <option value={value} key={value}>{value}</option>)}</select><button className="secondary-action" disabled={!activeTab} onClick={onCreate}>Group active tab</button></div>{activeTab && <label className="tab-group-assignment">Active tab <select value={activeTab.groupId ?? ""} onChange={(event) => onAssign(event.target.value || undefined)}><option value="">No group</option>{groups.map((group) => <option value={group.id} key={group.id}>{group.name}</option>)}</select></label>}{status && <small className="workspace-status">{status}</small>}<div className="tab-group-list">{groups.length === 0 ? <div className="workspace-empty">No tab groups yet.</div> : groups.map((group) => <article key={group.id} className={`tab-group-record ${group.color}`}><div><i /><strong>{group.name}</strong><span>{group.tabIds.length} tab{group.tabIds.length === 1 ? "" : "s"} · {group.collapsed ? "collapsed" : "expanded"}</span></div><div><button className="secondary-action" onClick={() => onToggle(group.id)}>{group.collapsed ? "Expand" : "Collapse"}</button><button className="secondary-action" onClick={() => onDelete(group.id)}>Remove</button></div></article>)}</div></section>;
+}
+
+function PrivacyPanel({ enabled, activeSiteIsWeb, activeSiteException, blockedRequests, status, onEnabledChange, onToggleSiteException }: { enabled: boolean; activeSiteIsWeb: boolean; activeSiteException: boolean; blockedRequests: number; status: string; onEnabledChange: (enabled: boolean) => void; onToggleSiteException: () => void }) {
+  return <section className="privacy-panel" aria-label="Tracker blocking"><p className="eyebrow">Transparent tracker blocking</p><p>OpenStrawberry blocks a conservative list of known analytics and pixel hosts in third-party subresources only. Navigation is never blocked by this baseline.</p><div className="privacy-panel-actions"><button className={`secondary-action ${enabled ? "selected" : ""}`} onClick={() => onEnabledChange(!enabled)}>{enabled ? "Turn tracker blocking off" : "Turn tracker blocking on"}</button><button className="secondary-action" disabled={!activeSiteIsWeb} onClick={onToggleSiteException}>{activeSiteException ? "Restore blocking for this site" : "Allow trackers for this site"}</button></div><small>{blockedRequests} tracker request{blockedRequests === 1 ? "" : "s"} blocked in the active tab. This counter resets when the tab closes; no full request log is shown here.</small>{status && <small className="workspace-status">{status}</small>}</section>;
 }
 
 function CommandPalette({ query, onQueryChange, onClose, onExecute }: { query: string; onQueryChange: (query: string) => void; onClose: () => void; onExecute: (action: string) => void }) {

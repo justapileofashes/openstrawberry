@@ -6,16 +6,20 @@ import { dirname } from "node:path";
 import { PANE_IDS, validateTabGroupName, validateWorkspaceName, type BrowserCommand, type BrowserDownloadState, type BrowserPaneId, type BrowserSnapshot, type BrowserTabGroup, type BrowserTabState, type BrowserViewport, type TabGroupColor, type WorkspaceSnapshot } from "../shared/browser.js";
 import { isBrowserUrlAllowed, normalizeBrowserUrl } from "../shared/navigation.js";
 import { EMPTY_MEDIA_STATE, type MediaCommand, type MediaState } from "../shared/media.js";
+import { normalizePrivacyHost, shouldBlockTrackerRequest, type PrivacyState } from "../shared/privacy.js";
 import { buildReaderModeScript } from "../shared/reader.js";
 
 type TabRuntime = { view: BrowserView; state: BrowserTabState };
-type SavedSession = { version: 1 | 2; tabs: { id: string; url: string; groupId?: string }[]; groups?: BrowserTabGroup[]; panes: { id: BrowserPaneId; tabId: string | null }[]; activePaneId: BrowserPaneId; splitEnabled: boolean };
+type SavedSession = { version: 1 | 2 | 3; tabs: { id: string; url: string; groupId?: string }[]; groups?: BrowserTabGroup[]; privacy?: { trackerBlockingEnabled?: boolean; allowedHosts?: string[] }; panes: { id: BrowserPaneId; tabId: string | null }[]; activePaneId: BrowserPaneId; splitEnabled: boolean };
 const FALLBACK_TITLE = "New tab";
 const PROFILE_PARTITION = "persist:openstrawberry-default";
 
 export class BrowserManager {
   private readonly tabs = new Map<string, TabRuntime>();
   private readonly groups = new Map<string, BrowserTabGroup>();
+  private readonly profile = session.fromPartition(PROFILE_PARTITION);
+  private readonly allowedTrackerHosts = new Set<string>();
+  private readonly blockedRequestsByTab = new Map<string, number>();
   private readonly panes: Record<BrowserPaneId, { tabId: string | null; viewport: BrowserViewport }> = {
     primary: { tabId: null, viewport: { paneId: "primary", x: 0, y: 0, width: 0, height: 0 } },
     secondary: { tabId: null, viewport: { paneId: "secondary", x: 0, y: 0, width: 0, height: 0 } }
@@ -24,12 +28,23 @@ export class BrowserManager {
   private readonly downloadPaths = new Map<string, string>();
   private activePaneId: BrowserPaneId = "primary";
   private splitEnabled = false;
+  private trackerBlockingEnabled = true;
   private initialized = false;
   public constructor(private readonly window: BrowserWindow, private readonly emit: (snapshot: BrowserSnapshot) => void, private readonly sessionFile: string, private readonly workspaceFile: string) {
-    const profile = session.fromPartition(PROFILE_PARTITION);
-    profile.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
-    profile.setPermissionCheckHandler(() => false);
-    profile.on("will-download", (_event, item) => this.trackDownload(item));
+    this.profile.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
+    this.profile.setPermissionCheckHandler(() => false);
+    this.profile.on("will-download", (_event, item) => this.trackDownload(item));
+    this.profile.webRequest.onBeforeRequest({ urls: ["<all_urls>"] }, (details, callback) => {
+      const cancel = shouldBlockTrackerRequest({ url: details.url, referrer: details.referrer, resourceType: details.resourceType, enabled: this.trackerBlockingEnabled, allowedHosts: [...this.allowedTrackerHosts] });
+      if (cancel) {
+        const tabId = this.tabIdForWebContentsId(details.webContentsId);
+        if (tabId) {
+          this.blockedRequestsByTab.set(tabId, Math.min(10_000, (this.blockedRequestsByTab.get(tabId) ?? 0) + 1));
+          this.emit(this.snapshot());
+        }
+      }
+      callback({ cancel });
+    });
   }
 
   public initialize(): BrowserSnapshot {
@@ -37,6 +52,7 @@ export class BrowserManager {
     this.initialized = true;
     const saved = this.readSession();
     if (saved) {
+      this.hydratePrivacy(saved.privacy);
       for (const tab of saved.tabs) this.createTab(tab.url, "primary", tab.id, false);
       this.hydrateGroups(saved.groups ?? []);
       for (const pane of saved.panes) if (pane.tabId && this.tabs.has(pane.tabId)) this.assignTabToPane(pane.tabId, pane.id);
@@ -76,6 +92,7 @@ export class BrowserManager {
   public closeTab(id: string): BrowserSnapshot {
     const runtime = this.tabs.get(id); if (!runtime) return this.snapshot();
     this.window.removeBrowserView(runtime.view); runtime.view.webContents.close(); this.tabs.delete(id);
+    this.blockedRequestsByTab.delete(id);
     this.removeTabFromGroups(id);
     for (const paneId of PANE_IDS) if (this.panes[paneId].tabId === id) this.panes[paneId].tabId = this.tabs.keys().next().value ?? null;
     if (!this.panes.primary.tabId) return this.createTab();
@@ -146,6 +163,16 @@ export class BrowserManager {
     this.publish();
     return this.snapshot();
   }
+  public setTrackerBlocking(enabled: boolean): BrowserSnapshot { this.trackerBlockingEnabled = enabled; this.publish(); return this.snapshot(); }
+  public toggleTrackerBlockingForActiveSite(): BrowserSnapshot {
+    const activeId = this.panes[this.activePaneId].tabId;
+    const active = activeId ? this.tabs.get(activeId) : undefined;
+    if (!active?.state.url) throw new Error("Open an http(s) page before changing its tracker-blocking exception.");
+    const host = normalizePrivacyHost(active.state.url);
+    if (this.allowedTrackerHosts.has(host)) this.allowedTrackerHosts.delete(host); else this.allowedTrackerHosts.add(host);
+    this.publish();
+    return this.snapshot();
+  }
   public async mediaState(): Promise<MediaState> { return this.executeMediaCommand({ action: "refresh" }); }
   public async mediaCommand(command: MediaCommand): Promise<MediaState> { return this.executeMediaCommand(command); }
   public async toggleReaderMode(): Promise<boolean> {
@@ -154,7 +181,7 @@ export class BrowserManager {
     if (!active || active.view.webContents.isDestroyed()) return false;
     try { return Boolean(await active.view.webContents.executeJavaScript(buildReaderModeScript(), true)); } catch { return false; }
   }
-  public snapshot(): BrowserSnapshot { return { activeTabId: this.panes[this.activePaneId].tabId, activePaneId: this.activePaneId, splitEnabled: this.splitEnabled, panes: PANE_IDS.map((id) => ({ id, tabId: this.panes[id].tabId })), tabs: [...this.tabs.values()].map((tab) => tab.state), groups: [...this.groups.values()].map((group) => ({ ...group, tabIds: [...group.tabIds] })), downloads: this.downloads }; }
+  public snapshot(): BrowserSnapshot { return { activeTabId: this.panes[this.activePaneId].tabId, activePaneId: this.activePaneId, splitEnabled: this.splitEnabled, panes: PANE_IDS.map((id) => ({ id, tabId: this.panes[id].tabId })), tabs: [...this.tabs.values()].map((tab) => tab.state), groups: [...this.groups.values()].map((group) => ({ ...group, tabIds: [...group.tabIds] })), downloads: this.downloads, privacy: this.privacyState() }; }
   public selectedContextUrls(): string[] { return PANE_IDS.map((paneId) => this.panes[paneId].tabId).filter((id): id is string => Boolean(id)).map((id) => this.tabs.get(id)?.state.url ?? "").filter((url) => Boolean(url)); }
   public revealDownload(id: string): boolean {
     const record = this.downloads.find((download) => download.id === id);
@@ -230,12 +257,29 @@ export class BrowserManager {
       for (const tabId of tabIds) { const tab = this.tabs.get(tabId); if (tab) tab.state.groupId = group.id; }
     }
   }
+  private tabIdForWebContentsId(webContentsId: number | undefined): string | undefined {
+    if (typeof webContentsId !== "number") return undefined;
+    return [...this.tabs.entries()].find(([, tab]) => tab.view.webContents.id === webContentsId)?.[0];
+  }
+  private privacyState(): PrivacyState {
+    const activeId = this.panes[this.activePaneId].tabId;
+    const active = activeId ? this.tabs.get(activeId) : undefined;
+    const activeUrl = active?.state.url;
+    let activeSiteException = false;
+    try { activeSiteException = Boolean(activeUrl) && this.allowedTrackerHosts.has(normalizePrivacyHost(activeUrl)); } catch { /* Non-web pages have no exception control. */ }
+    return { trackerBlockingEnabled: this.trackerBlockingEnabled, activeSiteException, activeTabBlockedRequests: Math.min(10_000, activeId ? this.blockedRequestsByTab.get(activeId) ?? 0 : 0) };
+  }
+  private hydratePrivacy(saved: SavedSession["privacy"]): void {
+    this.trackerBlockingEnabled = saved?.trackerBlockingEnabled !== false;
+    this.allowedTrackerHosts.clear();
+    for (const candidate of saved?.allowedHosts ?? []) { try { this.allowedTrackerHosts.add(normalizePrivacyHost(`https://${candidate}`)); } catch { /* Ignore malformed old local preference values. */ } }
+  }
   private publish(): void { this.attachVisibleViews(); this.writeSession(); this.emit(this.snapshot()); }
   private readSession(): SavedSession | null {
-    try { if (!existsSync(this.sessionFile)) return null; const parsed = JSON.parse(readFileSync(this.sessionFile, "utf8")) as SavedSession; return (parsed.version === 1 || parsed.version === 2) && Array.isArray(parsed.tabs) && Array.isArray(parsed.panes) ? parsed : null; } catch { return null; }
+    try { if (!existsSync(this.sessionFile)) return null; const parsed = JSON.parse(readFileSync(this.sessionFile, "utf8")) as SavedSession; return (parsed.version === 1 || parsed.version === 2 || parsed.version === 3) && Array.isArray(parsed.tabs) && Array.isArray(parsed.panes) ? parsed : null; } catch { return null; }
   }
   private writeSession(): void {
-    try { mkdirSync(dirname(this.sessionFile), { recursive: true }); const payload: SavedSession = { version: 2, tabs: [...this.tabs.values()].map((tab) => ({ id: tab.state.id, url: tab.state.url || "https://example.com", ...(tab.state.groupId ? { groupId: tab.state.groupId } : {}) })), groups: [...this.groups.values()].map((group) => ({ ...group, tabIds: [...group.tabIds] })), panes: PANE_IDS.map((id) => ({ id, tabId: this.panes[id].tabId })), activePaneId: this.activePaneId, splitEnabled: this.splitEnabled }; writeFileSync(this.sessionFile, JSON.stringify(payload, null, 2), "utf8"); } catch { /* Session restore is best-effort and never blocks browsing. */ }
+    try { mkdirSync(dirname(this.sessionFile), { recursive: true }); const payload: SavedSession = { version: 3, tabs: [...this.tabs.values()].map((tab) => ({ id: tab.state.id, url: tab.state.url || "https://example.com", ...(tab.state.groupId ? { groupId: tab.state.groupId } : {}) })), groups: [...this.groups.values()].map((group) => ({ ...group, tabIds: [...group.tabIds] })), privacy: { trackerBlockingEnabled: this.trackerBlockingEnabled, allowedHosts: [...this.allowedTrackerHosts].sort() }, panes: PANE_IDS.map((id) => ({ id, tabId: this.panes[id].tabId })), activePaneId: this.activePaneId, splitEnabled: this.splitEnabled }; writeFileSync(this.sessionFile, JSON.stringify(payload, null, 2), "utf8"); } catch { /* Session restore is best-effort and never blocks browsing. */ }
   }
   private readWorkspaceSnapshots(): WorkspaceSnapshot[] {
     try { if (!existsSync(this.workspaceFile)) return []; const parsed = JSON.parse(readFileSync(this.workspaceFile, "utf8")) as WorkspaceSnapshot[]; return Array.isArray(parsed) ? parsed.filter((snapshot) => typeof snapshot?.id === "string" && typeof snapshot?.name === "string" && Array.isArray(snapshot?.tabs) && Array.isArray(snapshot?.panes)) : []; } catch { return []; }

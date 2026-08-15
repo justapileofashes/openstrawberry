@@ -22,6 +22,8 @@ declare global {
         assignTabGroup: (input: { tabId: string; groupId?: string }) => Promise<BrowserSnapshot | undefined>;
         toggleTabGroup: (id: string) => Promise<BrowserSnapshot | undefined>;
         deleteTabGroup: (id: string) => Promise<BrowserSnapshot | undefined>;
+        setTrackerBlocking: (enabled: boolean) => Promise<BrowserSnapshot | undefined>;
+        toggleTrackerSiteException: () => Promise<BrowserSnapshot | undefined>;
         revealDownload: (id: string) => Promise<boolean>;
         toggleReaderMode: () => Promise<boolean>;
         onState: (listener: (snapshot: BrowserSnapshot) => void) => () => void;

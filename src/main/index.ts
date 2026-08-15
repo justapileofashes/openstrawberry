@@ -56,6 +56,8 @@ registerTrustedHandler("browser:create-tab-group", (input) => { const group = pa
 registerTrustedHandler("browser:assign-tab-group", (input) => { const assignment = parseTabGroupAssignment(input); return browserManager?.assignTabToGroup(assignment.tabId, assignment.groupId); });
 registerTrustedHandler("browser:toggle-tab-group", (id) => browserManager?.toggleTabGroup(requireIdentifier(id, "Tab group ID")));
 registerTrustedHandler("browser:delete-tab-group", (id) => browserManager?.deleteTabGroup(requireIdentifier(id, "Tab group ID")));
+registerTrustedHandler("browser:set-tracker-blocking", (enabled) => browserManager?.setTrackerBlocking(requireBoolean(enabled, "Tracker blocking state")));
+registerTrustedHandler("browser:toggle-tracker-site-exception", () => browserManager?.toggleTrackerBlockingForActiveSite());
 registerTrustedHandler("app:version", () => app.getVersion());
 registerTrustedHandler("workspace:list", () => browserManager?.listWorkspaceSnapshots() ?? []);
 registerTrustedHandler("workspace:save", (name) => browserManager?.saveWorkspaceSnapshot(requireString(name, "Workspace name", 80)));

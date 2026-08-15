@@ -1,3 +1,5 @@
+import type { PrivacyState } from "./privacy.js";
+
 export const PANE_IDS = ["primary", "secondary"] as const;
 export type BrowserPaneId = (typeof PANE_IDS)[number];
 export const TAB_GROUP_COLORS = ["slate", "blue", "violet", "rose", "amber", "emerald"] as const;
@@ -7,7 +9,7 @@ export type BrowserTabGroup = { id: string; name: string; color: TabGroupColor; 
 export type BrowserPaneState = { id: BrowserPaneId; tabId: string | null };
 export type BrowserViewport = { paneId: BrowserPaneId; x: number; y: number; width: number; height: number };
 export type BrowserDownloadState = { id: string; filename: string; receivedBytes: number; totalBytes: number; state: "progressing" | "completed" | "cancelled" };
-export type BrowserSnapshot = { activeTabId: string | null; activePaneId: BrowserPaneId; splitEnabled: boolean; panes: BrowserPaneState[]; tabs: BrowserTabState[]; groups: BrowserTabGroup[]; downloads: BrowserDownloadState[] };
+export type BrowserSnapshot = { activeTabId: string | null; activePaneId: BrowserPaneId; splitEnabled: boolean; panes: BrowserPaneState[]; tabs: BrowserTabState[]; groups: BrowserTabGroup[]; downloads: BrowserDownloadState[]; privacy: PrivacyState };
 export type BrowserCommand = "back" | "forward" | "reload" | "stop";
 export type WorkspaceSnapshot = { id: string; name: string; createdAt: number; tabs: { id: string; url: string; groupId?: string }[]; groups: BrowserTabGroup[]; panes: BrowserPaneState[]; activePaneId: BrowserPaneId; splitEnabled: boolean };
 
