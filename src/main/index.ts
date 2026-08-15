@@ -10,7 +10,7 @@ import { MigrationManager } from "./migration-manager.js";
 import { createOrchestrationPlan } from "./orchestrator.js";
 import { assertTrustedRendererId } from "./ipc-security.js";
 import { DESKTOP_APP_ID, DESKTOP_APP_NAME } from "../shared/desktop-shell.js";
-import { parseAgentProfileInput, parseAgentRunRequest, parseMediaCommand, parseOrchestrationRequest, parseViewport, requireBoolean, requireBrowserId, requireCommand, requireIdentifier, requirePane, requireString } from "../shared/ipc-validation.js";
+import { parseAgentProfileInput, parseAgentRunRequest, parseMediaCommand, parseOrchestrationRequest, parseTabGroupAssignment, parseTabGroupCreate, parseViewport, requireBoolean, requireBrowserId, requireCommand, requireIdentifier, requirePane, requireString } from "../shared/ipc-validation.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 let mainWindow: BrowserWindow | null = null;
@@ -52,6 +52,10 @@ registerTrustedHandler("browser:command", (id, command) => browserManager?.comma
 registerTrustedHandler("browser:set-viewport", (viewport) => browserManager?.setViewport(parseViewport(viewport)));
 registerTrustedHandler("browser:set-split", (enabled) => browserManager?.setSplit(requireBoolean(enabled, "Split state")));
 registerTrustedHandler("browser:set-active-pane", (paneId) => browserManager?.setActivePane(requirePane(paneId)));
+registerTrustedHandler("browser:create-tab-group", (input) => { const group = parseTabGroupCreate(input); return browserManager?.createTabGroup(group.name, group.color, group.tabIds); });
+registerTrustedHandler("browser:assign-tab-group", (input) => { const assignment = parseTabGroupAssignment(input); return browserManager?.assignTabToGroup(assignment.tabId, assignment.groupId); });
+registerTrustedHandler("browser:toggle-tab-group", (id) => browserManager?.toggleTabGroup(requireIdentifier(id, "Tab group ID")));
+registerTrustedHandler("browser:delete-tab-group", (id) => browserManager?.deleteTabGroup(requireIdentifier(id, "Tab group ID")));
 registerTrustedHandler("app:version", () => app.getVersion());
 registerTrustedHandler("workspace:list", () => browserManager?.listWorkspaceSnapshots() ?? []);
 registerTrustedHandler("workspace:save", (name) => browserManager?.saveWorkspaceSnapshot(requireString(name, "Workspace name", 80)));

@@ -1,6 +1,6 @@
 import type { AgentProfileInput, AgentRole } from "./agent.js";
 import type { AgentRunRequest } from "./agent-run.js";
-import type { BrowserCommand, BrowserPaneId, BrowserViewport } from "./browser.js";
+import { isTabGroupColor, type BrowserCommand, type BrowserPaneId, type BrowserViewport, type TabGroupColor } from "./browser.js";
 import type { MediaCommand } from "./media.js";
 import type { BrowserId } from "./migration.js";
 import type { OrchestrationRequest } from "./orchestration.js";
@@ -54,4 +54,14 @@ export function parseOrchestrationRequest(value: unknown): OrchestrationRequest 
   if (!isRecord(value) || !Array.isArray(value.availableRoles) || value.availableRoles.length > ROLES.size || !value.availableRoles.every((role) => typeof role === "string" && ROLES.has(role as AgentRole))) throw new Error("Invalid orchestration request.");
   if (typeof value.sourceTabCount !== "number" || !Number.isInteger(value.sourceTabCount) || value.sourceTabCount < 0 || value.sourceTabCount > 50) throw new Error("Invalid source tab count.");
   return { objective: requireString(value.objective, "Orchestration objective", 4_000), sourceTabCount: value.sourceTabCount, availableRoles: value.availableRoles as AgentRole[] };
+}
+export function parseTabGroupCreate(value: unknown): { name: string; color: TabGroupColor; tabIds: string[] } {
+  if (!isRecord(value) || !Array.isArray(value.tabIds) || value.tabIds.length === 0 || value.tabIds.length > 50 || !value.tabIds.every((tabId) => typeof tabId === "string")) throw new Error("Invalid tab-group creation request.");
+  if (!isTabGroupColor(value.color)) throw new Error("Unsupported tab-group color.");
+  return { name: requireString(value.name, "Tab group name", 40), color: value.color, tabIds: [...new Set(value.tabIds.map((tabId) => requireIdentifier(tabId, "Tab ID")))].slice(0, 50) };
+}
+export function parseTabGroupAssignment(value: unknown): { tabId: string; groupId?: string } {
+  if (!isRecord(value)) throw new Error("Invalid tab-group assignment.");
+  const groupId = value.groupId === undefined || value.groupId === null ? undefined : requireIdentifier(value.groupId, "Tab group ID");
+  return { tabId: requireIdentifier(value.tabId, "Tab ID"), groupId };
 }

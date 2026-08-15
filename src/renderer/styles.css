@@ -29,6 +29,13 @@ button:disabled { cursor: not-allowed; opacity: .35; }
 .agents-trigger:hover, .primary-action:hover { background: #dfe2e4; }
 .tabs-row { height: 43px; border-bottom: 1px solid rgba(255, 255, 255, .1); padding: 7px 10px 0; }
 .tab-list { display: flex; align-items: stretch; gap: 4px; height: 35px; }
+.tab-group-strip { display: flex; min-height: 28px; align-items: center; gap: 6px; overflow-x: auto; border-bottom: 1px solid rgba(255, 255, 255, .08); padding: 4px 11px 5px; background: rgba(0, 0, 0, .12); }
+.tab-group-chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid rgba(255, 255, 255, .12); border-radius: 999px; background: rgba(255, 255, 255, .045); padding: 4px 8px; color: #d6dbde; font-size: 10px; white-space: nowrap; }
+.tab-group-chip:hover { border-color: rgba(255, 255, 255, .3); background: rgba(255, 255, 255, .09); }
+.tab-group-chip.collapsed { opacity: .66; }
+.tab-group-chip i, .tab-group-record i { width: 7px; height: 7px; flex: 0 0 auto; border-radius: 50%; background: #899198; }
+.tab-group-chip b { color: #8e979d; font-size: 9px; }
+.tab-group-chip.blue i, .tab-group-record.blue i { background: #6aa5ff; } .tab-group-chip.violet i, .tab-group-record.violet i { background: #b18cff; } .tab-group-chip.rose i, .tab-group-record.rose i { background: #ff8aab; } .tab-group-chip.amber i, .tab-group-record.amber i { background: #f9c86c; } .tab-group-chip.emerald i, .tab-group-record.emerald i { background: #6ad7ac; }
 .browser-tab { display: flex; width: 205px; min-width: 140px; align-items: center; border: 1px solid transparent; border-radius: 7px 7px 0 0; color: #7d848a; }
 .browser-tab.selected { border-color: rgba(255, 255, 255, .13); border-bottom-color: #101214; background: #101214; color: #f5f6f7; }
 .tab-target { display: flex; min-width: 0; flex: 1; align-items: center; gap: 7px; overflow: hidden; border: 0; background: transparent; color: inherit; padding: 0 8px; text-align: left; font-size: 12px; }
@@ -150,6 +157,17 @@ button:disabled { cursor: not-allowed; opacity: .35; }
 .workspace-list em { color: #858e95; font-size: 9px; font-style: normal; }
 .workspace-list b { font-family: ui-monospace, monospace; font-size: 9px; }
 .workspace-empty { border: 1px dashed rgba(255, 255, 255, .14); border-radius: 7px; padding: 14px; color: #818a90; font-size: 10px; text-align: center; }
+.tab-group-panel { margin-top: 18px; border-top: 1px solid rgba(255, 255, 255, .11); padding-top: 15px; }
+.tab-group-panel > p:not(.eyebrow) { margin: 4px 0 0; color: #9aa2a8; font-size: 11px; line-height: 1.45; }
+.workspace-save select, .tab-group-assignment select { min-width: 72px; border: 1px solid rgba(255, 255, 255, .12); border-radius: 6px; outline: none; background: rgba(0, 0, 0, .35); padding: 8px; color: #e7eaec; font-size: 10px; }
+.tab-group-assignment { display: grid; gap: 5px; margin-top: 11px; color: #aeb5ba; font-size: 10px; }
+.tab-group-list { display: grid; gap: 6px; margin-top: 11px; }
+.tab-group-record { display: flex; align-items: center; justify-content: space-between; gap: 8px; border: 1px solid rgba(255, 255, 255, .1); border-radius: 7px; background: rgba(0, 0, 0, .22); padding: 8px; }
+.tab-group-record > div:first-child { display: grid; grid-template-columns: 8px 1fr; align-items: center; column-gap: 6px; }
+.tab-group-record strong { color: #e7eaec; font-size: 11px; }
+.tab-group-record span { grid-column: 2; margin-top: 2px; color: #8e979d; font-size: 9px; }
+.tab-group-record > div:last-child { display: flex; gap: 4px; }
+.tab-group-record .secondary-action { width: auto; margin-top: 0; padding: 5px 6px; font-size: 9px; }
 .command-palette-backdrop { position: fixed; inset: 0; z-index: 28; display: grid; place-items: start center; padding: 110px 20px 20px; background: rgba(0, 0, 0, .38); backdrop-filter: blur(5px); }
 .command-palette { width: min(560px, 100%); overflow: hidden; border: 1px solid rgba(255, 255, 255, .2); border-radius: 11px; background: rgba(20, 22, 24, .95); box-shadow: 0 24px 80px rgba(0, 0, 0, .48); }
 .command-palette-input { display: flex; align-items: center; gap: 8px; border-bottom: 1px solid rgba(255, 255, 255, .1); padding: 11px; color: #929aa0; }

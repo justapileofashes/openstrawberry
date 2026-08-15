@@ -28,8 +28,8 @@ Every stable release will include `SHA256SUMS.txt`, release notes, and platform-
 |---|---|
 | Native shell | Electron desktop application with hardened main/preload/renderer separation |
 | Browser core | Create, select, close, navigate, back, forward, reload, stop, restore local tabs on launch, and retain pane-local browser state |
-| Workspace | Two-pane split browsing with tab drag targets, pane-local navigation, and visible active-pane state |
-| Workspace continuity | Named local snapshots save and restore a bounded set of tab URLs, split layout, and active pane; they do not clone site cookies, credentials, or page storage |
+| Workspace | Two-pane split browsing with tab drag targets, pane-local navigation, visible active-pane state, and local tab groups with names, color cues, collapse controls, and active-tab assignment |
+| Workspace continuity | Named local snapshots save and restore a bounded set of tab URLs, tab-group metadata, split layout, and active pane; they do not clone site cookies, credentials, or page storage |
 | Browser productivity | Keyboard-accessible command palette with actions for tabs, address focus, split workspace, saved workspaces, and the Companion; supports Ctrl on Windows/Linux and Command on macOS |
 | Reader mode | Local text-only overlay for the selected tab, entered through the command palette; it extracts readable page text in-place and does not send it to a provider or third party |
 | Media deck | Detect compatible HTML video in the selected tab and expose play, pause, seek, mute, volume, and browser-native picture-in-picture commands |

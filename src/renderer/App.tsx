@@ -1,7 +1,7 @@
 /* OpenStrawberry desktop shell: monochrome technical chrome with Liquid Glass reserved for Companion and control surfaces. */
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { ArrowLeft, ArrowRight, Bot, CircleStop, Columns2, Command, Download, Globe2, LayoutPanelTop, Maximize2, MoreHorizontal, PanelRightClose, Pause, Play, Plus, RefreshCw, Settings2, ShieldCheck, Sparkles, Volume2, VolumeX, X } from "lucide-react";
-import type { BrowserPaneId, BrowserSnapshot, BrowserTabState, WorkspaceSnapshot } from "../shared/browser";
+import { TAB_GROUP_COLORS, type BrowserPaneId, type BrowserSnapshot, type BrowserTabGroup, type BrowserTabState, type TabGroupColor, type WorkspaceSnapshot } from "../shared/browser";
 import { defaultAgentProfiles, type AgentProfileInput, type AgentProfileSummary, type LocalCliStatus } from "../shared/agent";
 import { EMPTY_MEDIA_STATE, type MediaCommand, type MediaState } from "../shared/media";
 import type { OrchestrationPlan } from "../shared/orchestration";
@@ -10,8 +10,9 @@ import type { BookmarkExportPreview, BrowserId, BrowserMigrationCandidate, Onboa
 import { resolveBrowserShortcut } from "../shared/keyboard";
 import { downloadProgress } from "../shared/download";
 
-const EMPTY_SNAPSHOT: BrowserSnapshot = { activeTabId: null, activePaneId: "primary", splitEnabled: false, panes: [{ id: "primary", tabId: null }, { id: "secondary", tabId: null }], tabs: [], downloads: [] };
+const EMPTY_SNAPSHOT: BrowserSnapshot = { activeTabId: null, activePaneId: "primary", splitEnabled: false, panes: [{ id: "primary", tabId: null }, { id: "secondary", tabId: null }], tabs: [], groups: [], downloads: [] };
 const PALETTE_ACTIONS = [{ id: "new-tab", label: "New tab", hint: "⌘/Ctrl T" }, { id: "focus-address", label: "Focus address bar", hint: "⌘/Ctrl L" }, { id: "toggle-split", label: "Toggle split workspace", hint: "⌘/Ctrl Shift S" }, { id: "reader-mode", label: "Toggle reader mode", hint: "" }, { id: "open-workspaces", label: "Open saved workspaces", hint: "" }, { id: "toggle-agents", label: "Toggle Companion", hint: "" }];
+const GROUP_COLORS: Record<TabGroupColor, string> = { slate: "#899198", blue: "#6aa5ff", violet: "#b18cff", rose: "#ff8aab", amber: "#f9c86c", emerald: "#6ad7ac" };
 
 function IconButton({ label, disabled, children, onClick }: { label: string; disabled?: boolean; children: ReactNode; onClick?: () => void }) {
   return <button aria-label={label} disabled={disabled} onClick={onClick} className="icon-button">{children}</button>;
@@ -35,6 +36,9 @@ export function App() {
   const [workspaceName, setWorkspaceName] = useState("");
   const [workspaces, setWorkspaces] = useState<WorkspaceSnapshot[]>([]);
   const [workspaceStatus, setWorkspaceStatus] = useState("");
+  const [groupName, setGroupName] = useState("Focus");
+  const [groupColor, setGroupColor] = useState<TabGroupColor>("violet");
+  const [groupStatus, setGroupStatus] = useState("");
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [commandQuery, setCommandQuery] = useState("");
   const [downloadDrawerOpen, setDownloadDrawerOpen] = useState(false);
@@ -42,6 +46,7 @@ export function App() {
   const secondaryViewportRef = useRef<HTMLDivElement>(null);
   const addressInputRef = useRef<HTMLInputElement>(null);
   const activeTab = browser.tabs.find((tab) => tab.id === browser.activeTabId) ?? null;
+  const visibleTabs = browser.tabs.filter((tab) => !tab.groupId || !browser.groups.find((group) => group.id === tab.groupId)?.collapsed);
   const refreshMedia = useCallback(() => { void window.openStrawberry.media.state().then((state) => { if (state) setMedia(state); }); }, []);
 
   useEffect(() => {
@@ -107,6 +112,18 @@ export function App() {
     setWorkspaceStatus("Restoring workspace…");
     void window.openStrawberry.workspaces.restore(id).then((snapshot) => { if (snapshot) setBrowser(snapshot); setWorkspaceStatus("Workspace restored."); }).catch((error: unknown) => setWorkspaceStatus(error instanceof Error ? error.message : "Could not restore workspace."));
   };
+  const createTabGroup = () => {
+    if (!activeTab) return;
+    setGroupStatus("Creating local tab group…");
+    void window.openStrawberry.browser.createTabGroup({ name: groupName, color: groupColor, tabIds: [activeTab.id] }).then((snapshot) => { if (snapshot) setBrowser(snapshot); setGroupStatus("Tab group created."); }).catch((error: unknown) => setGroupStatus(error instanceof Error ? error.message : "Could not create tab group."));
+  };
+  const assignActiveTabToGroup = (groupId?: string) => {
+    if (!activeTab) return;
+    setGroupStatus("Updating local tab group…");
+    void window.openStrawberry.browser.assignTabGroup({ tabId: activeTab.id, groupId }).then((snapshot) => { if (snapshot) setBrowser(snapshot); setGroupStatus(groupId ? "Active tab added to group." : "Active tab removed from group."); }).catch((error: unknown) => setGroupStatus(error instanceof Error ? error.message : "Could not update tab group."));
+  };
+  const toggleTabGroup = (id: string) => { void window.openStrawberry.browser.toggleTabGroup(id).then((snapshot) => { if (snapshot) setBrowser(snapshot); }).catch((error: unknown) => setGroupStatus(error instanceof Error ? error.message : "Could not toggle tab group.")); };
+  const deleteTabGroup = (id: string) => { void window.openStrawberry.browser.deleteTabGroup(id).then((snapshot) => { if (snapshot) setBrowser(snapshot); setGroupStatus("Tab group removed; its tabs remain open."); }).catch((error: unknown) => setGroupStatus(error instanceof Error ? error.message : "Could not remove tab group.")); };
 
   useEffect(() => setUrlInput(activeTab?.url ?? ""), [activeTab?.id, activeTab?.url]);
 
@@ -180,13 +197,14 @@ export function App() {
         <button className="agents-trigger" onClick={() => setAgentRailOpen((value) => !value)}><Bot size={14} /> Agents</button>
       </header>
       <div className="tabs-row"><div className="tab-list">
-        {browser.tabs.map((tab) => <Tab key={tab.id} tab={tab} active={tab.id === browser.activeTabId} onActivate={() => assignToPane(tab.id, browser.activePaneId)} onClose={() => void window.openStrawberry.browser.close(tab.id)} />)}
+        {visibleTabs.map((tab) => <Tab key={tab.id} tab={tab} group={tab.groupId ? browser.groups.find((candidate) => candidate.id === tab.groupId) : undefined} active={tab.id === browser.activeTabId} onActivate={() => assignToPane(tab.id, browser.activePaneId)} onClose={() => void window.openStrawberry.browser.close(tab.id)} />)}
         <IconButton label="New tab" onClick={createTab}><Plus size={15} /></IconButton>
         <div className="pane-targets" aria-label="Split workspace targets">
           {(["primary", "secondary"] as const).map((paneId) => <button key={paneId} className={`pane-target ${browser.activePaneId === paneId ? "active" : ""}`} onClick={() => void window.openStrawberry.browser.setActivePane(paneId)} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); const tabId = event.dataTransfer.getData("application/x-openstrawberry-tab"); if (tabId) assignToPane(tabId, paneId); }}><span>{paneId === "primary" ? "A" : "B"}</span></button>)}
           <button className={`split-toggle ${browser.splitEnabled ? "active" : ""}`} onClick={() => void window.openStrawberry.browser.setSplit(!browser.splitEnabled)} aria-label={browser.splitEnabled ? "Close split view" : "Open split view"}><Columns2 size={14} /></button>
         </div>
       </div></div>
+      {browser.groups.length > 0 && <div className="tab-group-strip" aria-label="Tab groups">{browser.groups.map((group) => <button key={group.id} className={`tab-group-chip ${group.color} ${group.collapsed ? "collapsed" : ""}`} onClick={() => toggleTabGroup(group.id)}><i /><span>{group.name}</span><b>{group.tabIds.length}</b></button>)}</div>}
       <div className="address-bar-row">
         <div className="nav-controls">
           <IconButton label="Back" disabled={!activeTab?.canGoBack} onClick={() => runCommand("back")}><ArrowLeft size={15} /></IconButton>
@@ -207,13 +225,17 @@ export function App() {
     </main>
     {commandPaletteOpen && <CommandPalette query={commandQuery} onQueryChange={setCommandQuery} onClose={() => setCommandPaletteOpen(false)} onExecute={executePaletteAction} />}
     {downloadDrawerOpen && <DownloadDrawer downloads={browser.downloads} onReveal={(id) => void window.openStrawberry.browser.revealDownload(id)} onClose={() => setDownloadDrawerOpen(false)} />}
-    {workspaceDrawerOpen && <WorkspaceDrawer name={workspaceName} status={workspaceStatus} workspaces={workspaces} onNameChange={setWorkspaceName} onSave={saveWorkspace} onRestore={restoreWorkspace} onClose={() => setWorkspaceDrawerOpen(false)} />}
+    {workspaceDrawerOpen && <WorkspaceDrawer name={workspaceName} status={workspaceStatus} workspaces={workspaces} onNameChange={setWorkspaceName} onSave={saveWorkspace} onRestore={restoreWorkspace} onClose={() => setWorkspaceDrawerOpen(false)}><TabGroupPanel groups={browser.groups} activeTab={activeTab} name={groupName} color={groupColor} status={groupStatus} onNameChange={setGroupName} onColorChange={setGroupColor} onCreate={createTabGroup} onAssign={assignActiveTabToGroup} onToggle={toggleTabGroup} onDelete={deleteTabGroup} /></WorkspaceDrawer>}
     {onboarding && !onboarding.completed && <OnboardingSheet candidates={migrationCandidates} status={migrationStatus} passwordPreview={passwordExportPreview} bookmarkPreview={bookmarkExportPreview} onImport={importMigration} onSelectPasswordExport={selectPasswordExport} onCommitPasswordExport={commitPasswordExport} onDiscardPasswordExport={discardPasswordExport} onSelectBookmarkExport={selectBookmarkExport} onCommitBookmarkExport={commitBookmarkExport} onDiscardBookmarkExport={discardBookmarkExport} onFresh={completeFreshProfile} />}
   </div>;
 }
 
-function WorkspaceDrawer({ name, status, workspaces, onNameChange, onSave, onRestore, onClose }: { name: string; status: string; workspaces: WorkspaceSnapshot[]; onNameChange: (name: string) => void; onSave: () => void; onRestore: (id: string) => void; onClose: () => void }) {
-  return <aside className="workspace-drawer liquid-glass" aria-label="Saved workspaces"><header><div><p className="eyebrow">Local workspace snapshots</p><h2>Workspaces</h2></div><IconButton label="Close workspaces" onClick={onClose}><X size={15} /></IconButton></header><div className="workspace-drawer-content"><p>Save the current tabs and pane layout. A snapshot stores URLs and layout only; it does not duplicate cookies, credentials, or page storage.</p><div className="workspace-save"><input value={name} onChange={(event) => onNameChange(event.target.value)} placeholder="Workspace name" aria-label="Workspace name" /><button className="primary-action" onClick={onSave}>Save snapshot</button></div>{status && <small className="workspace-status">{status}</small>}<div className="workspace-list">{workspaces.length === 0 ? <div className="workspace-empty">No saved workspaces yet.</div> : workspaces.map((workspace) => <button key={workspace.id} onClick={() => onRestore(workspace.id)}><span><strong>{workspace.name}</strong><em>{workspace.tabs.length} tabs · {workspace.splitEnabled ? "split layout" : "single pane"}</em></span><b>Restore</b></button>)}</div></div></aside>;
+function WorkspaceDrawer({ name, status, workspaces, onNameChange, onSave, onRestore, onClose, children }: { name: string; status: string; workspaces: WorkspaceSnapshot[]; onNameChange: (name: string) => void; onSave: () => void; onRestore: (id: string) => void; onClose: () => void; children: ReactNode }) {
+  return <aside className="workspace-drawer liquid-glass" aria-label="Saved workspaces"><header><div><p className="eyebrow">Local workspace snapshots</p><h2>Workspaces</h2></div><IconButton label="Close workspaces" onClick={onClose}><X size={15} /></IconButton></header><div className="workspace-drawer-content"><p>Save the current tabs, tab groups, and pane layout. A snapshot stores URLs and local group metadata only; it does not duplicate cookies, credentials, or page storage.</p><div className="workspace-save"><input value={name} onChange={(event) => onNameChange(event.target.value)} placeholder="Workspace name" aria-label="Workspace name" /><button className="primary-action" onClick={onSave}>Save snapshot</button></div>{status && <small className="workspace-status">{status}</small>}<div className="workspace-list">{workspaces.length === 0 ? <div className="workspace-empty">No saved workspaces yet.</div> : workspaces.map((workspace) => <button key={workspace.id} onClick={() => onRestore(workspace.id)}><span><strong>{workspace.name}</strong><em>{workspace.tabs.length} tabs · {workspace.groups?.length ?? 0} groups · {workspace.splitEnabled ? "split layout" : "single pane"}</em></span><b>Restore</b></button>)}</div>{children}</div></aside>;
+}
+
+function TabGroupPanel({ groups, activeTab, name, color, status, onNameChange, onColorChange, onCreate, onAssign, onToggle, onDelete }: { groups: BrowserTabGroup[]; activeTab: BrowserTabState | null; name: string; color: TabGroupColor; status: string; onNameChange: (value: string) => void; onColorChange: (value: TabGroupColor) => void; onCreate: () => void; onAssign: (groupId?: string) => void; onToggle: (id: string) => void; onDelete: (id: string) => void }) {
+  return <section className="tab-group-panel" aria-label="Tab groups"><p className="eyebrow">Local tab groups</p><p>Group the active tab, collapse a focused set from the tab strip, and retain groups in saved workspaces.</p><div className="workspace-save"><input value={name} onChange={(event) => onNameChange(event.target.value)} placeholder="Group name" aria-label="Tab group name" /><select value={color} onChange={(event) => onColorChange(event.target.value as TabGroupColor)} aria-label="Tab group color">{TAB_GROUP_COLORS.map((value) => <option value={value} key={value}>{value}</option>)}</select><button className="secondary-action" disabled={!activeTab} onClick={onCreate}>Group active tab</button></div>{activeTab && <label className="tab-group-assignment">Active tab <select value={activeTab.groupId ?? ""} onChange={(event) => onAssign(event.target.value || undefined)}><option value="">No group</option>{groups.map((group) => <option value={group.id} key={group.id}>{group.name}</option>)}</select></label>}{status && <small className="workspace-status">{status}</small>}<div className="tab-group-list">{groups.length === 0 ? <div className="workspace-empty">No tab groups yet.</div> : groups.map((group) => <article key={group.id} className={`tab-group-record ${group.color}`}><div><i /><strong>{group.name}</strong><span>{group.tabIds.length} tab{group.tabIds.length === 1 ? "" : "s"} · {group.collapsed ? "collapsed" : "expanded"}</span></div><div><button className="secondary-action" onClick={() => onToggle(group.id)}>{group.collapsed ? "Expand" : "Collapse"}</button><button className="secondary-action" onClick={() => onDelete(group.id)}>Remove</button></div></article>)}</div></section>;
 }
 
 function CommandPalette({ query, onQueryChange, onClose, onExecute }: { query: string; onQueryChange: (query: string) => void; onClose: () => void; onExecute: (action: string) => void }) {
@@ -231,8 +253,8 @@ function OnboardingSheet({ candidates, status, passwordPreview, bookmarkPreview,
   return <section className="onboarding-backdrop" role="dialog" aria-modal="true" aria-label="Set up OpenStrawberry"><div className="onboarding-sheet liquid-glass"><p className="eyebrow">First launch · local profile</p><h1>Bring bookmarks, not a shadow copy.</h1><p>Choose a browser to import compatible bookmarks and its displayed default-search name, or start with a fresh OpenStrawberry profile. Passwords, sessions, cookies, payment data, account tokens, and history are never read during this setup.</p><div className="migration-list">{candidates.map((candidate) => <div key={candidate.id} className="migration-choice"><button disabled={!candidate.detected || Boolean(status)} onClick={() => onImport(candidate.id)}><span><strong>{candidate.label}</strong><em>{candidate.detected ? `${candidate.profileCount} profile${candidate.profileCount === 1 ? "" : "s"} detected · ${candidate.bookmarkImport === "supported" ? "bookmark import ready" : "export file required"}` : "Not detected"}</em></span><b>{candidate.detected ? "Select" : "Unavailable"}</b></button>{candidate.detected && <button className="secondary-action password-export-action" disabled={Boolean(status)} onClick={() => onSelectPasswordExport(candidate.id)}>Review exported password CSV</button>}{candidate.detected && candidate.bookmarkImport === "export-file-required" && <button className="secondary-action password-export-action" disabled={Boolean(status)} onClick={() => onSelectBookmarkExport(candidate.id)}>Review exported bookmarks HTML</button>}</div>)}</div>{status && <p className="migration-status">{status}</p>}<button className="secondary-action fresh-profile" onClick={onFresh}>Start with a fresh local profile</button><small>Passwords and Firefox/Safari bookmarks require separate user-selected export-file review steps. OpenStrawberry never reads browser password databases, cookies, sessions, payment data, account tokens, settings, or history.</small></div></section>;
 }
 
-function Tab({ tab, active, onActivate, onClose }: { tab: BrowserTabState; active: boolean; onActivate: () => void; onClose: () => void }) {
-  return <div className={`browser-tab ${active ? "selected" : ""}`} draggable onDragStart={(event) => event.dataTransfer.setData("application/x-openstrawberry-tab", tab.id)}><button className="tab-target" onClick={onActivate}><span className={tab.isLoading ? "tab-spinner" : "tab-dot"} /><span>{tab.title || "New tab"}</span></button><button className="tab-close" onClick={onClose} aria-label={`Close ${tab.title || "tab"}`}><X size={13} /></button></div>;
+function Tab({ tab, group, active, onActivate, onClose }: { tab: BrowserTabState; group?: BrowserTabGroup; active: boolean; onActivate: () => void; onClose: () => void }) {
+  return <div className={`browser-tab ${active ? "selected" : ""} ${group ? "grouped" : ""}`} draggable onDragStart={(event) => event.dataTransfer.setData("application/x-openstrawberry-tab", tab.id)}><button className="tab-target" onClick={onActivate}><span className={tab.isLoading ? "tab-spinner" : "tab-dot"} style={group && !tab.isLoading ? { background: GROUP_COLORS[group.color] } : undefined} /><span>{tab.title || "New tab"}</span></button><button className="tab-close" onClick={onClose} aria-label={`Close ${tab.title || "tab"}`}><X size={13} /></button></div>;
 }
 
 function EmptyPane({ onCreate }: { onCreate: () => void }) {

@@ -1,6 +1,6 @@
 /* OpenStrawberry preload: typed browser controls only; no raw vault, filesystem, or Node access enters the renderer. */
 import { contextBridge, ipcRenderer } from "electron";
-import type { BrowserCommand, BrowserPaneId, BrowserSnapshot, BrowserViewport, WorkspaceSnapshot } from "../shared/browser.js";
+import type { BrowserCommand, BrowserPaneId, BrowserSnapshot, BrowserViewport, TabGroupColor, WorkspaceSnapshot } from "../shared/browser.js";
 import type { MediaCommand, MediaState } from "../shared/media.js";
 import type { AgentProfileInput, AgentProfileSummary, LocalCliStatus } from "../shared/agent.js";
 import type { OrchestrationPlan, OrchestrationRequest } from "../shared/orchestration.js";
@@ -18,6 +18,10 @@ contextBridge.exposeInMainWorld("openStrawberry", {
     setViewport: (viewport: BrowserViewport): Promise<BrowserSnapshot | undefined> => ipcRenderer.invoke("browser:set-viewport", viewport),
     setSplit: (enabled: boolean): Promise<BrowserSnapshot | undefined> => ipcRenderer.invoke("browser:set-split", enabled),
     setActivePane: (paneId: BrowserPaneId): Promise<BrowserSnapshot | undefined> => ipcRenderer.invoke("browser:set-active-pane", paneId),
+    createTabGroup: (input: { name: string; color: TabGroupColor; tabIds: string[] }): Promise<BrowserSnapshot | undefined> => ipcRenderer.invoke("browser:create-tab-group", input),
+    assignTabGroup: (input: { tabId: string; groupId?: string }): Promise<BrowserSnapshot | undefined> => ipcRenderer.invoke("browser:assign-tab-group", input),
+    toggleTabGroup: (id: string): Promise<BrowserSnapshot | undefined> => ipcRenderer.invoke("browser:toggle-tab-group", id),
+    deleteTabGroup: (id: string): Promise<BrowserSnapshot | undefined> => ipcRenderer.invoke("browser:delete-tab-group", id),
     revealDownload: (id: string): Promise<boolean> => ipcRenderer.invoke("browser:reveal-download", id),
     toggleReaderMode: (): Promise<boolean> => ipcRenderer.invoke("browser:toggle-reader"),
     onState: (listener: (snapshot: BrowserSnapshot) => void): (() => void) => { const handler = (_event: Electron.IpcRendererEvent, snapshot: BrowserSnapshot) => listener(snapshot); ipcRenderer.on("browser:state", handler); return () => ipcRenderer.removeListener("browser:state", handler); }

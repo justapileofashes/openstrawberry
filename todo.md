@@ -31,7 +31,7 @@
 - [ ] Add manual export-file imports for Firefox and Safari bookmarks/settings, plus a user-scoped history import policy.
 - [x] Add a review-first manual HTML bookmark import for Firefox and Safari exports without reading `places.sqlite` or Safari’s `Bookmarks.plist`.
 - [x] Add named workspace snapshots that restore bounded tab URLs, split layout, and active pane from local app-owned storage.
-- [ ] Add tab-group naming, colors, collapse behavior, and snapshot filtering.
+- [x] Add tab-group naming, colors, collapse behavior, and snapshot filtering.
 
 ## Browser productivity and control surfaces
 

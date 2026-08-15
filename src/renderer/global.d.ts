@@ -1,5 +1,5 @@
 import type { AgentProfileInput, AgentProfileSummary, LocalCliStatus } from "../shared/agent";
-import type { BrowserCommand, BrowserPaneId, BrowserSnapshot, BrowserViewport, WorkspaceSnapshot } from "../shared/browser";
+import type { BrowserCommand, BrowserPaneId, BrowserSnapshot, BrowserViewport, TabGroupColor, WorkspaceSnapshot } from "../shared/browser";
 import type { MediaCommand, MediaState } from "../shared/media";
 import type { OrchestrationPlan, OrchestrationRequest } from "../shared/orchestration";
 import type { AgentRunRequest, AgentRunResult } from "../shared/agent-run";
@@ -18,6 +18,10 @@ declare global {
         setViewport: (viewport: BrowserViewport) => Promise<BrowserSnapshot | undefined>;
         setSplit: (enabled: boolean) => Promise<BrowserSnapshot | undefined>;
         setActivePane: (paneId: BrowserPaneId) => Promise<BrowserSnapshot | undefined>;
+        createTabGroup: (input: { name: string; color: TabGroupColor; tabIds: string[] }) => Promise<BrowserSnapshot | undefined>;
+        assignTabGroup: (input: { tabId: string; groupId?: string }) => Promise<BrowserSnapshot | undefined>;
+        toggleTabGroup: (id: string) => Promise<BrowserSnapshot | undefined>;
+        deleteTabGroup: (id: string) => Promise<BrowserSnapshot | undefined>;
         revealDownload: (id: string) => Promise<boolean>;
         toggleReaderMode: () => Promise<boolean>;
         onState: (listener: (snapshot: BrowserSnapshot) => void) => () => void;
