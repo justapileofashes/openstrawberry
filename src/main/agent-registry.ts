@@ -23,6 +23,15 @@ export class AgentRegistry {
   public constructor(private readonly profileFile: string, private readonly vaultFile: string) { this.load(); }
 
   public list(): AgentProfileSummary[] { return [...this.profiles.values()]; }
+  public resolveProviderCredential(id: string): { profile: AgentProfileSummary; apiKey: string } {
+    const profile = this.profiles.get(id);
+    if (!profile) throw new Error("The requested agent profile does not exist.");
+    if (profile.executor !== "provider") throw new Error("This profile is configured for a local CLI rather than a provider API.");
+    const encrypted = this.encryptedVault[id];
+    if (!encrypted || profile.credentialStatus !== "ready") throw new Error("Configure a local API key for this agent before running it.");
+    if (!safeStorage.isEncryptionAvailable()) throw new Error("Secure operating-system encryption is unavailable, so this credential cannot be used.");
+    return { profile, apiKey: safeStorage.decryptString(Buffer.from(encrypted, "base64")) };
+  }
 
   public save(input: AgentProfileInput): AgentProfileSummary {
     if (!ROLES.includes(input.role)) throw new Error("Unsupported agent role.");

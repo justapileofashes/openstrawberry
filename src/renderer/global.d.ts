@@ -2,6 +2,7 @@ import type { AgentProfileInput, AgentProfileSummary, LocalCliStatus } from "../
 import type { BrowserCommand, BrowserPaneId, BrowserSnapshot, BrowserViewport } from "../shared/browser";
 import type { MediaCommand, MediaState } from "../shared/media";
 import type { OrchestrationPlan, OrchestrationRequest } from "../shared/orchestration";
+import type { AgentRunRequest, AgentRunResult } from "../shared/agent-run";
 
 declare global {
   interface Window {
@@ -19,7 +20,7 @@ declare global {
         onState: (listener: (snapshot: BrowserSnapshot) => void) => () => void;
       };
       media: { state: () => Promise<MediaState | undefined>; command: (command: MediaCommand) => Promise<MediaState | undefined> };
-      agents: { list: () => Promise<AgentProfileSummary[]>; save: (input: AgentProfileInput) => Promise<AgentProfileSummary | undefined>; detectLocalClis: () => Promise<LocalCliStatus[]> };
+      agents: { list: () => Promise<AgentProfileSummary[]>; save: (input: AgentProfileInput) => Promise<AgentProfileSummary | undefined>; detectLocalClis: () => Promise<LocalCliStatus[]>; runProvider: (request: Omit<AgentRunRequest, "context">) => Promise<AgentRunResult> };
       orchestrator: { createPlan: (request: OrchestrationRequest) => Promise<OrchestrationPlan> };
       app: { version: () => Promise<string> };
     };

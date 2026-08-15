@@ -5,6 +5,7 @@ import type { BrowserPaneId, BrowserSnapshot, BrowserTabState } from "../shared/
 import { defaultAgentProfiles, type AgentProfileInput, type AgentProfileSummary, type LocalCliStatus } from "../shared/agent";
 import { EMPTY_MEDIA_STATE, type MediaCommand, type MediaState } from "../shared/media";
 import type { OrchestrationPlan } from "../shared/orchestration";
+import type { AgentRunResult } from "../shared/agent-run";
 
 const EMPTY_SNAPSHOT: BrowserSnapshot = { activeTabId: null, activePaneId: "primary", splitEnabled: false, panes: [{ id: "primary", tabId: null }, { id: "secondary", tabId: null }], tabs: [], downloads: [] };
 
@@ -151,6 +152,9 @@ function AgentRail({ activeView, onChange, onClose, profiles, localClis, sourceT
   const [draft, setDraft] = useState<AgentProfileInput | null>(null);
   const [apiKey, setApiKey] = useState("");
   const [status, setStatus] = useState("");
+  const [runPrompt, setRunPrompt] = useState("Summarize the selected browser context and recommend the next verifiable step.");
+  const [runResult, setRunResult] = useState<AgentRunResult | null>(null);
+  const [isRunning, setIsRunning] = useState(false);
 
   useEffect(() => {
     if (!selected) return;
@@ -176,13 +180,32 @@ function AgentRail({ activeView, onChange, onClose, profiles, localClis, sourceT
     void window.openStrawberry.orchestrator.createPlan({ objective: "Coordinate the selected browser context", sourceTabCount, availableRoles }).then(onPlan);
   };
 
+  const startProviderRun = () => {
+    if (!selected || selected.executor !== "provider" || selected.credentialStatus !== "ready") {
+      setStatus("Configure a ready provider binding before starting a run.");
+      return;
+    }
+    setIsRunning(true);
+    setRunResult(null);
+    void window.openStrawberry.agents.runProvider({ agentId: selected.id, prompt: runPrompt }).then((result) => {
+      setRunResult(result);
+      setIsRunning(false);
+      onChange("runs");
+    }).catch((error: unknown) => {
+      setRunResult({ agentId: selected.id, provider: selected.provider, model: selected.model, text: "", startedAt: Date.now(), completedAt: Date.now(), status: "failed", error: error instanceof Error ? error.message : "The agent run failed." });
+      setIsRunning(false);
+      onChange("runs");
+    });
+  };
+
   return <aside className="agent-rail liquid-glass">
     <header><div><p className="eyebrow">OpenStrawberry control plane</p><h2>Companion</h2></div><IconButton label="Close agents" onClick={onClose}><PanelRightClose size={15} /></IconButton></header>
     <nav className="agent-tabs" aria-label="Agent control plane">{(["agents", "orchestrate", "runs"] as const).map((view) => <button key={view} className={activeView === view ? "selected" : ""} onClick={() => onChange(view)}>{view}</button>)}</nav>
     {activeView === "agents" && <section className="agent-content"><p className="eyebrow">Specialist registry</p>{profiles.map((agent) => <button className={`agent-card agent-select ${selected?.id === agent.id ? "selected" : ""}`} key={agent.id} onClick={() => setSelectedId(agent.id)}><div><strong>{agent.name}</strong><span>{agent.role} · {agent.provider}</span></div><span className="status">{agent.credentialStatus === "ready" ? "Ready" : agent.credentialStatus === "unavailable" ? "Unavailable" : "Set key"}</span></button>)}
       {draft && <div className="agent-editor"><p className="eyebrow">Agent binding</p><label>Name<input value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} /></label><label>Provider<input value={draft.provider} onChange={(event) => setDraft({ ...draft, provider: event.target.value })} placeholder="OpenAI, Anthropic, OpenRouter…" /></label><label>Model<input value={draft.model} onChange={(event) => setDraft({ ...draft, model: event.target.value })} placeholder="Model identifier" /></label><label>Base URL <span>optional</span><input value={draft.baseUrl ?? ""} onChange={(event) => setDraft({ ...draft, baseUrl: event.target.value })} placeholder="https://…" /></label><label>Executor<select value={draft.executor} onChange={(event) => setDraft({ ...draft, executor: event.target.value as AgentProfileInput["executor"] })}><option value="provider">Provider API</option><option value="local-cli">Local coding CLI</option></select></label>{draft.executor === "local-cli" && <div className="cli-detection">{localClis.map((cli) => <span key={cli.command} className={cli.available ? "detected" : "missing"}>{cli.label}: {cli.available ? "found" : "not found"}</span>)}</div>}<label>Agent API key <span>stored locally</span><input type="password" value={apiKey} onChange={(event) => setApiKey(event.target.value)} placeholder={selected?.credentialStatus === "ready" ? "Saved — enter a value to replace" : "Paste a key for this agent only"} /></label><button className="secondary-action" onClick={saveProfile}><ShieldCheck size={14} /> Save local binding</button>{status && <p className="agent-status">{status}</p>}</div>}
+      <div className="run-composer"><p className="eyebrow">Explicit provider run</p><textarea value={runPrompt} onChange={(event) => setRunPrompt(event.target.value)} aria-label="Agent task prompt" /><button className="primary-action" onClick={startProviderRun} disabled={isRunning || selected?.executor !== "provider" || selected?.credentialStatus !== "ready"}>{isRunning ? "Awaiting provider…" : "Review and run"}</button><p>OpenStrawberry will ask for native confirmation before sending this task and selected URL references.</p></div>
     </section>}
     {activeView === "orchestrate" && <section className="agent-content"><p className="eyebrow">Complex task orchestration</p><h3>Delegate with a visible plan.</h3><p className="muted">The Orchestrator creates a reviewable handoff graph from selected tabs. It does not send prompts or expose credentials until a future explicit-run step is approved.</p><button className="primary-action" onClick={createPlan}><Sparkles size={14} /> Create orchestration plan</button><div className="orchestration-note"><ShieldCheck size={15} /><span>Each specialist references its own local credential binding and receives only the context named in its step.</span></div>{plan && <div className="plan-preview"><p className="eyebrow">Draft plan · {plan.sourceTabCount} tabs</p>{plan.steps.map((step) => <div key={step.id} className="plan-step"><strong>{step.role}</strong><span>{step.title}</span><em>{step.contextPolicy}</em></div>)}{plan.warnings.map((warning) => <p className="plan-warning" key={warning}>{warning}</p>)}</div>}</section>}
-    {activeView === "runs" && <section className="agent-content"><p className="eyebrow">Active runs</p><div className="empty-runs"><Bot size={22} /><strong>No active runs</strong><span>Configure the specialists, inspect an orchestration draft, and approve a future execution adapter to begin.</span></div></section>}
+    {activeView === "runs" && <section className="agent-content"><p className="eyebrow">Run result</p>{isRunning && <div className="empty-runs"><Bot size={22} /><strong>Provider run in progress</strong><span>The task is executing through the selected agent’s own local credential binding.</span></div>}{!isRunning && !runResult && <div className="empty-runs"><Bot size={22} /><strong>No recent runs</strong><span>Choose a configured provider agent, then use Review and run to create a deliberate local execution.</span></div>}{runResult && <div className="run-result"><div><strong>{runResult.status === "completed" ? "Completed" : "Not completed"}</strong><span>{runResult.provider} · {runResult.model}</span></div>{runResult.status === "completed" ? <pre>{runResult.text}</pre> : <p>{runResult.error}</p>}</div>}</section>}
   </aside>;
 }

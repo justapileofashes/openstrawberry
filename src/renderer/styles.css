@@ -99,6 +99,10 @@ button:disabled { cursor: not-allowed; opacity: .35; }
 .cli-detection .detected { color: #e7e9eb; }
 .cli-detection .missing { color: #727a80; }
 .agent-status { margin: 8px 0 0; color: #9fa6ab; font-size: 10px; line-height: 1.4; }
+.run-composer { display: grid; gap: 7px; margin-top: 14px; border: 1px solid rgba(255, 255, 255, .12); border-radius: 8px; background: rgba(0, 0, 0, .24); padding: 10px; }
+.run-composer textarea { min-height: 72px; width: 100%; resize: vertical; border: 1px solid rgba(255, 255, 255, .1); border-radius: 6px; outline: none; background: rgba(0, 0, 0, .36); padding: 8px; color: #e8ebed; font: 11px/1.45 inherit; }
+.run-composer textarea:focus { border-color: rgba(255, 255, 255, .38); box-shadow: 0 0 0 3px rgba(255, 255, 255, .05); }
+.run-composer p:last-child { margin: 0; color: #7f878d; font-size: 9px; line-height: 1.4; }
 .secondary-action { width: 100%; margin-top: 14px; background: rgba(255, 255, 255, .06); color: #e8eaec; }
 .orchestration-note { display: flex; gap: 8px; margin-top: 14px; border: 1px solid rgba(255, 255, 255, .1); border-radius: 7px; background: rgba(0, 0, 0, .2); padding: 10px; color: #a8aeb3; font-size: 11px; line-height: 1.4; }
 .plan-preview { display: grid; gap: 7px; margin-top: 14px; border: 1px solid rgba(255, 255, 255, .12); border-radius: 8px; background: rgba(0, 0, 0, .26); padding: 10px; }
@@ -107,6 +111,12 @@ button:disabled { cursor: not-allowed; opacity: .35; }
 .plan-step span { color: #b8bec2; font-size: 10px; line-height: 1.35; }
 .plan-step em { grid-column: 2; color: #757d83; font-family: ui-monospace, monospace; font-size: 8px; font-style: normal; }
 .plan-warning { margin: 2px 0 0; color: #aeb4b8; font-size: 10px; line-height: 1.4; }
+.run-result { margin-top: 10px; border: 1px solid rgba(255, 255, 255, .12); border-radius: 8px; background: rgba(0, 0, 0, .24); padding: 11px; }
+.run-result div { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.run-result strong { font-size: 12px; }
+.run-result span { color: #8b9399; font-family: ui-monospace, monospace; font-size: 8px; }
+.run-result pre, .run-result p { max-height: 270px; overflow: auto; margin: 10px 0 0; white-space: pre-wrap; color: #c9ced2; font: 11px/1.5 ui-monospace, monospace; }
+.run-result p { color: #d2a9a9; }
 .empty-runs { display: flex; align-items: center; flex-direction: column; gap: 7px; padding: 42px 12px; color: #7d858c; text-align: center; }
 .empty-runs strong { color: #e5e7e9; font-size: 12px; }
 .empty-runs span { max-width: 190px; font-size: 11px; line-height: 1.5; }

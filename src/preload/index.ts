@@ -4,6 +4,7 @@ import type { BrowserCommand, BrowserPaneId, BrowserSnapshot, BrowserViewport } 
 import type { MediaCommand, MediaState } from "../shared/media.js";
 import type { AgentProfileInput, AgentProfileSummary, LocalCliStatus } from "../shared/agent.js";
 import type { OrchestrationPlan, OrchestrationRequest } from "../shared/orchestration.js";
+import type { AgentRunRequest, AgentRunResult } from "../shared/agent-run.js";
 
 contextBridge.exposeInMainWorld("openStrawberry", {
   browser: {
@@ -25,7 +26,8 @@ contextBridge.exposeInMainWorld("openStrawberry", {
   agents: {
     list: (): Promise<AgentProfileSummary[]> => ipcRenderer.invoke("agents:list"),
     save: (input: AgentProfileInput): Promise<AgentProfileSummary | undefined> => ipcRenderer.invoke("agents:save", input),
-    detectLocalClis: (): Promise<LocalCliStatus[]> => ipcRenderer.invoke("agents:detect-local-clis")
+    detectLocalClis: (): Promise<LocalCliStatus[]> => ipcRenderer.invoke("agents:detect-local-clis"),
+    runProvider: (request: Omit<AgentRunRequest, "context">): Promise<AgentRunResult> => ipcRenderer.invoke("agents:run-provider", request)
   },
   orchestrator: {
     createPlan: (request: OrchestrationRequest): Promise<OrchestrationPlan> => ipcRenderer.invoke("orchestrator:create-plan", request)

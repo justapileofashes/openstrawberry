@@ -103,6 +103,7 @@ export class BrowserManager {
   public async mediaState(): Promise<MediaState> { return this.executeMediaCommand({ action: "refresh" }); }
   public async mediaCommand(command: MediaCommand): Promise<MediaState> { return this.executeMediaCommand(command); }
   public snapshot(): BrowserSnapshot { return { activeTabId: this.panes[this.activePaneId].tabId, activePaneId: this.activePaneId, splitEnabled: this.splitEnabled, panes: PANE_IDS.map((id) => ({ id, tabId: this.panes[id].tabId })), tabs: [...this.tabs.values()].map((tab) => tab.state), downloads: this.downloads }; }
+  public selectedContextUrls(): string[] { return PANE_IDS.map((paneId) => this.panes[paneId].tabId).filter((id): id is string => Boolean(id)).map((id) => this.tabs.get(id)?.state.url ?? "").filter((url) => Boolean(url)); }
   public destroy(): void { for (const tab of this.tabs.values()) { this.window.removeBrowserView(tab.view); if (!tab.view.webContents.isDestroyed()) tab.view.webContents.close(); } this.tabs.clear(); }
   private observeTab(id: string, tab: TabRuntime): void {
     const refresh = () => this.updateState(id); const wc = tab.view.webContents;
