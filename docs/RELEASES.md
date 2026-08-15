@@ -16,6 +16,20 @@ OpenStrawberry installers will be published only through the repository’s [Git
 | Debian/Ubuntu Linux | `OpenStrawberry-<version>-linux-amd64.deb` | Install with your distribution package manager. |
 | Fedora/RHEL/openSUSE Linux | `OpenStrawberry-<version>-linux-x86_64.rpm` | Install with your distribution package manager. |
 
+## No-terminal installation and launch
+
+OpenStrawberry’s release experience is installer-first. Users should download one release file, open it with their normal graphical desktop, complete the installer, and then use the operating system’s normal app entry points. No terminal, package-manager command, or developer setup is required for a stable release.
+
+| Platform | One-time graphical install | Everyday launch |
+|---|---|---|
+| macOS | Double-click the signed DMG, then drag OpenStrawberry to Applications. macOS will verify the notarized app on first open. | Use Spotlight, Launchpad, Applications, Dock, or a pinned Dock icon. |
+| Windows | Double-click the signed `.exe` installer and accept the default per-user installation. The installer creates Start menu and desktop shortcuts. | Search **OpenStrawberry** from Start, select its Start-menu entry, or pin it to the taskbar. |
+| Debian/Ubuntu Linux | Double-click the signed `.deb` in the system software installer and select Install. | Search **OpenStrawberry** in the desktop app launcher, add it to favorites, or launch from its menu entry. |
+| Fedora/RHEL/openSUSE Linux | Double-click the signed `.rpm` in the system software installer and select Install. | Search **OpenStrawberry** in the desktop app launcher, add it to favorites, or launch from its menu entry. |
+| Portable Linux | Open the signed AppImage through the graphical file manager; desktop integration depends on the user’s distribution/AppImage integration. | Prefer the DEB or RPM whenever an app-launcher entry is important. |
+
+The Windows package is deliberately per-user and uses the stable native application identity `io.openstrawberry.browser`, so its Start menu, desktop shortcut, and taskbar pin refer to the same app installation rather than a temporary download path.
+
 ## Verify a release download
 
 Every stable release will attach `SHA256SUMS.txt` beside its installers. Download the installer and checksum file from the **same** GitHub Release, then verify the named asset before opening it.

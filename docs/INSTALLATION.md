@@ -16,6 +16,8 @@ Do not treat files shared through forks, pull requests, issue comments, chat mes
 
 See [`RELEASES.md`](RELEASES.md) for the future asset names, verification commands, and signing expectations.
 
+> **Desktop-app experience:** Stable installers are intended to be opened from the graphical desktop once. After that, OpenStrawberry launches from standard OS surfaces—Windows Start/taskbar, macOS Applications/Spotlight/Dock, or a Linux app launcher—without running terminal commands.
+
 ## Local test build
 
 ```bash

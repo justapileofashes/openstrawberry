@@ -8,6 +8,7 @@ import { ProviderRunner } from "./provider-runner.js";
 import { CliRunner } from "./cli-runner.js";
 import { MigrationManager } from "./migration-manager.js";
 import { createOrchestrationPlan } from "./orchestrator.js";
+import { DESKTOP_APP_ID, DESKTOP_APP_NAME } from "../shared/desktop-shell.js";
 import { parseAgentProfileInput, parseAgentRunRequest, parseMediaCommand, parseOrchestrationRequest, parseViewport, requireBoolean, requireBrowserId, requireCommand, requireIdentifier, requirePane, requireString } from "../shared/ipc-validation.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -19,6 +20,8 @@ let cliRunner: CliRunner | null = null;
 let migrationManager: MigrationManager | null = null;
 
 app.enableSandbox();
+app.setName(DESKTOP_APP_NAME);
+app.setAppUserModelId(DESKTOP_APP_ID);
 
 function assertTrustedRenderer(event: IpcMainInvokeEvent): void {
   if (!mainWindow || event.sender.id !== mainWindow.webContents.id) throw new Error("Rejected IPC request from an untrusted renderer.");
