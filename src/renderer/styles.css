@@ -161,6 +161,17 @@ button:disabled { cursor: not-allowed; opacity: .35; }
 .command-palette-list button:hover { background: rgba(255, 255, 255, .09); }
 .command-palette-list kbd { color: #858d93; font-family: ui-monospace, monospace; font-size: 9px; }
 .command-palette-list p { margin: 8px; color: #858d93; font-size: 11px; text-align: center; }
+.download-drawer { position: fixed; z-index: 20; top: 0; bottom: 0; left: 64px; display: flex; width: min(380px, calc(100vw - 80px)); flex-direction: column; border-right: 1px solid rgba(255, 255, 255, .15); background: rgba(20, 22, 24, .92); }
+.download-drawer header { display: flex; align-items: flex-start; justify-content: space-between; border-bottom: 1px solid rgba(255, 255, 255, .12); padding: 16px; }
+.download-drawer h2 { margin: 2px 0 0; font-size: 16px; letter-spacing: -.02em; }
+.download-drawer-content { display: grid; gap: 7px; overflow: auto; padding: 16px; }
+.download-record { display: grid; gap: 8px; border: 1px solid rgba(255, 255, 255, .1); border-radius: 8px; background: rgba(0, 0, 0, .22); padding: 10px; }
+.download-record strong, .download-record span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.download-record strong { font-size: 11px; }
+.download-record span { margin-top: 3px; color: #899198; font-size: 9px; }
+.download-record .secondary-action { margin-top: 0; padding: 7px; font-size: 10px; }
+.download-progress { height: 3px; overflow: hidden; border-radius: 4px; background: rgba(255, 255, 255, .1); }
+.download-progress i { display: block; height: 100%; border-radius: inherit; background: #e6e9eb; transition: width .2s ease-out; }
 .empty-runs { display: flex; align-items: center; flex-direction: column; gap: 7px; padding: 42px 12px; color: #7d858c; text-align: center; }
 .empty-runs strong { color: #e5e7e9; font-size: 12px; }
 .empty-runs span { max-width: 190px; font-size: 11px; line-height: 1.5; }

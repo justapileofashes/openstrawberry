@@ -35,6 +35,6 @@
 
 - [x] Add a keyboard-accessible command palette for navigation, tab, split, workspace, and Companion actions.
 - [x] Add keyboard shortcuts for address focus, tabs, split workspace, and command palette.
-- [ ] Add a visible download manager with per-item state and local reveal/open actions.
+- [x] Add a visible download manager with per-item state and main-process-only local reveal actions.
 - [ ] Add reader mode plus an explicitly configured tracker/ad blocking policy.
 - [ ] Add a permissions and agent-vault center with auditable local settings.

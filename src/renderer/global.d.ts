@@ -18,6 +18,7 @@ declare global {
         setViewport: (viewport: BrowserViewport) => Promise<BrowserSnapshot | undefined>;
         setSplit: (enabled: boolean) => Promise<BrowserSnapshot | undefined>;
         setActivePane: (paneId: BrowserPaneId) => Promise<BrowserSnapshot | undefined>;
+        revealDownload: (id: string) => Promise<boolean>;
         onState: (listener: (snapshot: BrowserSnapshot) => void) => () => void;
       };
       media: { state: () => Promise<MediaState | undefined>; command: (command: MediaCommand) => Promise<MediaState | undefined> };

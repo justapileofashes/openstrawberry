@@ -8,6 +8,7 @@ import type { OrchestrationPlan } from "../shared/orchestration";
 import type { AgentRunResult } from "../shared/agent-run";
 import type { BrowserId, BrowserMigrationCandidate, OnboardingState } from "../shared/migration";
 import { resolveBrowserShortcut } from "../shared/keyboard";
+import { downloadProgress } from "../shared/download";
 
 const EMPTY_SNAPSHOT: BrowserSnapshot = { activeTabId: null, activePaneId: "primary", splitEnabled: false, panes: [{ id: "primary", tabId: null }, { id: "secondary", tabId: null }], tabs: [], downloads: [] };
 const PALETTE_ACTIONS = [{ id: "new-tab", label: "New tab", hint: "⌘/Ctrl T" }, { id: "focus-address", label: "Focus address bar", hint: "⌘/Ctrl L" }, { id: "toggle-split", label: "Toggle split workspace", hint: "⌘/Ctrl Shift S" }, { id: "open-workspaces", label: "Open saved workspaces", hint: "" }, { id: "toggle-agents", label: "Toggle Companion", hint: "" }];
@@ -34,6 +35,7 @@ export function App() {
   const [workspaceStatus, setWorkspaceStatus] = useState("");
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [commandQuery, setCommandQuery] = useState("");
+  const [downloadDrawerOpen, setDownloadDrawerOpen] = useState(false);
   const primaryViewportRef = useRef<HTMLDivElement>(null);
   const secondaryViewportRef = useRef<HTMLDivElement>(null);
   const addressInputRef = useRef<HTMLInputElement>(null);
@@ -132,7 +134,7 @@ export function App() {
       <div className="side-actions">
         <button className="side-action active" aria-label="Browser"><Globe2 size={17} /></button>
         <button className={`side-action ${workspaceDrawerOpen ? "active" : ""}`} aria-label="Workspaces" onClick={() => setWorkspaceDrawerOpen((value) => !value)}><LayoutPanelTop size={17} /></button>
-        <button className="side-action" aria-label="Downloads"><Download size={17} /></button>
+        <button className={`side-action ${downloadDrawerOpen ? "active" : ""}`} aria-label="Downloads" onClick={() => setDownloadDrawerOpen((value) => !value)}><Download size={17} /></button>
         <button className="side-action" aria-label="Settings"><Settings2 size={17} /></button>
       </div>
       <button className="side-action command" aria-label="Open command palette" onClick={() => setCommandPaletteOpen(true)}><Command size={16} /></button>
@@ -171,6 +173,7 @@ export function App() {
       </section>
     </main>
     {commandPaletteOpen && <CommandPalette query={commandQuery} onQueryChange={setCommandQuery} onClose={() => setCommandPaletteOpen(false)} onExecute={executePaletteAction} />}
+    {downloadDrawerOpen && <DownloadDrawer downloads={browser.downloads} onReveal={(id) => void window.openStrawberry.browser.revealDownload(id)} onClose={() => setDownloadDrawerOpen(false)} />}
     {workspaceDrawerOpen && <WorkspaceDrawer name={workspaceName} status={workspaceStatus} workspaces={workspaces} onNameChange={setWorkspaceName} onSave={saveWorkspace} onRestore={restoreWorkspace} onClose={() => setWorkspaceDrawerOpen(false)} />}
     {onboarding && !onboarding.completed && <OnboardingSheet candidates={migrationCandidates} status={migrationStatus} onImport={importMigration} onFresh={completeFreshProfile} />}
   </div>;
@@ -183,6 +186,10 @@ function WorkspaceDrawer({ name, status, workspaces, onNameChange, onSave, onRes
 function CommandPalette({ query, onQueryChange, onClose, onExecute }: { query: string; onQueryChange: (query: string) => void; onClose: () => void; onExecute: (action: string) => void }) {
   const visibleActions = PALETTE_ACTIONS.filter((action) => action.label.toLowerCase().includes(query.trim().toLowerCase()));
   return <section className="command-palette-backdrop" role="dialog" aria-modal="true" aria-label="Command palette" onMouseDown={onClose}><div className="command-palette liquid-glass" onMouseDown={(event) => event.stopPropagation()}><div className="command-palette-input"><Command size={16} /><input autoFocus value={query} onChange={(event) => onQueryChange(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && visibleActions[0]) onExecute(visibleActions[0].id); }} placeholder="Search browser actions" aria-label="Search browser actions" /><button onClick={onClose} aria-label="Close command palette"><X size={14} /></button></div><div className="command-palette-list">{visibleActions.length ? visibleActions.map((action) => <button key={action.id} onClick={() => onExecute(action.id)}><span>{action.label}</span><kbd>{action.hint}</kbd></button>) : <p>No matching browser action.</p>}</div></div></section>;
+}
+
+function DownloadDrawer({ downloads, onReveal, onClose }: { downloads: BrowserSnapshot["downloads"]; onReveal: (id: string) => void; onClose: () => void }) {
+  return <aside className="download-drawer liquid-glass" aria-label="Downloads"><header><div><p className="eyebrow">Local download activity</p><h2>Downloads</h2></div><IconButton label="Close downloads" onClick={onClose}><X size={15} /></IconButton></header><div className="download-drawer-content">{downloads.length === 0 ? <div className="workspace-empty">No downloads in this session.</div> : downloads.map((download) => { const progress = downloadProgress(download.receivedBytes, download.totalBytes); return <article className="download-record" key={download.id}><div><strong>{download.filename}</strong><span>{download.state === "completed" ? "Completed" : download.state === "cancelled" ? "Cancelled" : progress === null ? "Downloading…" : `${progress}% downloaded`}</span></div>{download.state === "progressing" && <div className="download-progress"><i style={{ width: `${progress ?? 18}%` }} /></div>}{download.state === "completed" && <button className="secondary-action" onClick={() => onReveal(download.id)}>Reveal in folder</button>}</article>; })}</div></aside>;
 }
 
 function OnboardingSheet({ candidates, status, onImport, onFresh }: { candidates: BrowserMigrationCandidate[]; status: string; onImport: (browserId: BrowserId) => void; onFresh: () => void }) {

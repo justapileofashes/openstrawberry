@@ -34,6 +34,7 @@ ipcMain.handle("browser:ready", () => browserManager?.initialize()); ipcMain.han
 ipcMain.handle("workspace:list", () => browserManager?.listWorkspaceSnapshots() ?? []);
 ipcMain.handle("workspace:save", (_event, name: string) => browserManager?.saveWorkspaceSnapshot(name));
 ipcMain.handle("workspace:restore", (_event, id: string) => browserManager?.restoreWorkspaceSnapshot(id));
+ipcMain.handle("browser:reveal-download", (_event, id: string) => browserManager?.revealDownload(id) ?? false);
 ipcMain.handle("media:state", () => browserManager?.mediaState());
 ipcMain.handle("media:command", (_event, command: MediaCommand) => browserManager?.mediaCommand(command));
 ipcMain.handle("agents:list", () => agentRegistry?.list() ?? []);

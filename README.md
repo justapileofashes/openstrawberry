@@ -14,6 +14,7 @@
 | Workspace continuity | Named local snapshots save and restore a bounded set of tab URLs, split layout, and active pane; they do not clone site cookies, credentials, or page storage |
 | Browser productivity | Keyboard-accessible command palette with actions for tabs, address focus, split workspace, saved workspaces, and the Companion; supports Ctrl on Windows/Linux and Command on macOS |
 | Media deck | Detect compatible HTML video in the selected tab and expose play, pause, seek, mute, volume, and browser-native picture-in-picture commands |
+| Downloads | Session download panel with progress and completion state; completed files can be revealed through a main-process action without exposing local paths to the renderer |
 | Agent control plane | Separate local agent profiles, per-agent encrypted credential bindings when operating-system encryption is available, local CLI discovery, and review-first handoff planning |
 | Agent execution | Main-process-only OpenAI-compatible and Anthropic Messages provider calls, plus user-approved Codex, Claude Code, and OpenCode local runs; raw credentials are not exposed to the renderer |
 | First launch | Detects requested browser families; allows a user-approved Chromium bookmark and displayed default-search-name import, or a fresh local profile |

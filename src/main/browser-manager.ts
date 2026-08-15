@@ -19,6 +19,7 @@ export class BrowserManager {
     secondary: { tabId: null, viewport: { paneId: "secondary", x: 0, y: 0, width: 0, height: 0 } }
   };
   private readonly downloads: BrowserDownloadState[] = [];
+  private readonly downloadPaths = new Map<string, string>();
   private activePaneId: BrowserPaneId = "primary";
   private splitEnabled = false;
   private initialized = false;
@@ -104,6 +105,13 @@ export class BrowserManager {
   public async mediaCommand(command: MediaCommand): Promise<MediaState> { return this.executeMediaCommand(command); }
   public snapshot(): BrowserSnapshot { return { activeTabId: this.panes[this.activePaneId].tabId, activePaneId: this.activePaneId, splitEnabled: this.splitEnabled, panes: PANE_IDS.map((id) => ({ id, tabId: this.panes[id].tabId })), tabs: [...this.tabs.values()].map((tab) => tab.state), downloads: this.downloads }; }
   public selectedContextUrls(): string[] { return PANE_IDS.map((paneId) => this.panes[paneId].tabId).filter((id): id is string => Boolean(id)).map((id) => this.tabs.get(id)?.state.url ?? "").filter((url) => Boolean(url)); }
+  public revealDownload(id: string): boolean {
+    const record = this.downloads.find((download) => download.id === id);
+    const filePath = this.downloadPaths.get(id);
+    if (!record || record.state !== "completed" || !filePath) return false;
+    shell.showItemInFolder(filePath);
+    return true;
+  }
   public listWorkspaceSnapshots(): WorkspaceSnapshot[] { return this.readWorkspaceSnapshots().sort((left, right) => right.createdAt - left.createdAt); }
   public saveWorkspaceSnapshot(name: string): WorkspaceSnapshot {
     const snapshot: WorkspaceSnapshot = { id: randomUUID(), name: validateWorkspaceName(name), createdAt: Date.now(), tabs: [...this.tabs.values()].map((tab) => ({ id: tab.state.id, url: tab.state.url || "https://example.com" })), panes: PANE_IDS.map((id) => ({ id, tabId: this.panes[id].tabId })), activePaneId: this.activePaneId, splitEnabled: this.splitEnabled };
@@ -157,6 +165,7 @@ export class BrowserManager {
   }
   private trackDownload(item: Electron.DownloadItem): void {
     const record: BrowserDownloadState = { id: randomUUID(), filename: item.getFilename(), receivedBytes: item.getReceivedBytes(), totalBytes: item.getTotalBytes(), state: "progressing" };
+    this.downloadPaths.set(record.id, item.getSavePath());
     this.downloads.unshift(record);
     item.on("updated", () => { record.receivedBytes = item.getReceivedBytes(); record.totalBytes = item.getTotalBytes(); this.emit(this.snapshot()); });
     item.once("done", (_event, state) => { record.state = state === "completed" ? "completed" : "cancelled"; this.emit(this.snapshot()); });
