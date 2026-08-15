@@ -20,4 +20,4 @@
 - [x] Add a local encrypted per-agent credential registry and local coding-CLI detection.
 - [x] Add a visible review-first multi-agent orchestration plan with scoped handoff steps.
 - [x] Add an audited provider execution adapter with main-process credential use, HTTPS-only calls, bounded requests, native approval, and redacted renderer results.
-- [ ] Add audited local coding-CLI execution adapters behind explicit approval controls.
+- [x] Add audited explicit-approval local execution adapters for Codex, Claude Code, and OpenCode; keep Qwen Code and Kimi Code detection-only pending additional protocol verification.

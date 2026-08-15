@@ -29,3 +29,7 @@ OpenStrawberry will invoke local coding CLIs only through their documented nonin
 [5] OpenAI, [Chat Completions overview](https://developers.openai.com/api/reference/chat-completions/overview/).
 
 [6] Anthropic, [Messages API](https://platform.claude.com/docs/en/api/messages).
+
+## OpenStrawberry local-CLI safety boundary
+
+The first local execution adapter intentionally supports only **Codex**, **Claude Code**, and **OpenCode**, because their non-interactive command forms have been documented and incorporated into unit-tested invocation contracts. Qwen Code and Kimi Code remain detectable in the UI but are not executable until their non-interactive operation and guardrails are verified. Every supported CLI run requires a fresh native approval, executes without a shell, starts in an app-owned per-agent workspace, has a 120-second wall-clock limit, bounds captured output to 1 MB, and redacts the configured key from returned output. A command’s own permissions still apply; users should review its locally installed version and configuration before approving a run.

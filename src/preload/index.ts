@@ -27,7 +27,8 @@ contextBridge.exposeInMainWorld("openStrawberry", {
     list: (): Promise<AgentProfileSummary[]> => ipcRenderer.invoke("agents:list"),
     save: (input: AgentProfileInput): Promise<AgentProfileSummary | undefined> => ipcRenderer.invoke("agents:save", input),
     detectLocalClis: (): Promise<LocalCliStatus[]> => ipcRenderer.invoke("agents:detect-local-clis"),
-    runProvider: (request: Omit<AgentRunRequest, "context">): Promise<AgentRunResult> => ipcRenderer.invoke("agents:run-provider", request)
+    runProvider: (request: Omit<AgentRunRequest, "context">): Promise<AgentRunResult> => ipcRenderer.invoke("agents:run-provider", request),
+    runCli: (request: Omit<AgentRunRequest, "context">): Promise<AgentRunResult> => ipcRenderer.invoke("agents:run-cli", request)
   },
   orchestrator: {
     createPlan: (request: OrchestrationRequest): Promise<OrchestrationPlan> => ipcRenderer.invoke("orchestrator:create-plan", request)

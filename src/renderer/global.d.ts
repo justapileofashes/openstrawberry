@@ -20,7 +20,7 @@ declare global {
         onState: (listener: (snapshot: BrowserSnapshot) => void) => () => void;
       };
       media: { state: () => Promise<MediaState | undefined>; command: (command: MediaCommand) => Promise<MediaState | undefined> };
-      agents: { list: () => Promise<AgentProfileSummary[]>; save: (input: AgentProfileInput) => Promise<AgentProfileSummary | undefined>; detectLocalClis: () => Promise<LocalCliStatus[]>; runProvider: (request: Omit<AgentRunRequest, "context">) => Promise<AgentRunResult> };
+      agents: { list: () => Promise<AgentProfileSummary[]>; save: (input: AgentProfileInput) => Promise<AgentProfileSummary | undefined>; detectLocalClis: () => Promise<LocalCliStatus[]>; runProvider: (request: Omit<AgentRunRequest, "context">) => Promise<AgentRunResult>; runCli: (request: Omit<AgentRunRequest, "context">) => Promise<AgentRunResult> };
       orchestrator: { createPlan: (request: OrchestrationRequest) => Promise<OrchestrationPlan> };
       app: { version: () => Promise<string> };
     };

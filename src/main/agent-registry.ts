@@ -32,6 +32,15 @@ export class AgentRegistry {
     if (!safeStorage.isEncryptionAvailable()) throw new Error("Secure operating-system encryption is unavailable, so this credential cannot be used.");
     return { profile, apiKey: safeStorage.decryptString(Buffer.from(encrypted, "base64")) };
   }
+  public resolveCliCredential(id: string): { profile: AgentProfileSummary; apiKey: string } {
+    const profile = this.profiles.get(id);
+    if (!profile) throw new Error("The requested agent profile does not exist.");
+    if (profile.executor !== "local-cli") throw new Error("This profile is configured for a provider API rather than a local CLI.");
+    const encrypted = this.encryptedVault[id];
+    if (!encrypted || profile.credentialStatus !== "ready") throw new Error("Configure a local credential for this CLI agent before running it.");
+    if (!safeStorage.isEncryptionAvailable()) throw new Error("Secure operating-system encryption is unavailable, so this credential cannot be used.");
+    return { profile, apiKey: safeStorage.decryptString(Buffer.from(encrypted, "base64")) };
+  }
 
   public save(input: AgentProfileInput): AgentProfileSummary {
     if (!ROLES.includes(input.role)) throw new Error("Unsupported agent role.");
