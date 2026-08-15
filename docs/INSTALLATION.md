@@ -17,9 +17,11 @@ pnpm package:dir
 
 This produces an unpacked local application appropriate for development validation. Full platform installers are built with `pnpm package` on the target platform or an appropriate release runner.
 
+> **Validated on Linux:** the unpacked `linux-unpacked` application and a native DEB package build both completed successfully for version `0.1.0`. The Linux package uses the OpenStrawberry PNG icon and matching desktop-entry naming. The successful DEB artifact is a smoke-test result only; it is not signed or published.
+
 ## Production release requirements
 
-Production macOS builds must be Developer ID signed and notarized. Production Windows builds require Authenticode signing. Linux release artifacts must publish versioned checksums and package/repository signing guidance. Update feeds are enabled only after signed artifacts and manifest verification are configured.
+Production macOS builds must be Developer ID signed and notarized. Production Windows builds require Authenticode signing. Linux release artifacts must publish versioned checksums and package/repository signing guidance. Update feeds are enabled only after signed artifacts and manifest verification are configured. AppImage/RPM and macOS/Windows installer generation must be revalidated on their intended release runners.
 
 The development package metadata uses a placeholder open-source maintainer address so Linux package generation can be exercised in CI. A verified release-maintainer address, platform signing identities, notarization credentials, and signed update feed must be configured before any public binary release.
 

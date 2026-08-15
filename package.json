@@ -1,6 +1,7 @@
 {
   "name": "openstrawberry",
   "productName": "OpenStrawberry",
+  "desktopName": "openstrawberry",
   "version": "0.1.0",
   "description": "A local-first agentic desktop browser.",
   "author": {"name": "OpenStrawberry contributors", "email": "opensource@openstrawberry.dev"},
@@ -65,6 +66,9 @@
       "createStartMenuShortcut": true
     },
     "linux": {
+      "icon": "resources/icon.png",
+      "synopsis": "A local-first agentic desktop browser",
+      "syncDesktopName": true,
       "target": [
         "AppImage",
         "deb",
