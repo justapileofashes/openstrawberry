@@ -43,13 +43,15 @@ passes. Planned work is never marked done.
 
 ## M3 — Obsidian Relay chrome
 
-- [ ] Left tab rail showing favicons only, with a safe globe fallback and loading indicator.
-- [ ] Top-bar workspace controls, icon-first, with hover and keyboard-focus text bubbles.
-- [ ] Icon-only Agent rail and Updates triggers, with accessible names retained.
-- [ ] Editable address bar.
-- [ ] Two-pane split browsing with drag-to-split tab targets and pane-local focus.
-- [ ] Responsive desktop chrome, full keyboard reachability, visible focus states.
-- [ ] Bundle Inter and JetBrains Mono as local woff2 rather than relying on installed fonts.
+- [x] Left tab rail showing favicons only, with a safe globe fallback, loading indicator, and audible marker.
+- [x] Top-bar workspace controls, icon-first, with hover and keyboard-focus text bubbles.
+- [x] Editable address bar that follows the focused tab unless the user is mid-edit.
+- [x] Two-pane split browsing with drag-to-split tab targets and pane-local focus.
+- [x] Visible focus states; active tab marked by a rail tick as well as tone, never colour alone.
+- [x] Documentation for architecture, security, releases, and updates.
+- [ ] Icon-only Updates trigger; the Agent, Downloads, and Settings triggers are present but inert until their milestones land.
+- [ ] Responsive behaviour below the minimum desktop width, and a full keyboard traversal pass.
+- [ ] Bundle Inter and JetBrains Mono as local woff2 rather than relying on installed fonts. The renderer must not fetch webfonts from a remote host.
 
 ## M4 — Browser fundamentals
 
