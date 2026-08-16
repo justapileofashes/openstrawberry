@@ -57,6 +57,7 @@
  - [x] Run clean application startup and native installer/package smoke checks in the available Linux environment, documenting platform-specific validation still required elsewhere.
  - [x] Synchronize the verified OpenStrawberry repository to the user-provided local `D:\docs\claudecodeprojects\openstrawberry` folder and retain it as a target for future requested app changes.
  - [x] Make the credential-vault filesystem permission assertion portable across Linux and Windows local development environments.
+ - [x] Build a local Windows NSIS installer executable and place it in the user’s local OpenStrawberry workspace without committing the binary to Git.
 
 ## Release validation
 
