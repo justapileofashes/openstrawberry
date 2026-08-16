@@ -17,10 +17,14 @@ passes. Planned work is never marked done.
 
 ## M1 — Trust boundary
 
-- [ ] Runtime validators for every renderer-reachable IPC payload.
-- [ ] Sender verification tying each channel to the trusted renderer frame.
-- [ ] Narrow typed preload bridge; no raw IPC, Node, filesystem, or shell reachable from the renderer.
-- [ ] Tests for malformed payloads, untrusted senders, and every validator branch.
+- [x] Runtime validators for every renderer-reachable IPC payload, with no coercion, bounded lengths, and prototype-pollution rejection.
+- [x] Sender verification tying each channel to the trusted renderer's WebContents and top-level frame.
+- [x] Route every channel through one router that verifies sender, validates payload, then redacts failures; no per-channel opt-out.
+- [x] Redact main-process errors so local paths, credentials, and stack frames never reach the renderer.
+- [x] Narrow typed preload bridge; no generic `invoke`, no renderer-controlled channel, no Node, filesystem, or shell access.
+- [x] Keep the preload self-contained: a sandboxed preload may only require `electron`, so shared contracts are type-only and channel names are compile-time pinned.
+- [x] Tests for malformed payloads, untrusted senders, subframe senders, remote origins, and error redaction.
+- [x] Validate: the renderer reads shell state over the hardened channel in a running app.
 
 ## M2 — Real browsing
 

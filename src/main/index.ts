@@ -1,6 +1,9 @@
 import { app, BrowserWindow, Menu, session, shell } from "electron";
 import { join } from "node:path";
-import { APP_ID, PROFILE_PARTITION } from "../shared/desktop-shell.js";
+import { IPC_CHANNELS, type ShellInfo } from "../shared/bridge.js";
+import { APP_ID, PROFILE_PARTITION, RELEASE_READY } from "../shared/desktop-shell.js";
+import { buildAllowedUrlPrefixes } from "./ipc-security.js";
+import { registerTrustedQuery, setTrustedRendererPolicy } from "./ipc-router.js";
 
 // Guest web content must never inherit Node. Enabling the sandbox before the
 // app is ready applies it to every renderer the process later creates.
@@ -40,6 +43,13 @@ function createWindow(): void {
 
   mainWindow = window;
 
+  // Bind the trust boundary to this exact WebContents before the renderer can
+  // reach any channel. Guest views get their own ids and so can never match.
+  setTrustedRendererPolicy({
+    trustedWebContentsId: window.webContents.id,
+    allowedUrlPrefixes: buildAllowedUrlPrefixes(DEV_SERVER_URL)
+  });
+
   window.once("ready-to-show", () => window.show());
 
   // The chrome itself must never navigate away or spawn native windows. Any
@@ -62,6 +72,20 @@ function createWindow(): void {
   }
 }
 
+function registerIpcHandlers(): void {
+  registerTrustedQuery(
+    IPC_CHANNELS.shellInfo,
+    (): ShellInfo => ({
+      platform: process.platform,
+      appVersion: app.getVersion(),
+      releaseReady: RELEASE_READY,
+      // Updates stay unavailable until signed artifacts and verified release
+      // metadata exist. This is deliberately not configurable at runtime.
+      updatesEnabled: false
+    })
+  );
+}
+
 void app.whenReady().then(() => {
   // Windows ships without the default File/Edit/View/Window menu while keeping
   // the native title-bar controls intact.
@@ -70,6 +94,7 @@ void app.whenReady().then(() => {
   denyAllPermissions(session.defaultSession);
   denyAllPermissions(session.fromPartition(PROFILE_PARTITION));
 
+  registerIpcHandlers();
   createWindow();
 
   app.on("activate", () => {
