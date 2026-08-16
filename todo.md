@@ -120,7 +120,7 @@
 - [x] Create a comprehensive Claude Code handoff covering the project architecture, security model, design system, inspirations, implementation status, testing, packaging, and next steps.
 - [x] Create a copy-ready Claude Code rebuild prompt that instructs a new coding agent how to reproduce and continue the complete OpenStrawberry project.
 - [x] Recover the interrupted local workspace by restoring deleted tracked source files without deleting or overwriting untracked local files.
-- [ ] Synchronize the WIP messaging, launch-default fix, and Claude Code handoff into the user-provided local workspace.
-- [ ] Validate the updated repository and local workspace before publishing the final changes.
+- [x] Synchronize the WIP messaging, launch-default fix, and Claude Code handoff into the user-provided local workspace.
+- [x] Validate the updated repository and local workspace before publishing the final changes.
 
 ## End of current task checklist
