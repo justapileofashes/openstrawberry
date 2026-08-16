@@ -1,113 +1,219 @@
-# Claude Code Rebuild Prompt — OpenStrawberry
+# Claude Code Prompt — Build OpenStrawberry From Scratch
 
-Copy the following prompt into Claude Code when you need a new coding agent to rebuild, audit, or continue OpenStrawberry.
+Copy everything below the divider into a new Claude Code session. The prompt assumes **there is no existing implementation to continue**. It is a complete build specification for recreating the project from an empty directory.
 
 ---
 
-You are continuing **OpenStrawberry**, an open-source, local-first desktop browser for macOS, Windows, and Linux. Treat this as a real Electron product, not a web mockup or a code-only agent tool. Preserve the current repository unless a change is explicitly required. Before editing, inspect `AGENTS.md` from the current directory upward, read the relevant source and tests, and check the root `todo.md`. Do not use destructive Git commands. Never erase unrelated user work.
+You are the principal engineer and design engineer for a new open-source desktop browser named **OpenStrawberry**. Build the product **from scratch** in this repository. Do not assume any pre-existing files, architecture, components, tests, or installer configuration exist. Begin by inspecting the directory and any `AGENTS.md` instructions. Then create a clear implementation plan, maintain a root `todo.md`, and execute the work in small tested milestones.
 
-## Product mission
+# 1. Product mission
 
-Build a browser that makes AI assistance feel native to browsing. The product is inspired by the **publicly observable workflow principles** of Strawberry Browser’s Companions: browser-native assistance, explicit selected context, planning before action, bounded delegation to specialists, visible background work, human approval before side effects, and local-first privacy. Do **not** claim or imitate undisclosed Strawberry internals. Implement transparent, original equivalents using Electron, Chromium BrowserViews, explicit permissions, and review-first orchestration.
+OpenStrawberry is a **local-first, cross-platform desktop browser** for macOS, Windows, and Linux. It is not a hosted website, mock browser, generic dashboard, or a code-agent wrapper. It must be a real browser application that users install normally, search by name, pin to a taskbar or dock, and use without terminal commands after installation.
 
-The project name is **OpenStrawberry**. The native application ID is `io.openstrawberry.browser`. The public repository is `https://github.com/justapileofashes/openstrawberry`.
+The browser should be inspired by the **publicly observable workflow patterns** of Strawberry Browser’s Companions: browser-native assistance, explicit selected context, planning before action, visible specialist delegation, review before side effects, persistent artifacts, and local-first privacy. Do not claim access to or reproduce proprietary Strawberry internals. Implement original, transparent equivalents.
 
-> **Current public posture:** OpenStrawberry is a work in progress. It has no signed, stable public installer. Keep prominent wording such as **“WORK IN PROGRESS — DO NOT DOWNLOAD YET”** in the README and do not publish or promote unsigned installer builds. Keep all latest-release download links disabled until signed artifacts and verified release metadata exist.
+The product name is **OpenStrawberry**. Use the stable desktop identity `io.openstrawberry.browser`.
 
-## Non-negotiable product requirements
+The public project is initially **work in progress**. The README and repository description must lead with:
 
-OpenStrawberry must be a proper searchable, pinnable desktop app installed through platform-native installers—not a website that happens to resemble a browser. The core browser needs real Chromium navigation, real embedded tabs, a browser address bar, loading state, history controls, downloads, session restore, split panes, persistent tab groups, and local workspaces.
+> **WORK IN PROGRESS — DO NOT DOWNLOAD YET.** OpenStrawberry is an active development build. Public installers are not stable or signed. Wait for a verified release announcement before installing anything.
 
-Use Electron BrowserViews for real web content. The React renderer is browser chrome only. Guest websites must never have Node access or a path to the app’s internals. Keep Chromium BrowserViews sandboxed, with context isolation enabled, Node integration disabled, restrictive permission handling, and a narrow validated IPC bridge.
+Do not publish, advertise, or link to unsigned installers as stable downloads. Document the intended release formats, but keep actual download buttons disabled until signed release artifacts exist.
 
-The initial blank tab must be `about:blank`, never `https://example.com`. Empty address input may resolve to `about:blank`; regular search text resolves to the configured Google search fallback. Explicit user navigation to `https://example.com` is still ordinary HTTPS browsing and must remain valid. Do not treat the placeholder migration as a general domain block.
+# 2. Technology choices
 
-## Visual and interaction direction: Obsidian Relay
+Build one desktop codebase with these technologies:
 
-Use the **Obsidian Relay** visual system. The style is monochrome, motion-aware, and selectively Liquid Glass:
-
-- Near-black browser chrome with clear white and gray text hierarchy.
-- Solid, readable page content areas; do not cover arbitrary web pages in low-contrast frosted effects.
-- Layered monochrome glass for controls, tab rail, address surface, Agent rail, update panel, migration and approval surfaces.
-- The left side is a favicon-only tab rail. Keep it icon-first and provide safe globe fallbacks when no HTTPS favicon can be loaded.
-- Workspace controls belong in the top bar. Compact controls use hover and keyboard-focus tooltip bubbles rather than persistent labels.
-- The Agent rail and Updates controls are icon-only. Do not restore their persistent text labels.
-- Motion and Liquid Glass are always part of the system; do not add Motion or Glass toggles.
-- Keep animation intentional, short, interruptible, and accessible. Preserve visible focus states and `prefers-reduced-motion` handling where practical.
-- The default Windows File, Edit, View, and Window application menu must be removed, while normal title-bar minimize, maximize, and close controls remain.
-
-The user originally asked for a monochrome Refero-style direction with smooth animation and Liquid Glass. The implementation should feel crafted and browser-native, not like a generic admin dashboard or chatbot.
-
-## Required architecture and security boundaries
-
-| Layer | Responsibilities | Strict boundary |
-|---|---|---|
-| Electron main process | BrowserViews, session/profile partitions, downloads, migration, media controls, updater, encrypted vault, provider calls, local coding CLIs | Trusted native boundary; owns secrets and OS/process access |
-| Preload bridge | Typed, minimal approved APIs for browser, agents, media, updates, and app state | No arbitrary Node, filesystem, shell, or unrestricted IPC access |
-| React renderer | Browser chrome, tab rail, top bar, split layout, Agent rail, Agent Control Panel, update panel | Never receives existing raw credentials, filesystem paths, or direct subprocess access |
-| BrowserView guest pages | Actual websites | Sandboxed; no Node integration; no renderer DOM access; strict navigation policy |
-| Shared contracts | Browser snapshots, runtime validators, agent types, provider and CLI protocols | Deterministic, security-critical, unit tested |
-
-Use runtime IPC validation for every renderer-reachable payload. Verify the sender is the expected trusted renderer. Never accept arbitrary browser schemes, shell commands, CLI executables, URLs that bypass policy, or unvalidated agent profiles.
-
-The shutdown sequence must remain destruction-safe. BrowserView cleanup happens on the BrowserWindow `close` event before window destruction. Removal must tolerate an already-destroyed parent window and be idempotent. Do not add unconditional late `removeBrowserView` calls to a `closed` callback.
-
-## Browser implementation requirements
-
-Use a persistent application-owned Chromium profile partition. The browser manager should own BrowserView creation, attachment/detachment, active-pane handling, viewport changes, navigation, title/favicon/loading/history state, downloads, privacy-state counters, tab groups, workspace snapshots, session persistence, and split panes.
-
-Persist only bounded browser metadata. Session/workspace records may include tab URLs, tab IDs, pane layout, active pane, split state, and tab-group metadata. They must not store or copy cookies, session tokens, account tokens, raw passwords, payment information, or agent keys.
-
-The migration wizard is consent-first. Chromium source detection can show user-selectable import sources. Firefox and Safari imports must rely on manual HTML bookmark exports, not direct access to browser databases. Password imports are reviewed CSV staging only, encrypted with the operating system, never automatically autofilled, and never exposed to agents. Never copy active cookies, sessions, passkeys, or account tokens.
-
-Tracker blocking must remain conservative and transparent, with per-site exceptions and visible bounded counters. Do not market it as a comprehensive blocker. Picture-in-picture and media controls must use supported HTML video/native capabilities only; do not bypass DRM, CAPTCHAs, platform controls, or site restrictions.
-
-## Agent and orchestration requirements
-
-Agents work as browser-native Companions. The user selects context and can inspect it. The system must show a plan before execution, identify side effects and costs, require approval when needed, make sub-agent delegation visible, and return artifacts with clear status. Do not create hidden “agent swarm” behavior.
-
-The Orchestrator creates a typed, reviewable graph for specialists such as Researcher, Coder, and Reviewer. It must preserve dependencies, context boundaries, approval points, and final handoffs. Deep autonomous execution is not an excuse to remove human review.
-
-The top-bar Agent Control Panel creates and edits individual agents. Each agent has a name, role, executor type, provider or local CLI selection, model, optional HTTPS base URL, and its own credential binding. Provider presets include OpenAI, Anthropic, OpenRouter, Moonshot AI, Qwen, OmniRoute, and OpenAI-compatible APIs. Local coding CLI support includes Codex, Claude Code, Qwen Code, Kimi Code, and OpenCode.
-
-Per-agent API keys are non-negotiable. The renderer may submit a newly entered key through the typed bridge but must never read an existing key. The main process stores keys with Electron `safeStorage` in a separate encrypted vault. Raw credentials must never appear in browser snapshots, logs, prompts, errors, artifacts, orchestration plans, renderer state, or test fixtures.
-
-Local CLI execution must remain allowlisted, bounded, main-process-only, and launched with a restricted environment. Do not introduce arbitrary executable paths, arbitrary shell commands, unrestricted inherited environment variables, or renderer-launched processes.
-
-## Updater and release requirements
-
-Use `electron-updater` with a GitHub Releases configuration, but leave it disabled until a signed stable release and verified metadata exist. The UI must accurately represent disabled, checking, available, downloading, downloaded, error, and explicit install/restart states. Users should be able to download and install an available signed update without manually redownloading once the channel is activated.
-
-Do not enable the updater or present public downloads for unsigned builds. A release requires platform-specific signing and verification: Authenticode on Windows, Developer ID signing and notarization on macOS, and signed/verified Linux artifacts with SHA-256 checksums. Windows NSIS, macOS DMG, Linux AppImage, DEB, and RPM assets have stable intended names; check `src/shared/desktop-shell.ts` and `package.json` before changing them.
-
-The Windows NSIS installer is one-click and per-user. Keep `allowToChangeInstallationDirectory` disabled because it is incompatible with one-click mode. Local artifacts under `release/` are ignored build outputs, not public releases.
-
-## Current source map
-
-Read these files before changing the relevant subsystem:
-
-| File | Purpose |
+| Concern | Required choice |
 |---|---|
-| `src/main/index.ts` | BrowserWindow lifecycle, IPC handlers, app menu, permission policy, updater startup |
-| `src/main/browser-manager.ts` | Real BrowserView tabs, splits, session persistence, groups, download/privacy/media behavior |
-| `src/main/agent-registry.ts` | Per-agent profiles and encrypted credentials |
-| `src/main/provider-runner.ts` | Main-process provider execution and error redaction |
-| `src/main/cli-runner.ts` | Local coding-CLI discovery and restricted execution |
-| `src/main/orchestrator.ts` | Review-first multi-agent planning graph |
-| `src/main/update-manager.ts` | Guarded signed-release updater lifecycle |
-| `src/preload/index.cts` | Packaged CommonJS preload bridge; do not convert back to ESM without validating sandboxed packaged Electron |
-| `src/renderer/App.tsx` | Browser chrome and panels |
-| `src/renderer/styles.css` | Obsidian Relay visual system |
-| `src/shared/navigation.ts` | Empty input, `about:blank`, HTTP(S), and scheme policy |
-| `src/shared/ipc-validation.ts` | Renderer input validation |
-| `docs/ARCHITECTURE.md` | Runtime ownership and trust boundaries |
-| `docs/OPENSTRAWBERRY_PLAN.md` | Full research-aligned product plan and inspiration mapping |
-| `docs/CLAUDE_CODE_HANDOFF.md` | Detailed current implementation handoff |
-| `docs/RELEASES.md` and `docs/UPDATES.md` | Release and updater restrictions |
+| Desktop runtime | Electron with the Chromium engine |
+| Language | TypeScript with strict type checking |
+| UI | React and Vite |
+| Package manager | pnpm with an exact, frozen lockfile |
+| Browser content | Real Electron `BrowserView` instances, not HTML mock panes |
+| Test runner | Vitest |
+| Packaging | electron-builder |
+| Mac installer | Universal DMG |
+| Windows installer | x64 NSIS one-click, per-user installer |
+| Linux packages | AppImage, DEB, and RPM |
 
-## Development workflow
+Use a clean Electron main/preload/renderer separation. Set `contextIsolation: true`, `nodeIntegration: false`, and `sandbox: true` for renderer and guest browser content. Compile the packaged preload as CommonJS (`.cjs`) so Electron’s sandboxed preload can load correctly in packaged builds.
 
-Use `pnpm`. Before committing any feature or fix, run:
+# 3. Design system: Obsidian Relay
+
+The visual direction is **Obsidian Relay**. The user requested a monochrome, highly polished, motion-forward, Liquid Glass system informed by contemporary Refero-style product design and modern browser workspaces. The product must feel crafted, dark, calm, and precise rather than like a generic admin interface.
+
+Use these design rules:
+
+1. Make the browser chrome near-black with crisp white and gray type hierarchy.
+2. Use selective, layered monochrome Liquid Glass on browser controls, compact toolbars, the tab rail, address surface, Agent rail, update panel, approval panels, and settings surfaces.
+3. Keep webpage content readable and content-first. Do not place an opaque designer layer over arbitrary websites.
+4. Put the tab rail on the **left**. Tabs are favicon-only icons with a safe globe fallback and loading indicator.
+5. Put workspace controls on the **top bar**, not in the left rail.
+6. Use icon-only compact controls whenever possible. Show concise text bubbles on hover and keyboard focus for accessibility and discoverability.
+7. The top-bar Agent rail control and Updates control must be icon-only. Do not show persistent labels on those controls.
+8. Motion and Liquid Glass are always part of the visual system. Do not add user-facing Motion or Glass toggles.
+9. Use short, interruptible transform/opacity transitions with strong easing. Respect `prefers-reduced-motion` for non-essential animation.
+10. Keep visible focus rings, keyboard navigation, readable contrast, and responsive layouts at a minimum desktop width.
+11. On Windows, remove the default Electron File/Edit/View/Window application menu while preserving the normal native minimize, maximize/restore, and close buttons.
+
+# 4. Security and trust boundaries
+
+Use this architecture exactly. Keep these responsibilities separate.
+
+| Layer | Owns | Must never own |
+|---|---|---|
+| Main process | BrowserViews, profile/session partitions, downloads, migration, agent credential vault, provider HTTP calls, local CLI processes, updater, native windows | Renderer presentation state |
+| Preload | A minimal typed API bridge | Arbitrary Node APIs, filesystem access, shell access, unvalidated IPC |
+| React renderer | Browser chrome, tabs, panes, Agent rail, settings, update UX | Raw credentials, direct subprocesses, local filesystem access |
+| Guest BrowserViews | Real website rendering | Node integration, OpenStrawberry DOM access, arbitrary app APIs |
+| Shared contracts | IPC validators, browser snapshots, protocol types, navigation policy | UI-only mutable state |
+
+All renderer-reachable IPC must validate both the trusted sender and every payload at runtime. Keep raw API keys, browser passwords, session tokens, and filesystem paths out of the renderer, browser snapshots, orchestration plans, logs, errors, artifacts, and tests.
+
+Use Electron `safeStorage` for encrypted credential values. Persist agent profile metadata separately from encrypted agent credential data. If operating-system encryption is unavailable, refuse to store the credential rather than falling back to plaintext.
+
+Guest tabs must be sandboxed. Deny permission requests by default. Do not permit arbitrary schemes; allow only HTTP(S) browser navigation plus the exact internal neutral page `about:blank`. Reject `file:`, `javascript:`, `data:`, and other unsafe user-entered schemes.
+
+# 5. Real browser requirements
+
+Create a `BrowserManager` in the main process. Every tab must be a real sandboxed `BrowserView` inside an app-owned persistent session partition. The renderer reports viewport bounds; the main process attaches the active BrowserViews to the BrowserWindow and detaches inactive ones.
+
+Implement the following browser features:
+
+- Create, activate, close, and navigate tabs.
+- Address bar with URL normalization and search fallback.
+- Empty address and first launch must open `about:blank`, **never `https://example.com`**.
+- Explicit user navigation to `https://example.com` must remain allowed; only implicit placeholder startup behavior is forbidden.
+- Back, forward, reload, and stop.
+- Loading, title, favicon, audible/media, history availability, and active-pane state.
+- Favicon-only left tab rail with an HTTPS-only favicon policy and safe globe fallback.
+- Split screen with two panes in the first milestone, tab assignment to panes, drag targets, and pane-local focus.
+- Persistent named tab groups with color, collapse state, and workspace snapshots.
+- Session restore that preserves bounded tab URLs, tab IDs, pane layout, split state, privacy preferences, and groups.
+- Session persistence must never copy cookies, account sessions, passkeys, payment information, raw browser passwords, or API keys.
+- Download state with a renderer-safe completion/reveal action owned by the main process.
+- Conservative tracker blocking with transparent counters and per-site exceptions. Do not claim comprehensive ad blocking.
+- Reader mode and keyboard shortcuts as local browser capabilities.
+- Media controls for compatible HTML video plus honest browser-native picture-in-picture fallback. Do not bypass DRM or website restrictions.
+
+Make BrowserView cleanup destruction-safe. On window shutdown, clean up BrowserViews during the BrowserWindow `close` lifecycle before the window is destroyed. BrowserView detachment must tolerate an already-destroyed parent window, be idempotent, and never throw `Object has been destroyed` during normal close. Test a packaged Windows build by launching it, requesting a normal close, and requiring a clean exit.
+
+# 6. First-launch migration and local privacy
+
+Implement a consent-first migration flow. It should detect suitable local browser sources but make the user explicitly select a browser, profile, and import categories. Support:
+
+- Reviewable Chromium bookmarks and displayed default-search-name import.
+- Manual Firefox and Safari HTML bookmark imports only. Do not read Firefox `places.sqlite` or Safari bookmark databases directly.
+- A separate reviewed password CSV staging flow encrypted with OS-backed storage.
+- A fresh local profile option.
+
+Never automatically migrate cookies, active login sessions, account tokens, passkeys, payment data, browser passwords, or extension binaries. Password staging must not autofill, sync, reveal existing raw values, or expose passwords to agents.
+
+# 7. Agents, providers, local coding CLIs, and orchestration
+
+The product has browser-native **Companions**, not just a model picker. The primary Agent rail should work with explicitly selected tab, pane, workspace, file, and artifact context. The user must be able to see, edit, revoke, and approve context before meaningful agent work begins.
+
+Build a review-first Orchestrator. It creates a typed task graph for roles such as Researcher, Coder, and Reviewer. It must expose dependencies, assigned context, intended artifacts, budgets, approval points, status, cancellation, and blocked/needs-user states. Do not hide multi-agent work behind opaque chat messages.
+
+Add a top-bar **Agent Control Panel**. It must let users create and edit agents with:
+
+- Name and role.
+- Executor type: provider API or supported local coding CLI.
+- Provider preset, model ID, optional HTTPS base URL, and separate per-agent credential.
+- A redacted credential status and an explicit remove/replace flow.
+
+Provider presets must include OpenAI, Anthropic, OpenRouter, Moonshot AI, Qwen, OmniRoute, and generic OpenAI-compatible endpoints. Support local coding CLI adapters for Codex, Claude Code, Qwen Code, Kimi Code, and OpenCode.
+
+Provider calls and CLI execution must stay in the main process. Local CLIs must be allowlisted, run with a restricted environment, have bounded inputs and execution policy, and never inherit arbitrary secrets. The renderer must never choose an arbitrary executable path or shell command.
+
+# 8. Updates and release plan
+
+Implement an in-app update panel and main-process update manager using `electron-updater` with GitHub Releases as the intended provider. It must show disabled, checking, available, downloading, downloaded, error, and explicit install/restart states.
+
+Keep the update channel **disabled** until the project has a signed stable release and verified update metadata. Do not silently download or install updates. When enabled later, users should explicitly download, then choose restart-and-install instead of manually redownloading an installer.
+
+Configure stable artifact names:
+
+| Platform | Planned artifact |
+|---|---|
+| macOS | `OpenStrawberry-mac-universal.dmg` |
+| Windows | `OpenStrawberry-win-x64.exe` |
+| Linux | `OpenStrawberry-linux-x86_64.AppImage` |
+| Linux | `OpenStrawberry-linux-amd64.deb` |
+| Linux | `OpenStrawberry-linux-x86_64.rpm` |
+
+Use one-click per-user Windows NSIS. Keep `allowToChangeInstallationDirectory` disabled because it is incompatible with one-click NSIS configuration. Do not claim signed releases until Authenticode signing, macOS Developer ID/notarization, Linux artifact verification, SHA-256 checksums, and release provenance are actually complete.
+
+# 9. Suggested file structure
+
+Create an intentional, testable file layout resembling this:
+
+```text
+src/
+  main/
+    index.ts
+    browser-manager.ts
+    agent-registry.ts
+    provider-runner.ts
+    cli-runner.ts
+    orchestrator.ts
+    migration-manager.ts
+    update-manager.ts
+    ipc-security.ts
+  preload/
+    index.cts
+  renderer/
+    App.tsx
+    styles.css
+    browser-chrome.ts
+    global.d.ts
+  shared/
+    browser.ts
+    navigation.ts
+    ipc-validation.ts
+    agent.ts
+    agent-run.ts
+    provider-protocol.ts
+    cli-protocol.ts
+    privacy.ts
+    migration.ts
+    update.ts
+    desktop-shell.ts
+docs/
+  ARCHITECTURE.md
+  SECURITY.md
+  RELEASES.md
+  UPDATES.md
+  OPENSTRAWBERRY_PLAN.md
+  CLAUDE_CODE_HANDOFF.md
+todo.md
+package.json
+```
+
+Use narrow modules with focused unit tests adjacent to security-sensitive logic. Write maintainable documentation for architecture, privacy/migration, release status, updater activation, and contributor workflow.
+
+# 10. Build order
+
+Work in these phases and update `todo.md` as each item is verified:
+
+1. Scaffold Electron, Vite, React, TypeScript, pnpm, strict checking, Vitest, and electron-builder.
+2. Build the hardened main/preload/renderer boundary and test IPC sender/payload validation.
+3. Implement real BrowserViews, address normalization, `about:blank` first launch, tabs, navigation, session restore, and lifecycle-safe cleanup.
+4. Add the Obsidian Relay browser chrome: left favicon rail, top workspace controls, glass tooltips, split panes, and responsive behavior.
+5. Add downloads, tracker policy, media controls, reader mode, tab groups, and workspaces.
+6. Add consent-first migration and separate encrypted password staging.
+7. Add the agent registry, encrypted per-agent vault, Agent Control Panel, provider adapters, local CLI adapters, and review-first orchestration plans.
+8. Add the guarded GitHub Releases updater UI and state machine, still disabled without signed release metadata.
+9. Configure native icons and packaging for all target platforms.
+10. Add CI that runs frozen install, type checking, tests, and production build on pull requests and pushes.
+11. Add release signing, notarization, checksums, and public release automation only when credentials and native runners are available.
+
+# 11. Testing and acceptance criteria
+
+Create tests for shared navigation rules, IPC validation, trusted renderer checks, BrowserView lifecycle helpers, agent vault encryption/redaction, provider protocol validation, CLI invocation restrictions, migration parsers, orchestration graph validation, updater state transitions, favicon safety, tab/workspace behavior, and privacy policy behavior.
+
+Use this basic validation loop:
 
 ```bash
 pnpm install --frozen-lockfile
@@ -116,34 +222,16 @@ pnpm test
 pnpm build
 ```
 
-The current test suite must remain green. Add focused tests with each behavior or security fix. Preserve existing focused tests for navigation, IPC validation, provider and CLI protocols, agent vault behavior, updater state, BrowserView lifecycle behavior, and the favicon policy.
+For Windows package validation, build the NSIS installer and unpacked app. Launch the unpacked executable, verify it remains running, request a normal window close, and verify clean exit without a main-process error dialog. Do not silently install the EXE merely to test it.
 
-For Windows work, build the NSIS installer locally:
+For Linux, build and validate AppImage, DEB, and RPM artifacts. For macOS, validate on a native macOS release runner before claiming DMG readiness. Never place large generated installer assets in Git.
 
-```powershell
-pnpm build
-pnpm exec electron-builder --win nsis --x64
-```
+# 12. Anti-requirements
 
-The local installer appears at `release\OpenStrawberry-win-x64.exe`; it is unsigned unless code signing has been configured. Smoke-test the unpacked build by launching `release\win-unpacked\openstrawberry.exe`, wait until it is running, request a normal window close, and require a clean exit. Never silently install the EXE on the user’s machine merely to test it.
+Do not build a fake browser UI. Do not turn the product into a SaaS dashboard or generic chat application. Do not use arbitrary webview access, enable Node in guest pages, expose arbitrary IPC, execute arbitrary shell commands, place secrets in the renderer, log credentials, bypass CAPTCHA/DRM, claim complete ad blocking, copy cookies/sessions, or publish unsigned binaries as stable downloads.
 
-For Linux validation, package the AppImage/DEB/RPM and test the unpacked app or AppImage in a virtual display when necessary. macOS DMG and Windows signing/notarization require native release runners and credentials.
-
-## Implementation priorities
-
-1. Preserve the WIP/no-download public posture until signing and release automation are complete.
-2. Keep browsing real, secure, and stable before broadening agent autonomy.
-3. Preserve explicit user control: selected context, reviewable plan, approvals, cancellation, and meaningful failure/blocked states.
-4. Keep secrets and OS capabilities in the main process only.
-5. Finish release signing and artifact verification before enabling public updater/download paths.
-6. Continue remaining browser fundamentals, permissions/vault center, full migration review UX, native PiP, and production agent execution incrementally with tests.
-
-## Anti-requirements
-
-Do not turn this into a SaaS dashboard, an online-only chatbot, a mock browser, or a generic code-agent launcher. Do not copy hidden Strawberry Browser internals. Do not store secrets in the renderer, logs, fixtures, or plain JSON. Do not bypass browser restrictions, DRM, CAPTCHA, or approval requirements. Do not publish unsigned binaries, hardcode future release URLs, or claim stable availability before signing and verification are complete.
-
-At the end of each change, update `todo.md`, run validation, synchronize the user’s local workspace after publication, and report what was verified versus what still needs platform-specific validation.
+At every milestone, preserve the local-first security model, make agent actions reviewable, add focused tests, keep the README honest about work-in-progress status, and distinguish implemented behavior from planned milestones.
 
 ---
 
-End of Claude Code rebuild prompt.
+End of from-scratch OpenStrawberry build prompt.

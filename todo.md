@@ -119,6 +119,7 @@
 - [x] Replace the first-launch Example Domain placeholder with a safe OpenStrawberry start page or neutral blank browser state, without removing intentional user-entered navigation to example.com.
 - [x] Create a comprehensive Claude Code handoff covering the project architecture, security model, design system, inspirations, implementation status, testing, packaging, and next steps.
 - [x] Create a copy-ready Claude Code rebuild prompt that instructs a new coding agent how to reproduce and continue the complete OpenStrawberry project.
+- [x] Replace the continuation-oriented rebuild prompt with a standalone from-scratch project specification for Claude Code.
 - [x] Recover the interrupted local workspace by restoring deleted tracked source files without deleting or overwriting untracked local files.
 - [x] Synchronize the WIP messaging, launch-default fix, and Claude Code handoff into the user-provided local workspace.
 - [x] Validate the updated repository and local workspace before publishing the final changes.
