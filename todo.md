@@ -112,3 +112,13 @@
  - [x] Requested launch-documentation cleanup completed and validated.
 
 > Note: The unchecked items above track the requested cleanup and validation; the final checked history entry records that the request has been received.
+
+## WIP repository and Claude Code handoff
+
+- [ ] Mark the public GitHub repository and README as work in progress with a prominent do-not-download-yet warning and no misleading release-download prompts.
+- [ ] Replace the first-launch Example Domain placeholder with a safe OpenStrawberry start page or neutral blank browser state, without removing intentional user-entered navigation to example.com.
+- [ ] Create a comprehensive Claude Code handoff covering the project architecture, security model, design system, inspirations, implementation status, testing, packaging, and next steps.
+- [ ] Synchronize the WIP messaging, launch-default fix, and Claude Code handoff into the user-provided local workspace.
+- [ ] Validate the updated repository and local workspace before publishing the final changes.
+
+## End of current task checklist

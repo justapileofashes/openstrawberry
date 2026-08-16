@@ -10,6 +10,10 @@ describe("normalizeAddress", () => {
     expect(normalizeAddress("openstrawberry.dev")).toBe("https://openstrawberry.dev");
   });
 
+  it("uses a neutral blank page for an empty address", () => {
+    expect(normalizeAddress("")).toBe("about:blank");
+  });
+
   it("sends plain-language input to a search query", () => {
     expect(normalizeAddress("desktop browser agents")).toBe("https://www.google.com/search?q=desktop%20browser%20agents");
   });
@@ -19,6 +23,7 @@ describe("isBrowserUrlAllowed", () => {
   it("allows HTTP and HTTPS navigation", () => {
     expect(isBrowserUrlAllowed("http://example.com")).toBe(true);
     expect(isBrowserUrlAllowed("https://example.com")).toBe(true);
+    expect(isBrowserUrlAllowed("about:blank")).toBe(true);
   });
 
   it("rejects unsupported schemes", () => {

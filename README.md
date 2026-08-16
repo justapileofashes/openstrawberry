@@ -2,6 +2,8 @@
 
 [![Quality](https://github.com/justapileofashes/openstrawberry/actions/workflows/quality.yml/badge.svg)](https://github.com/justapileofashes/openstrawberry/actions/workflows/quality.yml)
 
+> **WORK IN PROGRESS — DO NOT DOWNLOAD YET.** OpenStrawberry is an active development build. Public installers are not stable or signed. Wait for a verified release announcement before installing anything.
+
 **OpenStrawberry** is a local-first desktop browser foundation for real Chromium browsing, secure profile handling, split-pane workspaces, a persistent Companion, and future multi-agent orchestration.
 
 > This repository is an early native runtime foundation. It already contains an Electron desktop shell, real embedded Chromium tabs, durable split workspaces, an encrypted per-agent vault, approval-gated provider and selected local-CLI adapters, and a privacy-scoped first-launch migration flow. Production signing and several advanced browser capabilities remain planned milestones.
@@ -10,11 +12,11 @@
 
 > **No stable installer is available yet.** OpenStrawberry will publish signed platform installers only through [GitHub Releases](https://github.com/justapileofashes/openstrawberry/releases). Do not install binaries from forks, issue attachments, or unofficial mirrors. The current Linux DEB is a private smoke-test artifact and is intentionally not published as a user download.
 
-When the first signed release is available, this section will offer separate macOS, Windows, and Linux installer buttons. Until then, the single release-status link below is deliberately non-downloadable and leads only to the repository’s release page.
+When the first signed release is available, this section will offer separate macOS, Windows, and Linux installer buttons. Until then, the single release-status link below leads only to the repository’s release page. Do **not** download or install development artifacts from this repository.
 
-[![Installer status: not released](https://img.shields.io/badge/Installer%20status-Not%20released-6b7280?style=for-the-badge&logo=github)](https://github.com/justapileofashes/openstrawberry/releases)
+[![Project status: work in progress](https://img.shields.io/badge/Project%20status-Work%20in%20progress-6b7280?style=for-the-badge&logo=github)](https://github.com/justapileofashes/openstrawberry/releases)
 
-| Platform | Download from GitHub Releases | Expected installation |
+| Platform | Planned release asset | Expected installation after a verified release |
 |---|---|---|
 | macOS | `OpenStrawberry-mac-universal.dmg` | Open the DMG and drag OpenStrawberry to Applications. |
 | Windows | `OpenStrawberry-win-x64.exe` | Run the signed NSIS installer. |

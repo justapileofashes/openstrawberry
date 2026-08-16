@@ -54,19 +54,19 @@ export class BrowserManager {
     const saved = this.readSession();
     if (saved) {
       this.hydratePrivacy(saved.privacy);
-      for (const tab of saved.tabs) this.createTab(tab.url, "primary", tab.id, false);
+      for (const tab of saved.tabs) this.createTab(tab.url === "https://example.com" ? "about:blank" : tab.url, "primary", tab.id, false);
       this.hydrateGroups(saved.groups ?? []);
       for (const pane of saved.panes) if (pane.tabId && this.tabs.has(pane.tabId)) this.assignTabToPane(pane.tabId, pane.id);
       this.activePaneId = saved.activePaneId;
       this.splitEnabled = saved.splitEnabled && Boolean(this.panes.secondary.tabId);
     }
-    if (!this.panes.primary.tabId) this.createTab("https://example.com", "primary", undefined, false);
+    if (!this.panes.primary.tabId) this.createTab("about:blank", "primary", undefined, false);
     this.attachVisibleViews();
     this.publish();
     return this.snapshot();
   }
 
-  public createTab(input: unknown = "https://example.com", paneId = this.activePaneId, suppliedId?: string, publish = true): BrowserSnapshot {
+  public createTab(input: unknown = "about:blank", paneId = this.activePaneId, suppliedId?: string, publish = true): BrowserSnapshot {
     const id = suppliedId ?? randomUUID();
     const view = new BrowserView({ webPreferences: { partition: PROFILE_PARTITION, contextIsolation: true, nodeIntegration: false, sandbox: true, webSecurity: true } });
     const runtime: TabRuntime = { view, state: { id, url: "", title: FALLBACK_TITLE, favicon: null, isLoading: true, canGoBack: false, canGoForward: false, isAudible: false } };
@@ -116,7 +116,7 @@ export class BrowserManager {
     if (enabled && !this.panes.secondary.tabId) {
       const alternative = [...this.tabs.keys()].find((id) => id !== this.panes.primary.tabId);
       if (alternative) this.panes.secondary.tabId = alternative;
-      else this.createTab("https://example.com", "secondary", undefined, false);
+      else this.createTab("about:blank", "secondary", undefined, false);
     }
     this.splitEnabled = enabled;
     this.publish();
@@ -193,7 +193,7 @@ export class BrowserManager {
   }
   public listWorkspaceSnapshots(): WorkspaceSnapshot[] { return this.readWorkspaceSnapshots().sort((left, right) => right.createdAt - left.createdAt); }
   public saveWorkspaceSnapshot(name: string): WorkspaceSnapshot {
-    const snapshot: WorkspaceSnapshot = { id: randomUUID(), name: validateWorkspaceName(name), createdAt: Date.now(), tabs: [...this.tabs.values()].map((tab) => ({ id: tab.state.id, url: tab.state.url || "https://example.com", ...(tab.state.groupId ? { groupId: tab.state.groupId } : {}) })), groups: [...this.groups.values()].map((group) => ({ ...group, tabIds: [...group.tabIds] })), panes: PANE_IDS.map((id) => ({ id, tabId: this.panes[id].tabId })), activePaneId: this.activePaneId, splitEnabled: this.splitEnabled };
+    const snapshot: WorkspaceSnapshot = { id: randomUUID(), name: validateWorkspaceName(name), createdAt: Date.now(), tabs: [...this.tabs.values()].map((tab) => ({ id: tab.state.id, url: tab.state.url || "about:blank", ...(tab.state.groupId ? { groupId: tab.state.groupId } : {}) })), groups: [...this.groups.values()].map((group) => ({ ...group, tabIds: [...group.tabIds] })), panes: PANE_IDS.map((id) => ({ id, tabId: this.panes[id].tabId })), activePaneId: this.activePaneId, splitEnabled: this.splitEnabled };
     this.writeWorkspaceSnapshots([snapshot, ...this.readWorkspaceSnapshots()].slice(0, 50));
     return snapshot;
   }
@@ -207,7 +207,7 @@ export class BrowserManager {
     for (const tab of saved.tabs.slice(0, 50)) this.createTab(tab.url, "primary", tab.id, false);
     this.hydrateGroups(Array.isArray(saved.groups) ? saved.groups : []);
     for (const pane of saved.panes) if (pane.tabId && this.tabs.has(pane.tabId)) this.assignTabToPane(pane.tabId, pane.id);
-    if (!this.panes.primary.tabId) this.createTab("https://example.com", "primary", undefined, false);
+    if (!this.panes.primary.tabId) this.createTab("about:blank", "primary", undefined, false);
     this.activePaneId = saved.activePaneId;
     this.splitEnabled = saved.splitEnabled && Boolean(this.panes.secondary.tabId);
     this.publish();
@@ -302,7 +302,7 @@ export class BrowserManager {
     try { if (!existsSync(this.sessionFile)) return null; const parsed = JSON.parse(readFileSync(this.sessionFile, "utf8")) as SavedSession; return (parsed.version === 1 || parsed.version === 2 || parsed.version === 3) && Array.isArray(parsed.tabs) && Array.isArray(parsed.panes) ? parsed : null; } catch { return null; }
   }
   private writeSession(): void {
-    try { mkdirSync(dirname(this.sessionFile), { recursive: true }); const payload: SavedSession = { version: 3, tabs: [...this.tabs.values()].map((tab) => ({ id: tab.state.id, url: tab.state.url || "https://example.com", ...(tab.state.groupId ? { groupId: tab.state.groupId } : {}) })), groups: [...this.groups.values()].map((group) => ({ ...group, tabIds: [...group.tabIds] })), privacy: { trackerBlockingEnabled: this.trackerBlockingEnabled, allowedHosts: [...this.allowedTrackerHosts].sort() }, panes: PANE_IDS.map((id) => ({ id, tabId: this.panes[id].tabId })), activePaneId: this.activePaneId, splitEnabled: this.splitEnabled }; writeFileSync(this.sessionFile, JSON.stringify(payload, null, 2), "utf8"); } catch { /* Session restore is best-effort and never blocks browsing. */ }
+    try { mkdirSync(dirname(this.sessionFile), { recursive: true }); const payload: SavedSession = { version: 3, tabs: [...this.tabs.values()].map((tab) => ({ id: tab.state.id, url: tab.state.url || "about:blank", ...(tab.state.groupId ? { groupId: tab.state.groupId } : {}) })), groups: [...this.groups.values()].map((group) => ({ ...group, tabIds: [...group.tabIds] })), privacy: { trackerBlockingEnabled: this.trackerBlockingEnabled, allowedHosts: [...this.allowedTrackerHosts].sort() }, panes: PANE_IDS.map((id) => ({ id, tabId: this.panes[id].tabId })), activePaneId: this.activePaneId, splitEnabled: this.splitEnabled }; writeFileSync(this.sessionFile, JSON.stringify(payload, null, 2), "utf8"); } catch { /* Session restore is best-effort and never blocks browsing. */ }
   }
   private readWorkspaceSnapshots(): WorkspaceSnapshot[] {
     try { if (!existsSync(this.workspaceFile)) return []; const parsed = JSON.parse(readFileSync(this.workspaceFile, "utf8")) as WorkspaceSnapshot[]; return Array.isArray(parsed) ? parsed.filter((snapshot) => typeof snapshot?.id === "string" && typeof snapshot?.name === "string" && Array.isArray(snapshot?.tabs) && Array.isArray(snapshot?.panes)) : []; } catch { return []; }
