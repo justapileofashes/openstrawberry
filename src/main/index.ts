@@ -38,7 +38,7 @@ function registerTrustedHandler(channel: string, handler: (...args: unknown[]) =
 function createWindow(): void {
   const devUrl = process.env.VITE_DEV_SERVER_URL;
   const rendererUrl = devUrl ?? pathToFileURL(join(__dirname, "../renderer/index.html")).toString();
-  mainWindow = new BrowserWindow({ width: 1440, height: 960, minWidth: 1024, minHeight: 700, backgroundColor: "#050506", titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default", webPreferences: { preload: join(__dirname, "../preload/index.js"), contextIsolation: true, nodeIntegration: false, sandbox: true, webviewTag: false, allowRunningInsecureContent: false } });
+  mainWindow = new BrowserWindow({ width: 1440, height: 960, minWidth: 1024, minHeight: 700, backgroundColor: "#050506", titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default", webPreferences: { preload: join(__dirname, "../preload/index.cjs"), contextIsolation: true, nodeIntegration: false, sandbox: true, webviewTag: false, allowRunningInsecureContent: false } });
   browserManager = new BrowserManager(mainWindow, (snapshot) => mainWindow?.webContents.send("browser:state", snapshot), join(app.getPath("userData"), "window-session.json"), join(app.getPath("userData"), "workspace-snapshots.json"));
   const isTrustedRendererUrl = (url: string) => { try { return devUrl ? new URL(url).origin === new URL(rendererUrl).origin : url === rendererUrl; } catch { return false; } };
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: "deny" }));

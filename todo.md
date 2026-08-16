@@ -53,6 +53,8 @@
  - [x] Configure the in-app updater for OpenStrawberry’s signed public GitHub Releases feed; keep it disabled until the required signed release metadata is available.
  - [x] Add a top-bar Agent Control Panel for creating agents and selecting a provider, model, and local CLI or API-backed runtime without exposing credentials to the renderer.
  - [x] Add focused tests and package validation for the update bridge and Agent Control Panel integration.
+ - [x] Convert the labeled top-bar Agent rail and Updates triggers to icon-only glass controls while retaining accessible hover and keyboard-focus tooltips.
+ - [x] Run clean application startup and native installer/package smoke checks in the available Linux environment, documenting platform-specific validation still required elsewhere.
 
 ## Release validation
 

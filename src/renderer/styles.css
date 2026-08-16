@@ -41,9 +41,10 @@ button:disabled { cursor: not-allowed; opacity: .35; }
 .privacy-site-toggle:disabled { opacity: .45; }
 .privacy-count { border-color: rgba(255, 255, 255, .08); color: #7e878d; }
 .agents-trigger, .primary-action, .secondary-action { display: inline-flex; align-items: center; justify-content: center; gap: 7px; border: 1px solid rgba(255, 255, 255, .16); border-radius: 7px; padding: 8px 11px; font-size: 12px; font-weight: 650; }
-.agents-trigger { background: linear-gradient(135deg, rgba(255,255,255,.25), rgba(255,255,255,.08) 58%), rgba(25,28,30,.7); box-shadow: inset 0 1px rgba(255,255,255,.26), 0 8px 24px rgba(0,0,0,.25); color: #f5f6f7; backdrop-filter: blur(15px); }
+.agents-trigger { display: grid; width: 31px; height: 31px; place-items: center; padding: 0; background: linear-gradient(135deg, rgba(255,255,255,.25), rgba(255,255,255,.08) 58%), rgba(25,28,30,.7); box-shadow: inset 0 1px rgba(255,255,255,.26), 0 8px 24px rgba(0,0,0,.25); color: #f5f6f7; backdrop-filter: blur(15px); }
 .agents-trigger:hover { border-color: rgba(255,255,255,.34); background: linear-gradient(135deg, rgba(255,255,255,.32), rgba(255,255,255,.12) 58%), rgba(32,35,38,.75); }
-.update-trigger { border: 1px solid rgba(255,255,255,.14); border-radius: 7px; background: rgba(255,255,255,.055); padding: 7px 9px; color: #adb4b9; font: 10px ui-monospace, monospace; transition: border-color .15s, background .15s, color .15s; }
+.agents-trigger:active, .update-trigger:active { transform: scale(.97); }
+.update-trigger { display: grid; width: 31px; height: 31px; place-items: center; border: 1px solid rgba(255,255,255,.14); border-radius: 7px; background: rgba(255,255,255,.055); color: #adb4b9; transition: border-color .15s, background .15s, color .15s, transform .15s; }
 .update-trigger:hover { border-color: rgba(255,255,255,.3); background: rgba(255,255,255,.1); color: #f2f4f5; }
 .update-trigger.available, .update-trigger.downloaded { border-color: rgba(255,255,255,.35); background: linear-gradient(135deg, rgba(255,255,255,.22), rgba(255,255,255,.07)), rgba(30,33,36,.75); color: #fff; box-shadow: inset 0 1px rgba(255,255,255,.2), 0 0 18px rgba(255,255,255,.08); }
 .primary-action { background: #f5f6f7; color: #08090a; }

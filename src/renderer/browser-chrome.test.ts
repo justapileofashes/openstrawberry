@@ -6,8 +6,8 @@ describe("faviconUrlForTab", () => {
     expect(faviconUrlForTab("https://openrouter.ai/docs/models?sort=name")).toBe("https://openrouter.ai/favicon.ico");
   });
 
-  it("retains an explicit HTTP origin when the tab uses HTTP", () => {
-    expect(faviconUrlForTab("http://localhost:5173/workspace")).toBe("http://localhost:5173/favicon.ico");
+  it("does not create a remote image request for an insecure HTTP origin", () => {
+    expect(faviconUrlForTab("http://localhost:5173/workspace")).toBeNull();
   });
 
   it("does not create an image URL for malformed or non-web values", () => {

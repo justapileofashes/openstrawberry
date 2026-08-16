@@ -26,6 +26,7 @@ export class BrowserManager {
   };
   private readonly downloads: BrowserDownloadState[] = [];
   private readonly downloadPaths = new Map<string, string>();
+  private readonly attachedTabIds = new Set<string>();
   private activePaneId: BrowserPaneId = "primary";
   private splitEnabled = false;
   private trackerBlockingEnabled = true;
@@ -91,7 +92,7 @@ export class BrowserManager {
   }
   public closeTab(id: string): BrowserSnapshot {
     const runtime = this.tabs.get(id); if (!runtime) return this.snapshot();
-    this.window.removeBrowserView(runtime.view); runtime.view.webContents.close(); this.tabs.delete(id);
+    this.window.removeBrowserView(runtime.view); this.attachedTabIds.delete(id); runtime.view.webContents.close(); this.tabs.delete(id);
     this.blockedRequestsByTab.delete(id);
     this.removeTabFromGroups(id);
     for (const paneId of PANE_IDS) if (this.panes[paneId].tabId === id) this.panes[paneId].tabId = this.tabs.keys().next().value ?? null;
@@ -212,7 +213,7 @@ export class BrowserManager {
     this.publish();
     return this.snapshot();
   }
-  public destroy(): void { for (const tab of this.tabs.values()) { this.window.removeBrowserView(tab.view); if (!tab.view.webContents.isDestroyed()) tab.view.webContents.close(); } this.tabs.clear(); this.groups.clear(); }
+  public destroy(): void { for (const tab of this.tabs.values()) { this.window.removeBrowserView(tab.view); if (!tab.view.webContents.isDestroyed()) tab.view.webContents.close(); } this.attachedTabIds.clear(); this.tabs.clear(); this.groups.clear(); }
   private observeTab(id: string, tab: TabRuntime): void {
     const refresh = () => this.updateState(id); const wc = tab.view.webContents;
     wc.on("did-start-loading", refresh); wc.on("did-stop-loading", refresh); wc.on("did-navigate", refresh); wc.on("did-navigate-in-page", refresh); wc.on("page-title-updated", refresh);
@@ -220,16 +221,28 @@ export class BrowserManager {
     wc.on("page-favicon-updated", (_event, favicons) => { tab.state.favicon = favicons[0] ?? null; this.publish(); });
     wc.on("media-started-playing", () => { tab.state.isAudible = true; this.publish(); }); wc.on("media-paused", () => { tab.state.isAudible = false; this.publish(); });
   }
-  private updateState(id: string): void { const tab = this.tabs.get(id); if (!tab || tab.view.webContents.isDestroyed()) return; const wc = tab.view.webContents; tab.state = { ...tab.state, url: wc.getURL(), title: wc.getTitle() || FALLBACK_TITLE, isLoading: wc.isLoading(), canGoBack: wc.canGoBack(), canGoForward: wc.canGoForward() }; this.publish(); }
+  private updateState(id: string): void { const tab = this.tabs.get(id); if (!tab || tab.view.webContents.isDestroyed()) return; const wc = tab.view.webContents; tab.state = { ...tab.state, url: wc.getURL(), title: wc.getTitle() || FALLBACK_TITLE, isLoading: wc.isLoading(), canGoBack: wc.navigationHistory.canGoBack(), canGoForward: wc.navigationHistory.canGoForward() }; this.publish(); }
   private loadSafeUrl(id: string, input: unknown): void {
     const tab = this.tabs.get(id);
     if (!tab) return;
     try { void tab.view.webContents.loadURL(normalizeBrowserUrl(input)).catch(() => this.updateState(id)); } catch { this.updateState(id); }
   }
   private attachVisibleViews(): void {
-    for (const tab of this.tabs.values()) this.window.removeBrowserView(tab.view);
     const visible = this.splitEnabled ? PANE_IDS : ["primary"] as BrowserPaneId[];
-    for (const paneId of visible) { const tabId = this.panes[paneId].tabId; const tab = tabId ? this.tabs.get(tabId) : undefined; if (tab) { this.window.addBrowserView(tab.view); tab.view.setBounds(this.panes[paneId].viewport); } }
+    const visibleTabIds = new Set(visible.map((paneId) => this.panes[paneId].tabId).filter((tabId): tabId is string => Boolean(tabId)));
+    for (const tabId of this.attachedTabIds) {
+      if (visibleTabIds.has(tabId)) continue;
+      const tab = this.tabs.get(tabId);
+      if (tab) this.window.removeBrowserView(tab.view);
+      this.attachedTabIds.delete(tabId);
+    }
+    for (const paneId of visible) {
+      const tabId = this.panes[paneId].tabId;
+      const tab = tabId ? this.tabs.get(tabId) : undefined;
+      if (!tab || !tabId) continue;
+      if (!this.attachedTabIds.has(tabId)) { this.window.addBrowserView(tab.view); this.attachedTabIds.add(tabId); }
+      tab.view.setBounds(this.panes[paneId].viewport);
+    }
   }
   private assignTabToPane(tabId: string, paneId: BrowserPaneId): void {
     for (const candidate of PANE_IDS) if (candidate !== paneId && this.panes[candidate].tabId === tabId) this.panes[candidate].tabId = null;
