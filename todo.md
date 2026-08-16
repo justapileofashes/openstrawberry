@@ -56,6 +56,7 @@
  - [x] Convert the labeled top-bar Agent rail and Updates triggers to icon-only glass controls while retaining accessible hover and keyboard-focus tooltips.
  - [x] Run clean application startup and native installer/package smoke checks in the available Linux environment, documenting platform-specific validation still required elsewhere.
  - [ ] Synchronize the verified OpenStrawberry repository to the user-provided local `D:\docs\claudecodeprojects\openstrawberry` folder and retain it as a target for future requested app changes.
+ - [ ] Make the credential-vault filesystem permission assertion portable across Linux and Windows local development environments.
 
 ## Release validation
 

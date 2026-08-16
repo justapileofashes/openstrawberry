@@ -37,8 +37,10 @@ describe("AgentRegistry credential vault", () => {
     expect(JSON.parse(readFileSync(profileFile, "utf8"))).not.toContain("private-key");
     expect(readFileSync(vaultFile, "utf8")).not.toContain("private-key");
     expect(safeStorage.encryptString).toHaveBeenCalledWith("private-key");
-    expect(statSync(profileFile).mode & 0o777).toBe(0o600);
-    expect(statSync(vaultFile).mode & 0o777).toBe(0o600);
+    if (process.platform !== "win32") {
+      expect(statSync(profileFile).mode & 0o777).toBe(0o600);
+      expect(statSync(vaultFile).mode & 0o777).toBe(0o600);
+    }
     expect(registry.resolveProviderCredential("researcher").apiKey).toBe("private-key");
   });
 
