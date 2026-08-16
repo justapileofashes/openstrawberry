@@ -28,15 +28,18 @@ passes. Planned work is never marked done.
 
 ## M2 — Real browsing
 
-- [ ] `BrowserManager` owning real sandboxed `WebContentsView`s in the app-owned persistent partition.
-- [ ] Renderer-reported pane bounds; attach visible views and detach inactive ones.
-- [ ] Tabs: create, activate, close, editable address navigation, back, forward, reload, stop.
-- [ ] Titles, HTTPS-safe favicons, loading state, history state, audible state.
-- [ ] Navigation policy: HTTP(S) plus exactly `about:blank`; reject `file:`, `javascript:`, `data:`, and other schemes.
-- [ ] First launch and every new tab open `about:blank`; typed navigation to `example.com` still works.
-- [ ] Session restore of bounded metadata only — never cookies, sessions, passkeys, payment data, passwords, or keys.
-- [ ] Destruction-safe teardown: release views at the window `close` lifecycle, idempotent, tolerant of a destroyed parent.
-- [ ] Validate: a normal window close exits cleanly with no main-process error dialog.
+- [x] `BrowserManager` owning real sandboxed `WebContentsView`s in the app-owned persistent partition.
+- [x] Renderer-reported pane bounds; attach visible views and detach inactive ones.
+- [x] Tabs: create, activate, close, editable address navigation, back, forward, reload, stop.
+- [x] Titles, HTTPS-safe favicons, loading state, history state, audible state.
+- [x] Navigation policy: HTTP(S) plus exactly `about:blank`; reject `file:`, `javascript:`, `data:`, and other schemes.
+- [x] Enforce the policy on the guest itself via `will-navigate` and `will-redirect`, not only at the address bar.
+- [x] First launch and every new tab open `about:blank`; typed navigation to `example.com` still works.
+- [x] Session restore of bounded metadata only — never cookies, sessions, passkeys, payment data, passwords, or keys.
+- [x] Tolerate a byte-order mark in the session file so an external editor cannot silently discard a session.
+- [x] Destruction-safe teardown: release views at the window `close` lifecycle, idempotent, tolerant of a destroyed parent.
+- [x] Validate: real pages render in both split panes, session restore works, and a normal window close exits cleanly with no main-process error dialog.
+- [ ] Add unit coverage for attach/detach bookkeeping; teardown is currently proven by the launch-and-close smoke test only.
 
 ## M3 — Obsidian Relay chrome
 

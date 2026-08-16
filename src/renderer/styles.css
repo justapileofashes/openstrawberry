@@ -123,12 +123,12 @@ body {
 }
 
 /* =========================================================
-   Shell
+   Shell — favicon rail on the left, workspace to its right
    ========================================================= */
 .shell {
   position: relative;
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
   height: 100%;
   isolation: isolate;
 }
@@ -159,18 +159,334 @@ body {
   z-index: 1;
 }
 
-.boot {
-  flex: 1;
-  display: grid;
-  place-items: center;
-  padding: var(--s-12);
+/* =========================================================
+   Tab rail — favicons only, with globe fallback
+   ========================================================= */
+.tab-rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s-1);
+  padding: var(--s-2) 0;
+  border-width: 0 1px 0 0;
+  border-radius: 0;
+  overflow: hidden;
 }
 
-.boot-card {
-  width: min(520px, 100%);
-  padding: var(--s-8);
-  border-radius: var(--r-lg);
-  animation: screen-in var(--d-slow) var(--ease);
+.rail-tabs {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s-1);
+  overflow-y: auto;
+  scrollbar-width: none;
+  width: 100%;
+  padding: 0 var(--s-2);
+}
+
+.rail-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.rail-foot {
+  margin-top: auto;
+  padding-top: var(--s-2);
+}
+
+.rail-tab {
+  position: relative;
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--ink-muted);
+  cursor: pointer;
+  transition:
+    background var(--d-fast) var(--ease),
+    border-color var(--d-fast) var(--ease),
+    color var(--d-fast) var(--ease),
+    transform var(--d-fast) var(--ease);
+}
+
+.rail-tab:hover {
+  background: rgba(240, 236, 226, 0.05);
+  color: var(--ink);
+}
+
+.rail-tab:active {
+  transform: translateY(0.5px);
+}
+
+.rail-tab.is-active {
+  background: rgba(240, 236, 226, 0.08);
+  border-color: var(--border-strong);
+  color: var(--ink-strong);
+}
+
+/* Active state is marked by a rail tick as well as tone, never colour alone. */
+.rail-tab.is-active::before {
+  content: "";
+  position: absolute;
+  left: -8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 2px;
+  height: 16px;
+  border-radius: 1px;
+  background: var(--accent);
+}
+
+.rail-tab img {
+  border-radius: 3px;
+}
+
+.rail-letter {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1;
+}
+
+.rail-tab.is-loading::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: var(--r-sm);
+  border: 1px solid transparent;
+  border-top-color: var(--accent);
+  animation: rail-spin 0.8s linear infinite;
+}
+
+.rail-audio {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--accent);
+}
+
+/* =========================================================
+   Workspace
+   ========================================================= */
+.workspace {
+  display: grid;
+  grid-template-rows: 44px minmax(0, 1fr);
+  min-width: 0;
+}
+
+.top-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: 0 var(--s-3);
+  border-width: 0 0 1px;
+  border-radius: 0;
+  -webkit-app-region: drag;
+}
+
+.top-bar button,
+.top-bar input,
+.top-bar form {
+  -webkit-app-region: no-drag;
+}
+
+.nav-cluster,
+.tool-cluster {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.icon-btn {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--ink-muted);
+  cursor: pointer;
+  transition:
+    background var(--d-fast) var(--ease),
+    color var(--d-fast) var(--ease),
+    transform var(--d-fast) var(--ease);
+}
+
+.icon-btn:hover:not(:disabled) {
+  background: rgba(240, 236, 226, 0.06);
+  color: var(--ink);
+}
+
+.icon-btn:active:not(:disabled) {
+  transform: translateY(0.5px);
+}
+
+.icon-btn:disabled {
+  opacity: 0.32;
+  cursor: default;
+}
+
+/* Text bubbles replace permanent labels on compact controls. */
+.bubble-host {
+  position: relative;
+  display: inline-flex;
+}
+
+.bubble {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 50%;
+  z-index: 40;
+  padding: 4px 8px;
+  border-radius: var(--r-xs);
+  background: var(--glass-tint), rgba(10, 11, 14, 0.92);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--shadow-md);
+  color: var(--ink);
+  font-size: 11.5px;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transform: translate(-50%, -4px);
+  transition:
+    opacity var(--d-fast) var(--ease),
+    transform var(--d-fast) var(--ease);
+}
+
+.tab-rail .bubble {
+  top: 50%;
+  left: calc(100% + 8px);
+  transform: translate(-4px, -50%);
+}
+
+.bubble-host:hover .bubble,
+.bubble-host:focus-within .bubble {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+.tab-rail .bubble-host:hover .bubble,
+.tab-rail .bubble-host:focus-within .bubble {
+  transform: translate(0, -50%);
+}
+
+/* Address bar */
+.address {
+  flex: 1;
+  min-width: 0;
+}
+
+.address-field {
+  width: 100%;
+  height: 28px;
+  padding: 0 var(--s-3);
+  background: rgba(8, 8, 10, 0.5);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: 12.5px;
+  outline: none;
+  transition:
+    border-color var(--d-fast) var(--ease),
+    background var(--d-fast) var(--ease);
+}
+
+.address-field:focus {
+  border-color: var(--border-strong);
+  background: rgba(8, 8, 10, 0.72);
+}
+
+.address-field::placeholder {
+  color: var(--ink-faint);
+}
+
+/* =========================================================
+   Panes — empty regions the native views are composited into
+   ========================================================= */
+.panes {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-height: 0;
+}
+
+/* Edge target that turns a dragged tab into a split. */
+.split-target {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 34%;
+  display: grid;
+  place-items: center;
+  z-index: 30;
+  background: var(--glass-tint), rgba(10, 12, 16, 0.72);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border-left: 1px solid var(--glass-border);
+  animation: screen-in var(--d-base) var(--ease);
+}
+
+.split-target-label {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+}
+
+.panes.is-split {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 1px;
+  background: var(--border);
+}
+
+.pane-slot {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-width: 0;
+  background: var(--bg);
+}
+
+.pane-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px var(--s-2);
+  border-bottom: 1px solid var(--border);
+}
+
+.pane-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+/*
+ * Nothing may be painted inside a pane: the real page is a native view the main
+ * process composites into exactly these bounds.
+ */
+.pane {
+  min-width: 0;
+  min-height: 0;
+}
+
+.pane.is-active {
+  box-shadow: inset 0 0 0 1px rgba(232, 227, 213, 0.1);
+}
+
+.pane.is-drop-target {
+  box-shadow: inset 0 0 0 2px var(--accent);
 }
 
 .eyebrow {
@@ -241,6 +557,12 @@ body {
 /* =========================================================
    Motion
    ========================================================= */
+@keyframes rail-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 @keyframes screen-in {
   from {
     opacity: 0;
@@ -270,7 +592,8 @@ body {
   .boot-card {
     animation: none;
   }
-  .pill .dot {
+  .pill .dot,
+  .rail-tab.is-loading::after {
     animation: none;
   }
   *,

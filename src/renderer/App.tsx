@@ -1,62 +1,327 @@
-import { useEffect, useState } from "react";
-import type { ShellInfo } from "../shared/bridge.js";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  ArrowLeft,
+  ArrowRight,
+  Bot,
+  Columns2,
+  Download,
+  Globe,
+  Plus,
+  RotateCw,
+  Settings2,
+  Square,
+  X
+} from "lucide-react";
+import type { BrowserPaneId, BrowserSnapshot } from "../shared/browser.js";
+import { BLANK_PAGE } from "../shared/desktop-shell.js";
+import {
+  activeTabId,
+  faviconFallbackLabel,
+  focusedTab,
+  sameViewport,
+  tabAccessibleName,
+  viewportFromRect,
+  visiblePanes
+} from "./browser-chrome.js";
+
+const EMPTY_SNAPSHOT: BrowserSnapshot = {
+  tabs: [],
+  panes: [
+    { id: "primary", activeTabId: null },
+    { id: "secondary", activeTabId: null }
+  ],
+  activePaneId: "primary",
+  splitEnabled: false
+};
+
+/** Icon-only control with a hover and keyboard-focus text bubble. */
+function IconButton({
+  label,
+  onClick,
+  disabled = false,
+  children
+}: {
+  readonly label: string;
+  readonly onClick: () => void;
+  readonly disabled?: boolean;
+  readonly children: React.ReactNode;
+}): React.JSX.Element {
+  return (
+    <span className="bubble-host">
+      <button type="button" className="icon-btn" onClick={onClick} disabled={disabled} aria-label={label}>
+        {children}
+      </button>
+      <span className="bubble" role="tooltip">
+        {label}
+      </span>
+    </span>
+  );
+}
 
 /**
- * M1 shell. Real Chromium browsing, the Agent rail, and the Control Panel are
- * not wired yet, so this surface states that plainly rather than imitating a
- * browser it cannot back with real views.
- *
- * It does exercise the trust boundary for real: the values below arrive over a
- * sender-verified, payload-validated IPC channel.
+ * A pane is an empty measured region. The real page is a native view the main
+ * process composites into these exact bounds, so nothing may be drawn here.
  */
-export function App(): React.JSX.Element {
-  const [info, setInfo] = useState<ShellInfo | null>(null);
-  const [error, setError] = useState<string | null>(null);
+function Pane({
+  paneId,
+  isActive,
+  onBounds,
+  onFocus,
+  onDropTab
+}: {
+  readonly paneId: BrowserPaneId;
+  readonly isActive: boolean;
+  readonly onBounds: (paneId: BrowserPaneId, rect: DOMRect) => void;
+  readonly onFocus: (paneId: BrowserPaneId) => void;
+  readonly onDropTab: (tabId: string, paneId: BrowserPaneId) => void;
+}): React.JSX.Element {
+  const ref = useRef<HTMLDivElement>(null);
+  const [isDropTarget, setIsDropTarget] = useState(false);
 
-  useEffect(() => {
-    let active = true;
+  useLayoutEffect(() => {
+    const element = ref.current;
+    if (element === null) return;
 
-    window.openstrawberry.shell
-      .getInfo()
-      .then((next) => {
-        if (active) setInfo(next);
-      })
-      .catch((cause: unknown) => {
-        if (active) setError(cause instanceof Error ? cause.message : "Bridge unavailable.");
-      });
+    const report = (): void => onBounds(paneId, element.getBoundingClientRect());
+    report();
+
+    const observer = new ResizeObserver(report);
+    observer.observe(element);
+    window.addEventListener("resize", report);
 
     return () => {
-      active = false;
+      observer.disconnect();
+      window.removeEventListener("resize", report);
     };
-  }, []);
+  }, [paneId, onBounds]);
+
+  return (
+    <div
+      ref={ref}
+      className={`pane${isActive ? " is-active" : ""}${isDropTarget ? " is-drop-target" : ""}`}
+      onMouseDown={() => onFocus(paneId)}
+      onDragOver={(event) => {
+        event.preventDefault();
+        setIsDropTarget(true);
+      }}
+      onDragLeave={() => setIsDropTarget(false)}
+      onDrop={(event) => {
+        event.preventDefault();
+        setIsDropTarget(false);
+        const tabId = event.dataTransfer.getData("text/plain");
+        if (tabId.length > 0) onDropTab(tabId, paneId);
+      }}
+      data-pane={paneId}
+    />
+  );
+}
+
+export function App(): React.JSX.Element {
+  const bridge = window.openstrawberry.browser;
+  const [snapshot, setSnapshot] = useState<BrowserSnapshot>(EMPTY_SNAPSHOT);
+  const [address, setAddress] = useState("");
+  const [addressEdited, setAddressEdited] = useState(false);
+  const [draggingTabId, setDraggingTabId] = useState<string | null>(null);
+  const lastViewports = useRef(new Map<BrowserPaneId, ReturnType<typeof viewportFromRect>>());
+
+  useEffect(() => {
+    const unsubscribe = bridge.onState(setSnapshot);
+    void bridge.getSnapshot().then(setSnapshot);
+    return unsubscribe;
+  }, [bridge]);
+
+  const current = useMemo(() => focusedTab(snapshot), [snapshot]);
+
+  // The address bar follows the focused tab unless the user is mid-edit.
+  useEffect(() => {
+    if (addressEdited) return;
+    setAddress(current === null || current.url === BLANK_PAGE ? "" : current.url);
+  }, [current, addressEdited]);
+
+  const handleBounds = useCallback(
+    (paneId: BrowserPaneId, rect: DOMRect) => {
+      const viewport = viewportFromRect(rect);
+      const previous = lastViewports.current.get(paneId);
+      // Resize fires continuously while dragging; only real changes cross IPC.
+      if (previous !== undefined && sameViewport(previous, viewport)) return;
+      lastViewports.current.set(paneId, viewport);
+      void bridge.setViewport(paneId, viewport);
+    },
+    [bridge]
+  );
+
+  const submitAddress = useCallback(
+    (event: React.FormEvent) => {
+      event.preventDefault();
+      if (current === null || address.trim().length === 0) return;
+      void bridge.navigate(current.id, address);
+      setAddressEdited(false);
+    },
+    [bridge, current, address]
+  );
+
+  const panes = visiblePanes(snapshot);
 
   return (
     <div className="shell">
-      <main className="boot">
-        <section className="boot-card glass">
-          <span className="eyebrow">OpenStrawberry</span>
-          <h1>Desktop shell online.</h1>
-          <p>
-            The hardened main, preload, and renderer boundary is running. Real
-            Chromium browsing, the Agent rail, and the Control Panel arrive in
-            later milestones.
-          </p>
-          <div className="status-row">
-            <span className="pill">
-              <span className="dot" aria-hidden="true" />
-              Work in progress
-            </span>
-            <span className="pill">{window.openstrawberry.shell.platform}</span>
-            {info !== null && <span className="pill">v{info.appVersion}</span>}
-            {info !== null && (
-              <span className="pill">
-                updates {info.updatesEnabled ? "enabled" : "disabled"}
+      <nav className="tab-rail glass" aria-label="Tabs">
+        <div className="rail-tabs">
+          {snapshot.tabs.map((tab) => {
+            const isActive = activeTabId(snapshot, tab.paneId) === tab.id;
+            return (
+              <span className="bubble-host" key={tab.id}>
+                <button
+                  type="button"
+                  className={`rail-tab${isActive ? " is-active" : ""}${tab.isLoading ? " is-loading" : ""}`}
+                  onClick={() => void bridge.activateTab(tab.id)}
+                  aria-label={tabAccessibleName(tab)}
+                  aria-current={isActive}
+                  draggable
+                  onDragStart={(event) => {
+                    event.dataTransfer.setData("text/plain", tab.id);
+                    setDraggingTabId(tab.id);
+                  }}
+                  onDragEnd={() => setDraggingTabId(null)}
+                >
+                  {tab.faviconUrl === null ? (
+                    tab.url === BLANK_PAGE ? (
+                      <Globe size={15} strokeWidth={1.5} aria-hidden="true" />
+                    ) : (
+                      <span className="rail-letter" aria-hidden="true">
+                        {faviconFallbackLabel(tab)}
+                      </span>
+                    )
+                  ) : (
+                    <img src={tab.faviconUrl} alt="" width={15} height={15} />
+                  )}
+                  {tab.isAudible && <span className="rail-audio" aria-hidden="true" />}
+                </button>
+                <span className="bubble" role="tooltip">
+                  {tabAccessibleName(tab)}
+                </span>
               </span>
+            );
+          })}
+        </div>
+
+        <div className="rail-foot">
+          <IconButton label="New tab" onClick={() => void bridge.createTab(snapshot.activePaneId)}>
+            <Plus size={16} strokeWidth={1.5} aria-hidden="true" />
+          </IconButton>
+        </div>
+      </nav>
+
+      <div className="workspace">
+        <header className="top-bar glass">
+          <div className="nav-cluster">
+            <IconButton
+              label="Back"
+              onClick={() => current !== null && void bridge.back(current.id)}
+              disabled={current === null || !current.canGoBack}
+            >
+              <ArrowLeft size={16} strokeWidth={1.5} aria-hidden="true" />
+            </IconButton>
+            <IconButton
+              label="Forward"
+              onClick={() => current !== null && void bridge.forward(current.id)}
+              disabled={current === null || !current.canGoForward}
+            >
+              <ArrowRight size={16} strokeWidth={1.5} aria-hidden="true" />
+            </IconButton>
+            {current?.isLoading === true ? (
+              <IconButton label="Stop" onClick={() => void bridge.stop(current.id)}>
+                <Square size={14} strokeWidth={1.5} aria-hidden="true" />
+              </IconButton>
+            ) : (
+              <IconButton
+                label="Reload"
+                onClick={() => current !== null && void bridge.reload(current.id)}
+                disabled={current === null}
+              >
+                <RotateCw size={15} strokeWidth={1.5} aria-hidden="true" />
+              </IconButton>
             )}
-            {error !== null && <span className="pill">{error}</span>}
           </div>
-        </section>
-      </main>
+
+          <form className="address" onSubmit={submitAddress}>
+            <input
+              type="text"
+              className="address-field"
+              value={address}
+              placeholder="Search or enter address"
+              spellCheck={false}
+              aria-label="Address"
+              onChange={(event) => {
+                setAddress(event.target.value);
+                setAddressEdited(true);
+              }}
+              onBlur={() => setAddressEdited(false)}
+            />
+          </form>
+
+          <div className="tool-cluster">
+            <IconButton
+              label={snapshot.splitEnabled ? "Close split" : "Split workspace"}
+              onClick={() => void bridge.setSplitEnabled(!snapshot.splitEnabled)}
+            >
+              <Columns2 size={16} strokeWidth={1.5} aria-hidden="true" />
+            </IconButton>
+            <IconButton label="Downloads" onClick={() => undefined} disabled>
+              <Download size={16} strokeWidth={1.5} aria-hidden="true" />
+            </IconButton>
+            <IconButton label="Agents" onClick={() => undefined} disabled>
+              <Bot size={16} strokeWidth={1.5} aria-hidden="true" />
+            </IconButton>
+            <IconButton label="Settings" onClick={() => undefined} disabled>
+              <Settings2 size={16} strokeWidth={1.5} aria-hidden="true" />
+            </IconButton>
+          </div>
+        </header>
+
+        <div className={`panes${snapshot.splitEnabled ? " is-split" : ""}`}>
+          {panes.map((paneId) => (
+            <div className="pane-slot" key={paneId}>
+              {snapshot.splitEnabled && (
+                <div className="pane-head">
+                  <span className="pane-label">{paneId}</span>
+                  <IconButton
+                    label={`Close ${paneId} pane`}
+                    onClick={() => void bridge.setSplitEnabled(false)}
+                  >
+                    <X size={13} strokeWidth={1.5} aria-hidden="true" />
+                  </IconButton>
+                </div>
+              )}
+              <Pane
+                paneId={paneId}
+                isActive={snapshot.activePaneId === paneId}
+                onBounds={handleBounds}
+                onFocus={(next) => void bridge.setActivePane(next)}
+                onDropTab={(tabId, target) => void bridge.moveTab(tabId, target)}
+              />
+            </div>
+          ))}
+
+          {/*
+            With split off there is no second pane to aim at, so dragging a tab
+            reveals an explicit edge target that creates the split on drop.
+          */}
+          {!snapshot.splitEnabled && draggingTabId !== null && (
+            <div
+              className="split-target"
+              onDragOver={(event) => event.preventDefault()}
+              onDrop={(event) => {
+                event.preventDefault();
+                const tabId = event.dataTransfer.getData("text/plain");
+                setDraggingTabId(null);
+                if (tabId.length > 0) void bridge.moveTab(tabId, "secondary");
+              }}
+            >
+              <span className="split-target-label">Drop to split</span>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

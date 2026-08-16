@@ -1,9 +1,24 @@
 import { app, BrowserWindow, Menu, session, shell } from "electron";
 import { join } from "node:path";
-import { IPC_CHANNELS, type ShellInfo } from "../shared/bridge.js";
+import { BROWSER_STATE_EVENT, IPC_CHANNELS, type ShellInfo } from "../shared/bridge.js";
+import {
+  parseActivePanePayload,
+  parseCreateTabPayload,
+  parseMoveTabPayload,
+  parseNavigatePayload,
+  parseSplitPayload,
+  parseTabIdPayload,
+  parseViewportPayload,
+  type BrowserSnapshot
+} from "../shared/browser.js";
 import { APP_ID, PROFILE_PARTITION, RELEASE_READY } from "../shared/desktop-shell.js";
+import { BrowserManager } from "./browser-manager.js";
 import { buildAllowedUrlPrefixes } from "./ipc-security.js";
-import { registerTrustedQuery, setTrustedRendererPolicy } from "./ipc-router.js";
+import {
+  registerTrustedHandler,
+  registerTrustedQuery,
+  setTrustedRendererPolicy
+} from "./ipc-router.js";
 
 // Guest web content must never inherit Node. Enabling the sandbox before the
 // app is ready applies it to every renderer the process later creates.
@@ -13,10 +28,23 @@ app.setAppUserModelId(APP_ID);
 const DEV_SERVER_URL = process.env["VITE_DEV_SERVER_URL"];
 
 let mainWindow: BrowserWindow | null = null;
+let browserManager: BrowserManager | null = null;
 
 function denyAllPermissions(target: Electron.Session): void {
   target.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
   target.setPermissionCheckHandler(() => false);
+}
+
+function sendToRenderer(channel: string, payload: unknown): void {
+  const target = mainWindow;
+  if (target === null || target.isDestroyed() || target.webContents.isDestroyed()) return;
+  target.webContents.send(channel, payload);
+}
+
+/** Returns the live manager, or throws so the router can redact and report. */
+function requireBrowserManager(): BrowserManager {
+  if (browserManager === null) throw new Error("Browser manager is unavailable.");
+  return browserManager;
 }
 
 function createWindow(): void {
@@ -50,6 +78,13 @@ function createWindow(): void {
     allowedUrlPrefixes: buildAllowedUrlPrefixes(DEV_SERVER_URL)
   });
 
+  browserManager = new BrowserManager({
+    window,
+    profile: session.fromPartition(PROFILE_PARTITION),
+    sessionFilePath: join(app.getPath("userData"), "session.json"),
+    publish: (snapshot: BrowserSnapshot) => sendToRenderer(BROWSER_STATE_EVENT, snapshot)
+  });
+
   window.once("ready-to-show", () => window.show());
 
   // The chrome itself must never navigate away or spawn native windows. Any
@@ -61,15 +96,32 @@ function createWindow(): void {
 
   window.webContents.on("will-navigate", (event) => event.preventDefault());
 
+  // Native views must be released while the window still exists. Doing this at
+  // `closed` would touch an already-destroyed parent and surface an "Object has
+  // been destroyed" dialog, so `close` runs first and `closed` is only a
+  // backstop. Both paths are idempotent.
+  let released = false;
+  const releaseBrowserViews = (): void => {
+    if (released) return;
+    released = true;
+
+    const manager = browserManager;
+    browserManager = null;
+    manager?.destroy();
+  };
+
+  window.once("close", releaseBrowserViews);
   window.once("closed", () => {
+    releaseBrowserViews();
     if (mainWindow === window) mainWindow = null;
   });
 
-  if (DEV_SERVER_URL) {
-    void window.loadURL(DEV_SERVER_URL);
-  } else {
-    void window.loadFile(join(import.meta.dirname, "../renderer/index.html"));
-  }
+  const load = DEV_SERVER_URL
+    ? window.loadURL(DEV_SERVER_URL)
+    : window.loadFile(join(import.meta.dirname, "../renderer/index.html"));
+
+  // Restore only once the chrome can receive pushed state.
+  void load.then(() => browserManager?.restore());
 }
 
 function registerIpcHandlers(): void {
@@ -83,6 +135,56 @@ function registerIpcHandlers(): void {
       // metadata exist. This is deliberately not configurable at runtime.
       updatesEnabled: false
     })
+  );
+
+  registerTrustedQuery(IPC_CHANNELS.browserSnapshot, () => requireBrowserManager().snapshot());
+
+  registerTrustedHandler(IPC_CHANNELS.browserCreateTab, parseCreateTabPayload, (payload) =>
+    requireBrowserManager().createTab(payload.paneId, payload.url)
+  );
+
+  registerTrustedHandler(IPC_CHANNELS.browserCloseTab, parseTabIdPayload, (payload) =>
+    requireBrowserManager().closeTab(payload.tabId)
+  );
+
+  registerTrustedHandler(IPC_CHANNELS.browserActivateTab, parseTabIdPayload, (payload) =>
+    requireBrowserManager().activateTab(payload.tabId)
+  );
+
+  registerTrustedHandler(IPC_CHANNELS.browserMoveTab, parseMoveTabPayload, (payload) =>
+    requireBrowserManager().moveTabToPane(payload.tabId, payload.paneId)
+  );
+
+  registerTrustedHandler(IPC_CHANNELS.browserNavigate, parseNavigatePayload, (payload) =>
+    requireBrowserManager().navigate(payload.tabId, payload.address)
+  );
+
+  registerTrustedHandler(IPC_CHANNELS.browserBack, parseTabIdPayload, (payload) =>
+    requireBrowserManager().goBack(payload.tabId)
+  );
+
+  registerTrustedHandler(IPC_CHANNELS.browserForward, parseTabIdPayload, (payload) =>
+    requireBrowserManager().goForward(payload.tabId)
+  );
+
+  registerTrustedHandler(IPC_CHANNELS.browserReload, parseTabIdPayload, (payload) =>
+    requireBrowserManager().reload(payload.tabId)
+  );
+
+  registerTrustedHandler(IPC_CHANNELS.browserStop, parseTabIdPayload, (payload) =>
+    requireBrowserManager().stop(payload.tabId)
+  );
+
+  registerTrustedHandler(IPC_CHANNELS.browserSetViewport, parseViewportPayload, (payload) =>
+    requireBrowserManager().setViewport(payload.paneId, payload.viewport)
+  );
+
+  registerTrustedHandler(IPC_CHANNELS.browserSetSplit, parseSplitPayload, (enabled) =>
+    requireBrowserManager().setSplitEnabled(enabled)
+  );
+
+  registerTrustedHandler(IPC_CHANNELS.browserSetActivePane, parseActivePanePayload, (paneId) =>
+    requireBrowserManager().setActivePane(paneId)
   );
 }
 
