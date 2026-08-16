@@ -1,5 +1,7 @@
 /* OpenStrawberry main process: native browser views and a minimal trusted IPC surface. */
 import { app, BrowserWindow, dialog, ipcMain, safeStorage, session, type IpcMainInvokeEvent, type OpenDialogOptions } from "electron";
+import electronUpdater from "electron-updater";
+import { readFileSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname, join } from "node:path";
 import { BrowserManager } from "./browser-manager.js";
@@ -10,6 +12,7 @@ import { MigrationManager } from "./migration-manager.js";
 import { createOrchestrationPlan } from "./orchestrator.js";
 import { assertTrustedRendererId } from "./ipc-security.js";
 import { DESKTOP_APP_ID, DESKTOP_APP_NAME } from "../shared/desktop-shell.js";
+import { UpdateManager, type UpdateClient } from "./update-manager.js";
 import { parseAgentProfileInput, parseAgentRunRequest, parseMediaCommand, parseOrchestrationRequest, parseTabGroupAssignment, parseTabGroupCreate, parseViewport, requireBoolean, requireBrowserId, requireCommand, requireIdentifier, requirePane, requireString } from "../shared/ipc-validation.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -19,6 +22,7 @@ let agentRegistry: AgentRegistry | null = null;
 let providerRunner: ProviderRunner | null = null;
 let cliRunner: CliRunner | null = null;
 let migrationManager: MigrationManager | null = null;
+let updateManager: UpdateManager | null = null;
 
 app.enableSandbox();
 app.setName(DESKTOP_APP_NAME);
@@ -42,7 +46,7 @@ function createWindow(): void {
   void mainWindow.loadURL(rendererUrl);
   mainWindow.on("closed", () => { browserManager?.destroy(); browserManager = null; mainWindow = null; });
 }
-app.whenReady().then(() => { session.defaultSession.setPermissionRequestHandler((_wc, _permission, callback) => callback(false)); agentRegistry = new AgentRegistry(join(app.getPath("userData"), "agents.json"), join(app.getPath("userData"), "agent-vault.json")); providerRunner = new ProviderRunner(agentRegistry); cliRunner = new CliRunner(agentRegistry, join(app.getPath("userData"), "agent-workspaces")); migrationManager = new MigrationManager(app.getPath("userData"), safeStorage); createWindow(); app.on("activate", () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); }); });
+app.whenReady().then(() => { session.defaultSession.setPermissionRequestHandler((_wc, _permission, callback) => callback(false)); agentRegistry = new AgentRegistry(join(app.getPath("userData"), "agents.json"), join(app.getPath("userData"), "agent-vault.json")); providerRunner = new ProviderRunner(agentRegistry); cliRunner = new CliRunner(agentRegistry, join(app.getPath("userData"), "agent-workspaces")); migrationManager = new MigrationManager(app.getPath("userData"), safeStorage); let updatesEnabled = false; try { const metadata = JSON.parse(readFileSync(join(app.getAppPath(), "package.json"), "utf8")) as { openstrawberryUpdateChannel?: { enabled?: boolean } }; updatesEnabled = app.isPackaged && metadata.openstrawberryUpdateChannel?.enabled === true; } catch { /* Keep in-app updates unavailable when release metadata cannot be verified. */ } const { autoUpdater } = electronUpdater; updateManager = new UpdateManager(autoUpdater as unknown as UpdateClient, updatesEnabled, app.getVersion(), (snapshot) => mainWindow?.webContents.send("updates:state", snapshot)); createWindow(); updateManager.start(); app.on("activate", () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); }); });
 registerTrustedHandler("browser:ready", () => browserManager?.initialize());
 registerTrustedHandler("browser:create", (input, paneId) => browserManager?.createTab(input, paneId === undefined ? undefined : requirePane(paneId)));
 registerTrustedHandler("browser:activate", (id, paneId) => browserManager?.activateTab(requireIdentifier(id, "Tab ID"), paneId === undefined ? undefined : requirePane(paneId)));
@@ -59,6 +63,10 @@ registerTrustedHandler("browser:delete-tab-group", (id) => browserManager?.delet
 registerTrustedHandler("browser:set-tracker-blocking", (enabled) => browserManager?.setTrackerBlocking(requireBoolean(enabled, "Tracker blocking state")));
 registerTrustedHandler("browser:toggle-tracker-site-exception", () => browserManager?.toggleTrackerBlockingForActiveSite());
 registerTrustedHandler("app:version", () => app.getVersion());
+registerTrustedHandler("updates:state", () => updateManager?.state() ?? { status: "disabled", currentVersion: app.getVersion(), message: "In-app updates are unavailable." });
+registerTrustedHandler("updates:check", () => updateManager?.check() ?? { status: "disabled", currentVersion: app.getVersion(), message: "In-app updates are unavailable." });
+registerTrustedHandler("updates:download", () => updateManager?.download() ?? { status: "disabled", currentVersion: app.getVersion(), message: "In-app updates are unavailable." });
+registerTrustedHandler("updates:install", () => updateManager?.install() ?? false);
 registerTrustedHandler("workspace:list", () => browserManager?.listWorkspaceSnapshots() ?? []);
 registerTrustedHandler("workspace:save", (name) => browserManager?.saveWorkspaceSnapshot(requireString(name, "Workspace name", 80)));
 registerTrustedHandler("workspace:restore", (id) => browserManager?.restoreWorkspaceSnapshot(requireIdentifier(id, "Workspace ID")));

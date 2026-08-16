@@ -6,6 +6,7 @@ import type { AgentProfileInput, AgentProfileSummary, LocalCliStatus } from "../
 import type { OrchestrationPlan, OrchestrationRequest } from "../shared/orchestration.js";
 import type { AgentRunRequest, AgentRunResult } from "../shared/agent-run.js";
 import type { BookmarkExportImportResult, BookmarkExportPreview, BrowserId, BrowserMigrationCandidate, MigrationImportResult, OnboardingState, PasswordExportImportResult, PasswordExportPreview } from "../shared/migration.js";
+import type { UpdateSnapshot } from "../shared/update.js";
 
 contextBridge.exposeInMainWorld("openStrawberry", {
   browser: {
@@ -58,6 +59,13 @@ contextBridge.exposeInMainWorld("openStrawberry", {
     commitBookmarkExport: (importId: string): Promise<BookmarkExportImportResult> => ipcRenderer.invoke("migration:commit-bookmark-export", importId),
     discardBookmarkExport: (importId: string): Promise<void> => ipcRenderer.invoke("migration:discard-bookmark-export", importId),
     complete: (browserId?: BrowserId): Promise<OnboardingState> => ipcRenderer.invoke("migration:complete", browserId)
+  },
+  updates: {
+    state: (): Promise<UpdateSnapshot> => ipcRenderer.invoke("updates:state"),
+    check: (): Promise<UpdateSnapshot> => ipcRenderer.invoke("updates:check"),
+    download: (): Promise<UpdateSnapshot> => ipcRenderer.invoke("updates:download"),
+    install: (): Promise<boolean> => ipcRenderer.invoke("updates:install"),
+    onState: (listener: (snapshot: UpdateSnapshot) => void): (() => void) => { const handler = (_event: Electron.IpcRendererEvent, snapshot: UpdateSnapshot) => listener(snapshot); ipcRenderer.on("updates:state", handler); return () => ipcRenderer.removeListener("updates:state", handler); }
   },
   app: { version: (): Promise<string> => ipcRenderer.invoke("app:version") }
 });

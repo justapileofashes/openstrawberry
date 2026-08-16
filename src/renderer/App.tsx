@@ -7,6 +7,7 @@ import { EMPTY_MEDIA_STATE, type MediaCommand, type MediaState } from "../shared
 import type { OrchestrationPlan } from "../shared/orchestration";
 import type { AgentRunResult } from "../shared/agent-run";
 import type { BookmarkExportPreview, BrowserId, BrowserMigrationCandidate, OnboardingState, PasswordExportPreview } from "../shared/migration";
+import { DISABLED_UPDATE_SNAPSHOT, type UpdateSnapshot } from "../shared/update";
 import { resolveBrowserShortcut } from "../shared/keyboard";
 import { downloadProgress } from "../shared/download";
 import { faviconUrlForTab } from "./browser-chrome.js";
@@ -14,6 +15,17 @@ import { faviconUrlForTab } from "./browser-chrome.js";
 const EMPTY_SNAPSHOT: BrowserSnapshot = { activeTabId: null, activePaneId: "primary", splitEnabled: false, panes: [{ id: "primary", tabId: null }, { id: "secondary", tabId: null }], tabs: [], groups: [], downloads: [], privacy: { trackerBlockingEnabled: true, activeSiteException: false, activeTabBlockedRequests: 0 } };
 const PALETTE_ACTIONS = [{ id: "new-tab", label: "New tab", hint: "⌘/Ctrl T" }, { id: "focus-address", label: "Focus address bar", hint: "⌘/Ctrl L" }, { id: "toggle-split", label: "Toggle split workspace", hint: "⌘/Ctrl Shift S" }, { id: "reader-mode", label: "Toggle reader mode", hint: "" }, { id: "open-workspaces", label: "Open saved workspaces", hint: "" }, { id: "toggle-agents", label: "Toggle Companion", hint: "" }];
 const GROUP_COLORS: Record<TabGroupColor, string> = { slate: "#899198", blue: "#6aa5ff", violet: "#b18cff", rose: "#ff8aab", amber: "#f9c86c", emerald: "#6ad7ac" };
+const PROVIDER_PRESETS = [
+  { label: "OpenAI", provider: "OpenAI", model: "gpt-5", baseUrl: "" },
+  { label: "Anthropic", provider: "Anthropic", model: "claude-sonnet-4-6", baseUrl: "" },
+  { label: "OpenRouter", provider: "OpenRouter", model: "openai/gpt-5", baseUrl: "" },
+  { label: "Moonshot AI", provider: "Moonshot AI", model: "kimi-k2", baseUrl: "https://api.moonshot.ai/v1" },
+  { label: "Qwen", provider: "Qwen", model: "qwen-max", baseUrl: "" },
+  { label: "OmniRoute", provider: "OmniRoute", model: "model-id", baseUrl: "" },
+  { label: "OpenAI-compatible", provider: "OpenAI-compatible", model: "model-id", baseUrl: "" }
+] as const;
+const AGENT_ROLES: AgentProfileInput["role"][] = ["companion", "orchestrator", "researcher", "coder", "reviewer"];
+const EMPTY_AGENT_DRAFT: AgentProfileInput = { name: "New agent", role: "companion", provider: "OpenAI", model: "gpt-5", baseUrl: "", executor: "provider" };
 
 function IconButton({ label, disabled, children, onClick }: { label: string; disabled?: boolean; children: ReactNode; onClick?: () => void }) {
   return <span className="icon-control-wrap"><button aria-label={label} disabled={disabled} onClick={onClick} className="icon-button">{children}</button><span className="control-tooltip" role="tooltip">{label}</span></span>;
@@ -51,6 +63,9 @@ export function App() {
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [commandQuery, setCommandQuery] = useState("");
   const [downloadDrawerOpen, setDownloadDrawerOpen] = useState(false);
+  const [agentControlOpen, setAgentControlOpen] = useState(false);
+  const [updatePanelOpen, setUpdatePanelOpen] = useState(false);
+  const [updateState, setUpdateState] = useState<UpdateSnapshot>(DISABLED_UPDATE_SNAPSHOT);
   const primaryViewportRef = useRef<HTMLDivElement>(null);
   const secondaryViewportRef = useRef<HTMLDivElement>(null);
   const addressInputRef = useRef<HTMLInputElement>(null);
@@ -78,6 +93,11 @@ export function App() {
   }, []);
 
   useEffect(() => { void window.openStrawberry.workspaces.list().then(setWorkspaces); }, []);
+
+  useEffect(() => {
+    void window.openStrawberry.updates.state().then(setUpdateState);
+    return window.openStrawberry.updates.onState(setUpdateState);
+  }, []);
 
   const completeFreshProfile = () => { void window.openStrawberry.migration.complete().then(setOnboarding); };
   const importMigration = (browserId: BrowserId) => {
@@ -207,9 +227,11 @@ export function App() {
           <IconButton label="Workspaces" onClick={() => setWorkspaceDrawerOpen((value) => !value)}><LayoutPanelTop size={16} /></IconButton>
           <IconButton label="Downloads" onClick={() => setDownloadDrawerOpen((value) => !value)}><Download size={16} /></IconButton>
           <IconButton label="Settings"><Settings2 size={16} /></IconButton>
+          <IconButton label="Agent Control Panel" onClick={() => setAgentControlOpen(true)}><Bot size={16} /></IconButton>
           <IconButton label="Search workspace" onClick={() => setCommandPaletteOpen(true)}><Search size={16} /></IconButton>
         </div>
         <div className="privacy-controls" aria-label="Tracker blocking controls"><button className={`privacy-toggle ${browser.privacy.trackerBlockingEnabled ? "active" : ""}`} onClick={() => setTrackerBlocking(!browser.privacy.trackerBlockingEnabled)} title="Toggle tracker blocking">{browser.privacy.trackerBlockingEnabled ? "Tracker block on" : "Tracker block off"}</button><button className="privacy-site-toggle" disabled={!activeSiteIsWeb} onClick={toggleTrackerSiteException} title="Toggle tracker blocking for the active site">{browser.privacy.activeSiteException ? "Allowed here" : "Block here"}</button>{browser.privacy.activeTabBlockedRequests > 0 && <span className="privacy-count" title="Blocked tracker requests in the active tab">{browser.privacy.activeTabBlockedRequests} blocked</span>}</div>
+        <button className={`update-trigger ${updateState.status}`} onClick={() => setUpdatePanelOpen(true)}>{updateState.status === "downloaded" ? "Restart to update" : updateState.status === "available" ? "Update available" : "Updates"}</button>
         <button className="agents-trigger" onClick={() => setAgentRailOpen((value) => !value)}><Bot size={14} /> Agents</button>
       </header>
       <div className="pane-toolbar" aria-label="Split workspace targets">
@@ -237,6 +259,8 @@ export function App() {
     </main>
     {commandPaletteOpen && <CommandPalette query={commandQuery} onQueryChange={setCommandQuery} onClose={() => setCommandPaletteOpen(false)} onExecute={executePaletteAction} />}
     {downloadDrawerOpen && <DownloadDrawer downloads={browser.downloads} onReveal={(id) => void window.openStrawberry.browser.revealDownload(id)} onClose={() => setDownloadDrawerOpen(false)} />}
+    {updatePanelOpen && <UpdatePanel state={updateState} onClose={() => setUpdatePanelOpen(false)} onCheck={() => void window.openStrawberry.updates.check().then(setUpdateState)} onDownload={() => void window.openStrawberry.updates.download().then(setUpdateState)} onInstall={() => void window.openStrawberry.updates.install()} />}
+    {agentControlOpen && <AgentControlPanel profiles={agents} localClis={localClis} onProfilesChange={setAgents} onClose={() => setAgentControlOpen(false)} />}
     {workspaceDrawerOpen && <WorkspaceDrawer name={workspaceName} status={workspaceStatus} workspaces={workspaces} onNameChange={setWorkspaceName} onSave={saveWorkspace} onRestore={restoreWorkspace} onClose={() => setWorkspaceDrawerOpen(false)}><TabGroupPanel groups={browser.groups} activeTab={activeTab} name={groupName} color={groupColor} status={groupStatus} onNameChange={setGroupName} onColorChange={setGroupColor} onCreate={createTabGroup} onAssign={assignActiveTabToGroup} onToggle={toggleTabGroup} onDelete={deleteTabGroup} /><PrivacyPanel enabled={browser.privacy.trackerBlockingEnabled} activeSiteIsWeb={activeSiteIsWeb} activeSiteException={browser.privacy.activeSiteException} blockedRequests={browser.privacy.activeTabBlockedRequests} status={privacyStatus} onEnabledChange={setTrackerBlocking} onToggleSiteException={toggleTrackerSiteException} /></WorkspaceDrawer>}
     {onboarding && !onboarding.completed && <OnboardingSheet candidates={migrationCandidates} status={migrationStatus} passwordPreview={passwordExportPreview} bookmarkPreview={bookmarkExportPreview} onImport={importMigration} onSelectPasswordExport={selectPasswordExport} onCommitPasswordExport={commitPasswordExport} onDiscardPasswordExport={discardPasswordExport} onSelectBookmarkExport={selectBookmarkExport} onCommitBookmarkExport={commitBookmarkExport} onDiscardBookmarkExport={discardBookmarkExport} onFresh={completeFreshProfile} />}
   </div>;
@@ -261,6 +285,46 @@ function CommandPalette({ query, onQueryChange, onClose, onExecute }: { query: s
 
 function DownloadDrawer({ downloads, onReveal, onClose }: { downloads: BrowserSnapshot["downloads"]; onReveal: (id: string) => void; onClose: () => void }) {
   return <aside className="download-drawer liquid-glass" aria-label="Downloads"><header><div><p className="eyebrow">Local download activity</p><h2>Downloads</h2></div><IconButton label="Close downloads" onClick={onClose}><X size={15} /></IconButton></header><div className="download-drawer-content">{downloads.length === 0 ? <div className="workspace-empty">No downloads in this session.</div> : downloads.map((download) => { const progress = downloadProgress(download.receivedBytes, download.totalBytes); return <article className="download-record" key={download.id}><div><strong>{download.filename}</strong><span>{download.state === "completed" ? "Completed" : download.state === "cancelled" ? "Cancelled" : progress === null ? "Downloading…" : `${progress}% downloaded`}</span></div>{download.state === "progressing" && <div className="download-progress"><i style={{ width: `${progress ?? 18}%` }} /></div>}{download.state === "completed" && <button className="secondary-action" onClick={() => onReveal(download.id)}>Reveal in folder</button>}</article>; })}</div></aside>;
+}
+
+function UpdatePanel({ state, onClose, onCheck, onDownload, onInstall }: { state: UpdateSnapshot; onClose: () => void; onCheck: () => void; onDownload: () => void; onInstall: () => void }) {
+  const busy = state.status === "checking" || state.status === "downloading";
+  return <section className="control-backdrop" role="dialog" aria-modal="true" aria-label="Browser updates" onMouseDown={onClose}><div className="update-panel liquid-glass" onMouseDown={(event) => event.stopPropagation()}><header><div><p className="eyebrow">OpenStrawberry release channel</p><h2>Browser updates</h2></div><IconButton label="Close updates" onClick={onClose}><X size={15} /></IconButton></header><div className="update-panel-content"><div className={`update-state ${state.status}`}><RefreshCw size={19} /><div><strong>{state.status === "disabled" ? "Release channel not active" : state.status === "available" ? `Version ${state.availableVersion ?? "new"} is available` : state.status === "downloaded" ? `Version ${state.availableVersion ?? "new"} is ready` : state.status === "downloading" ? "Downloading signed update" : state.status === "checking" ? "Checking for updates" : state.status === "error" ? "Update check unavailable" : "OpenStrawberry is current"}</strong><span>{state.message}</span></div></div>{state.releaseNotes && <section className="update-notes"><p className="eyebrow">Release notes</p><p>{state.releaseNotes}</p></section>}{state.status === "downloading" && <div className="update-progress"><i style={{ width: `${state.progress ?? 0}%` }} /><span>{state.progress ?? 0}%</span></div>}<p className="update-safety"><ShieldCheck size={15} />Only release metadata and installers from the configured signed GitHub Release channel are eligible. OpenStrawberry never downloads an update from a browser tab.</p><div className="update-actions">{(state.status === "idle" || state.status === "error") && <button className="secondary-action" disabled={busy} onClick={onCheck}>{state.status === "error" ? "Try again" : "Check for updates"}</button>}{state.status === "available" && <button className="primary-action" onClick={onDownload}>Download update</button>}{state.status === "downloaded" && <button className="primary-action" onClick={onInstall}>Restart and install</button>}{state.status === "disabled" && <button className="secondary-action" disabled>Awaiting first signed release</button>}</div><small>Current version: {state.currentVersion || "development build"}</small></div></div></section>;
+}
+
+function AgentControlPanel({ profiles, localClis, onProfilesChange, onClose }: { profiles: AgentProfileSummary[]; localClis: LocalCliStatus[]; onProfilesChange: (profiles: AgentProfileSummary[]) => void; onClose: () => void }) {
+  const [selectedId, setSelectedId] = useState(profiles[0]?.id ?? "new");
+  const [draft, setDraft] = useState<AgentProfileInput>(profiles[0] ? profileToDraft(profiles[0]) : EMPTY_AGENT_DRAFT);
+  const [apiKey, setApiKey] = useState("");
+  const [status, setStatus] = useState("");
+  const selected = profiles.find((profile) => profile.id === selectedId);
+
+  const selectProfile = (profile: AgentProfileSummary) => { setSelectedId(profile.id); setDraft(profileToDraft(profile)); setApiKey(""); setStatus(""); };
+  const createAgent = () => { setSelectedId("new"); setDraft({ ...EMPTY_AGENT_DRAFT, name: `Agent ${profiles.length + 1}` }); setApiKey(""); setStatus(""); };
+  const setPreset = (label: string) => {
+    const preset = PROVIDER_PRESETS.find((candidate) => candidate.label === label);
+    if (preset) setDraft({ ...draft, provider: preset.provider, model: preset.model, baseUrl: preset.baseUrl });
+  };
+  const chooseCli = (provider: string) => setDraft({ ...draft, executor: "local-cli", provider, model: draft.model === "gpt-5" ? "model-id" : draft.model });
+  const save = () => {
+    setStatus("Saving encrypted local binding…");
+    void window.openStrawberry.agents.save({ ...draft, apiKey: apiKey || undefined }).then((saved) => {
+      if (!saved) return;
+      onProfilesChange(selected ? profiles.map((profile) => profile.id === saved.id ? saved : profile) : [...profiles, saved]);
+      setSelectedId(saved.id); setDraft(profileToDraft(saved)); setApiKey(""); setStatus("Saved locally. Credentials are encrypted by the operating system and never returned to this panel.");
+    }).catch((error: unknown) => setStatus(error instanceof Error ? error.message : "Could not save this agent."));
+  };
+  const clearCredential = () => {
+    if (!selected) return;
+    setStatus("Removing local credential…");
+    void window.openStrawberry.agents.save({ ...draft, clearCredential: true }).then((saved) => { if (saved) { onProfilesChange(profiles.map((profile) => profile.id === saved.id ? saved : profile)); setDraft(profileToDraft(saved)); setApiKey(""); setStatus("Local credential removed."); } }).catch((error: unknown) => setStatus(error instanceof Error ? error.message : "Could not remove the credential."));
+  };
+
+  return <section className="control-backdrop" role="dialog" aria-modal="true" aria-label="Agent Control Panel" onMouseDown={onClose}><div className="agent-control-panel liquid-glass" onMouseDown={(event) => event.stopPropagation()}><header><div><p className="eyebrow">OpenStrawberry control plane</p><h2>Agent Control Panel</h2></div><IconButton label="Close Agent Control Panel" onClick={onClose}><X size={15} /></IconButton></header><div className="agent-control-layout"><aside className="agent-registry"><button className={`agent-new ${selectedId === "new" ? "selected" : ""}`} onClick={createAgent}><Plus size={15} /> Create agent</button><p className="eyebrow">Local agents</p>{profiles.map((profile) => <button key={profile.id} className={`agent-card agent-select ${selectedId === profile.id ? "selected" : ""}`} onClick={() => selectProfile(profile)}><div><strong>{profile.name}</strong><span>{profile.role} · {profile.provider}</span></div><span className="status">{profile.credentialStatus === "ready" ? "Ready" : profile.credentialStatus === "unavailable" ? "Unavailable" : "Set key"}</span></button>)}</aside><section className="agent-config"><div className="agent-config-heading"><div><p className="eyebrow">{selected ? "Edit local agent" : "Create local agent"}</p><h3>{draft.name || "Untitled agent"}</h3></div><span className={`credential-status ${selected?.credentialStatus ?? "not-configured"}`}>{selected?.credentialStatus === "ready" ? "Credential stored" : selected?.credentialStatus === "unavailable" ? "OS vault unavailable" : "No credential stored"}</span></div><div className="agent-config-grid"><label>Agent name<input value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} /></label><label>Role<select value={draft.role} onChange={(event) => setDraft({ ...draft, role: event.target.value as AgentProfileInput["role"] })}>{AGENT_ROLES.map((role) => <option value={role} key={role}>{role}</option>)}</select></label><label>Runtime<select value={draft.executor} onChange={(event) => setDraft({ ...draft, executor: event.target.value as AgentProfileInput["executor"] })}><option value="provider">Provider API</option><option value="local-cli">Local coding CLI</option></select></label>{draft.executor === "provider" ? <><label>Provider preset<select value="" onChange={(event) => setPreset(event.target.value)}><option value="">Choose a provider preset</option>{PROVIDER_PRESETS.map((preset) => <option key={preset.label} value={preset.label}>{preset.label}</option>)}</select></label><label>Provider name<input value={draft.provider} onChange={(event) => setDraft({ ...draft, provider: event.target.value })} placeholder="Provider name" /></label><label>Model<input value={draft.model} onChange={(event) => setDraft({ ...draft, model: event.target.value })} placeholder="Model identifier" /></label><label className="wide">Base URL <span>optional for built-in providers</span><input value={draft.baseUrl ?? ""} onChange={(event) => setDraft({ ...draft, baseUrl: event.target.value })} placeholder="https://api.example.com/v1" /></label></> : <><label className="wide">Local coding CLI<select value={draft.provider} onChange={(event) => chooseCli(event.target.value)}>{localClis.map((cli) => <option key={cli.command} value={cli.label}>{cli.label} · {cli.available ? "found" : "not found"}</option>)}</select></label><label>Model<input value={draft.model} onChange={(event) => setDraft({ ...draft, model: event.target.value })} placeholder="Model identifier" /></label><label>Base URL <span>required for Qwen Code</span><input value={draft.baseUrl ?? ""} onChange={(event) => setDraft({ ...draft, baseUrl: event.target.value })} placeholder="https://…" /></label><div className="cli-detection wide">{localClis.map((cli) => <span key={cli.command} className={cli.available ? "detected" : "missing"}>{cli.label}: {cli.available ? "found" : "not found"}</span>)}</div></>}</div><div className="credential-entry"><div><p className="eyebrow">Credential</p><strong>Keep credentials per agent</strong><span>Credentials are sent only across the isolated bridge for storage in the operating-system encrypted vault. Existing values are never shown.</span></div><input type="password" value={apiKey} onChange={(event) => setApiKey(event.target.value)} placeholder={selected?.credentialStatus === "ready" ? "Enter a replacement value" : "Paste this agent’s API key"} aria-label="Agent API key" /></div><div className="agent-config-actions"><button className="primary-action" onClick={save}><ShieldCheck size={14} /> Save agent</button>{selected?.credentialStatus === "ready" && <button className="secondary-action" onClick={clearCredential}>Remove stored credential</button>}</div>{status && <p className="agent-status">{status}</p>}<small className="agent-control-note">Saving a profile does not run an agent. Every provider or local CLI run continues to require separate native approval and receives only the explicitly selected browser context.</small></section></div></div></section>;
+}
+
+function profileToDraft(profile: AgentProfileSummary): AgentProfileInput {
+  return { id: profile.id, name: profile.name, role: profile.role, provider: profile.provider, model: profile.model, baseUrl: profile.baseUrl, executor: profile.executor };
 }
 
 function OnboardingSheet({ candidates, status, passwordPreview, bookmarkPreview, onImport, onSelectPasswordExport, onCommitPasswordExport, onDiscardPasswordExport, onSelectBookmarkExport, onCommitBookmarkExport, onDiscardBookmarkExport, onFresh }: { candidates: BrowserMigrationCandidate[]; status: string; passwordPreview: PasswordExportPreview | null; bookmarkPreview: BookmarkExportPreview | null; onImport: (browserId: BrowserId) => void; onSelectPasswordExport: (browserId: BrowserId) => void; onCommitPasswordExport: () => void; onDiscardPasswordExport: () => void; onSelectBookmarkExport: (browserId: BrowserId) => void; onCommitBookmarkExport: () => void; onDiscardBookmarkExport: () => void; onFresh: () => void }) {

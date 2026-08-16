@@ -4,7 +4,16 @@
   "desktopName": "openstrawberry",
   "version": "0.1.0",
   "description": "A local-first agentic desktop browser.",
-  "author": {"name": "OpenStrawberry contributors", "email": "opensource@openstrawberry.dev"},
+  "openstrawberryUpdateChannel": {
+    "provider": "github",
+    "owner": "justapileofashes",
+    "repo": "openstrawberry",
+    "enabled": false
+  },
+  "author": {
+    "name": "OpenStrawberry contributors",
+    "email": "opensource@openstrawberry.dev"
+  },
   "type": "module",
   "main": "dist/main/index.js",
   "license": "MIT",
@@ -18,6 +27,7 @@
     "release:verify": "node scripts/release/verify-artifacts.mjs"
   },
   "dependencies": {
+    "electron-updater": "6.8.9",
     "lucide-react": "1.31.0",
     "react": "19.2.8",
     "react-dom": "19.2.8"
@@ -32,8 +42,8 @@
     "electron": "43.4.0",
     "electron-builder": "26.15.3",
     "typescript": "7.0.2",
-    "vitest": "4.1.10",
     "vite": "8.2.1",
+    "vitest": "4.1.10",
     "wait-on": "9.1.0"
   },
   "build": {
@@ -48,6 +58,14 @@
     "files": [
       "dist/**/*",
       "package.json"
+    ],
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "justapileofashes",
+        "repo": "openstrawberry",
+        "releaseType": "release"
+      }
     ],
     "mac": {
       "icon": "resources/icon.icns",
@@ -74,8 +92,8 @@
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
-      "createStartMenuShortcut": true
-      ,"shortcutName": "OpenStrawberry",
+      "createStartMenuShortcut": true,
+      "shortcutName": "OpenStrawberry",
       "runAfterFinish": true,
       "deleteAppDataOnUninstall": false
     },

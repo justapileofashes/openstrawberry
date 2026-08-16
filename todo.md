@@ -47,6 +47,13 @@
  - [x] Port the approved favicon-only left tab rail, top-bar workspace controls, hover/focus tooltips, always-on Motion and Liquid Glass, simplified search control, and cohesive glassmorphism to the Electron renderer.
  - [x] Validate the Electron renderer update in source and an unpacked native package so configured future installers include the revised interface.
 
+## Desktop updates and Agent Control Panel
+
+ - [x] Add a signed-release-only in-app update state machine with user-visible availability, download progress, install/restart action, and safe disabled behavior before a stable update feed exists.
+ - [x] Configure the in-app updater for OpenStrawberry’s signed public GitHub Releases feed; keep it disabled until the required signed release metadata is available.
+ - [x] Add a top-bar Agent Control Panel for creating agents and selecting a provider, model, and local CLI or API-backed runtime without exposing credentials to the renderer.
+ - [x] Add focused tests and package validation for the update bridge and Agent Control Panel integration.
+
 ## Release validation
 
 - [x] Validate an unpacked Linux Electron application and native DEB package build from the configured Electron Builder targets.
