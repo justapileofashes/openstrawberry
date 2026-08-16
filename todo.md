@@ -58,9 +58,9 @@
  - [x] Synchronize the verified OpenStrawberry repository to the user-provided local `D:\docs\claudecodeprojects\openstrawberry` folder and retain it as a target for future requested app changes.
  - [x] Make the credential-vault filesystem permission assertion portable across Linux and Windows local development environments.
  - [x] Build a local Windows NSIS installer executable and place it in the user’s local OpenStrawberry workspace without committing the binary to Git.
- - [ ] Prevent BrowserWindow-destruction errors during Windows app shutdown by making BrowserView teardown destruction-safe.
- - [ ] Remove the default File, Edit, View, and Window application menu from the Windows desktop app.
- - [ ] Rebuild and smoke-test the corrected local Windows NSIS installer executable.
+ - [x] Prevent BrowserWindow-destruction errors during Windows app shutdown by making BrowserView teardown destruction-safe.
+ - [x] Remove the default File, Edit, View, and Window application menu from the Windows desktop app.
+ - [x] Rebuild and smoke-test the corrected local Windows NSIS installer executable.
 
 ## Release validation
 
