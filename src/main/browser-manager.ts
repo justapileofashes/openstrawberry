@@ -92,7 +92,7 @@ export class BrowserManager {
   }
   public closeTab(id: string): BrowserSnapshot {
     const runtime = this.tabs.get(id); if (!runtime) return this.snapshot();
-    this.window.removeBrowserView(runtime.view); this.attachedTabIds.delete(id); runtime.view.webContents.close(); this.tabs.delete(id);
+    this.destroyTabRuntime(id, runtime); this.tabs.delete(id);
     this.blockedRequestsByTab.delete(id);
     this.removeTabFromGroups(id);
     for (const paneId of PANE_IDS) if (this.panes[paneId].tabId === id) this.panes[paneId].tabId = this.tabs.keys().next().value ?? null;
@@ -200,7 +200,7 @@ export class BrowserManager {
   public restoreWorkspaceSnapshot(id: string): BrowserSnapshot {
     const saved = this.readWorkspaceSnapshots().find((candidate) => candidate.id === id);
     if (!saved) throw new Error("That workspace snapshot no longer exists.");
-    for (const tab of this.tabs.values()) { this.window.removeBrowserView(tab.view); if (!tab.view.webContents.isDestroyed()) tab.view.webContents.close(); }
+    for (const [tabId, tab] of this.tabs) this.destroyTabRuntime(tabId, tab);
     this.tabs.clear();
     this.groups.clear();
     for (const paneId of PANE_IDS) this.panes[paneId].tabId = null;
@@ -213,7 +213,7 @@ export class BrowserManager {
     this.publish();
     return this.snapshot();
   }
-  public destroy(): void { for (const tab of this.tabs.values()) { this.window.removeBrowserView(tab.view); if (!tab.view.webContents.isDestroyed()) tab.view.webContents.close(); } this.attachedTabIds.clear(); this.tabs.clear(); this.groups.clear(); }
+  public destroy(): void { for (const [tabId, tab] of this.tabs) this.destroyTabRuntime(tabId, tab); this.attachedTabIds.clear(); this.tabs.clear(); this.groups.clear(); }
   private observeTab(id: string, tab: TabRuntime): void {
     const refresh = () => this.updateState(id); const wc = tab.view.webContents;
     wc.on("did-start-loading", refresh); wc.on("did-stop-loading", refresh); wc.on("did-navigate", refresh); wc.on("did-navigate-in-page", refresh); wc.on("page-title-updated", refresh);
@@ -228,12 +228,13 @@ export class BrowserManager {
     try { void tab.view.webContents.loadURL(normalizeBrowserUrl(input)).catch(() => this.updateState(id)); } catch { this.updateState(id); }
   }
   private attachVisibleViews(): void {
+    if (this.window.isDestroyed()) return;
     const visible = this.splitEnabled ? PANE_IDS : ["primary"] as BrowserPaneId[];
     const visibleTabIds = new Set(visible.map((paneId) => this.panes[paneId].tabId).filter((tabId): tabId is string => Boolean(tabId)));
     for (const tabId of this.attachedTabIds) {
       if (visibleTabIds.has(tabId)) continue;
       const tab = this.tabs.get(tabId);
-      if (tab) this.window.removeBrowserView(tab.view);
+      if (tab) this.removeBrowserViewSafely(tab.view);
       this.attachedTabIds.delete(tabId);
     }
     for (const paneId of visible) {
@@ -243,6 +244,15 @@ export class BrowserManager {
       if (!this.attachedTabIds.has(tabId)) { this.window.addBrowserView(tab.view); this.attachedTabIds.add(tabId); }
       tab.view.setBounds(this.panes[paneId].viewport);
     }
+  }
+  private destroyTabRuntime(tabId: string, tab: TabRuntime): void {
+    this.removeBrowserViewSafely(tab.view);
+    this.attachedTabIds.delete(tabId);
+    if (!tab.view.webContents.isDestroyed()) tab.view.webContents.close();
+  }
+  private removeBrowserViewSafely(view: BrowserView): void {
+    if (this.window.isDestroyed()) return;
+    try { this.window.removeBrowserView(view); } catch { /* The parent window can begin closing between lifecycle events. */ }
   }
   private assignTabToPane(tabId: string, paneId: BrowserPaneId): void {
     for (const candidate of PANE_IDS) if (candidate !== paneId && this.panes[candidate].tabId === tabId) this.panes[candidate].tabId = null;

@@ -1,5 +1,5 @@
 /* OpenStrawberry main process: native browser views and a minimal trusted IPC surface. */
-import { app, BrowserWindow, dialog, ipcMain, safeStorage, session, type IpcMainInvokeEvent, type OpenDialogOptions } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Menu, safeStorage, session, type IpcMainInvokeEvent, type OpenDialogOptions } from "electron";
 import electronUpdater from "electron-updater";
 import { readFileSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -34,19 +34,28 @@ function assertTrustedRenderer(event: IpcMainInvokeEvent): void {
 function registerTrustedHandler(channel: string, handler: (...args: unknown[]) => unknown): void {
   ipcMain.handle(channel, (event, ...args) => { assertTrustedRenderer(event); return handler(...args); });
 }
+function sendToMainWindow(channel: string, payload: unknown): void {
+  const target = mainWindow;
+  if (!target || target.isDestroyed() || target.webContents.isDestroyed()) return;
+  target.webContents.send(channel, payload);
+}
 
 function createWindow(): void {
   const devUrl = process.env.VITE_DEV_SERVER_URL;
   const rendererUrl = devUrl ?? pathToFileURL(join(__dirname, "../renderer/index.html")).toString();
   mainWindow = new BrowserWindow({ width: 1440, height: 960, minWidth: 1024, minHeight: 700, backgroundColor: "#050506", titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default", webPreferences: { preload: join(__dirname, "../preload/index.cjs"), contextIsolation: true, nodeIntegration: false, sandbox: true, webviewTag: false, allowRunningInsecureContent: false } });
-  browserManager = new BrowserManager(mainWindow, (snapshot) => mainWindow?.webContents.send("browser:state", snapshot), join(app.getPath("userData"), "window-session.json"), join(app.getPath("userData"), "workspace-snapshots.json"));
+  const window = mainWindow;
+  browserManager = new BrowserManager(window, (snapshot) => sendToMainWindow("browser:state", snapshot), join(app.getPath("userData"), "window-session.json"), join(app.getPath("userData"), "workspace-snapshots.json"));
   const isTrustedRendererUrl = (url: string) => { try { return devUrl ? new URL(url).origin === new URL(rendererUrl).origin : url === rendererUrl; } catch { return false; } };
-  mainWindow.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
-  mainWindow.webContents.on("will-navigate", (event, url) => { if (!isTrustedRendererUrl(url)) event.preventDefault(); });
-  void mainWindow.loadURL(rendererUrl);
-  mainWindow.on("closed", () => { browserManager?.destroy(); browserManager = null; mainWindow = null; });
+  window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  window.webContents.on("will-navigate", (event, url) => { if (!isTrustedRendererUrl(url)) event.preventDefault(); });
+  void window.loadURL(rendererUrl);
+  let didDestroyBrowserManager = false;
+  const destroyBrowserManager = () => { if (didDestroyBrowserManager) return; didDestroyBrowserManager = true; const manager = browserManager; browserManager = null; manager?.destroy(); };
+  window.once("close", destroyBrowserManager);
+  window.once("closed", () => { destroyBrowserManager(); if (mainWindow === window) mainWindow = null; });
 }
-app.whenReady().then(() => { session.defaultSession.setPermissionRequestHandler((_wc, _permission, callback) => callback(false)); agentRegistry = new AgentRegistry(join(app.getPath("userData"), "agents.json"), join(app.getPath("userData"), "agent-vault.json")); providerRunner = new ProviderRunner(agentRegistry); cliRunner = new CliRunner(agentRegistry, join(app.getPath("userData"), "agent-workspaces")); migrationManager = new MigrationManager(app.getPath("userData"), safeStorage); let updatesEnabled = false; try { const metadata = JSON.parse(readFileSync(join(app.getAppPath(), "package.json"), "utf8")) as { openstrawberryUpdateChannel?: { enabled?: boolean } }; updatesEnabled = app.isPackaged && metadata.openstrawberryUpdateChannel?.enabled === true; } catch { /* Keep in-app updates unavailable when release metadata cannot be verified. */ } const { autoUpdater } = electronUpdater; updateManager = new UpdateManager(autoUpdater as unknown as UpdateClient, updatesEnabled, app.getVersion(), (snapshot) => mainWindow?.webContents.send("updates:state", snapshot)); createWindow(); updateManager.start(); app.on("activate", () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); }); });
+app.whenReady().then(() => { if (process.platform === "win32") Menu.setApplicationMenu(null); session.defaultSession.setPermissionRequestHandler((_wc, _permission, callback) => callback(false)); agentRegistry = new AgentRegistry(join(app.getPath("userData"), "agents.json"), join(app.getPath("userData"), "agent-vault.json")); providerRunner = new ProviderRunner(agentRegistry); cliRunner = new CliRunner(agentRegistry, join(app.getPath("userData"), "agent-workspaces")); migrationManager = new MigrationManager(app.getPath("userData"), safeStorage); let updatesEnabled = false; try { const metadata = JSON.parse(readFileSync(join(app.getAppPath(), "package.json"), "utf8")) as { openstrawberryUpdateChannel?: { enabled?: boolean } }; updatesEnabled = app.isPackaged && metadata.openstrawberryUpdateChannel?.enabled === true; } catch { /* Keep in-app updates unavailable when release metadata cannot be verified. */ } const { autoUpdater } = electronUpdater; updateManager = new UpdateManager(autoUpdater as unknown as UpdateClient, updatesEnabled, app.getVersion(), (snapshot) => sendToMainWindow("updates:state", snapshot)); createWindow(); updateManager.start(); app.on("activate", () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); }); });
 registerTrustedHandler("browser:ready", () => browserManager?.initialize());
 registerTrustedHandler("browser:create", (input, paneId) => browserManager?.createTab(input, paneId === undefined ? undefined : requirePane(paneId)));
 registerTrustedHandler("browser:activate", (id, paneId) => browserManager?.activateTab(requireIdentifier(id, "Tab ID"), paneId === undefined ? undefined : requirePane(paneId)));
