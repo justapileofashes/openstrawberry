@@ -1,0 +1,287 @@
+/* =========================================================
+   Obsidian Relay — OpenStrawberry design tokens
+
+   A warm-monochrome near-black workspace. Colour is reserved for meaning, not
+   decoration. Liquid Glass is deliberately cooler than the base so chrome reads
+   as glass laid over warm content rather than as another warm surface.
+
+   Fonts resolve locally. OpenStrawberry is local-first and must not fetch
+   webfonts from a remote host; bundled woff2 files are a later refinement.
+   ========================================================= */
+:root {
+  /* grounds and surfaces — warm monochrome */
+  --bg-deep: #08080a;
+  --bg: #0e0d0c;
+  --surface: #1a1816;
+  --surface-2: #22201d;
+  --surface-3: #2a2723;
+  --border: #26241f;
+  --border-strong: #34302a;
+
+  /* type ramp */
+  --ink: #f0ece2;
+  --ink-strong: #faf6ec;
+  --ink-muted: #a09a8e;
+  --ink-faint: #5c574f;
+  --ink-quiet: #3a362f;
+
+  /* meaning, never decoration */
+  --accent: #e8e3d5;
+  --accent-warm: #d6cdb6;
+  --good: #c8c2b3;
+  --bad: #a08278;
+
+  /* Liquid Glass — cool film over the warm base */
+  --glass-base: rgba(13, 15, 19, 0.62);
+  --glass-tint: linear-gradient(
+    180deg,
+    rgba(214, 224, 240, 0.045),
+    rgba(214, 224, 240, 0.008)
+  );
+  --glass-blur: blur(24px) saturate(150%);
+  --glass-border: rgba(220, 228, 240, 0.07);
+  --glass-inset: inset 0 1px 0 rgba(226, 235, 248, 0.06),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.45);
+
+  /* radii */
+  --r-xs: 4px;
+  --r-sm: 6px;
+  --r-md: 10px;
+  --r-lg: 14px;
+  --r-xl: 20px;
+  --r-2xl: 28px;
+
+  /* spacing */
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 20px;
+  --s-6: 24px;
+  --s-8: 32px;
+  --s-10: 40px;
+  --s-12: 48px;
+
+  /* elevation — restrained, never above 8px spread */
+  --shadow-xs: 0 1px 0 rgba(0, 0, 0, 0.4);
+  --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.35), 0 1px 1px rgba(0, 0, 0, 0.25);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.45), 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.55), 0 2px 4px rgba(0, 0, 0, 0.3);
+
+  /* motion */
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in: cubic-bezier(0.7, 0, 0.84, 0);
+  --ease-mid: cubic-bezier(0.45, 0, 0.55, 1);
+  --d-fast: 120ms;
+  --d-base: 200ms;
+  --d-slow: 360ms;
+
+  /* type */
+  --font-ui: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "Cascadia Mono", "SF Mono", Menlo,
+    monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+body {
+  font-family: var(--font-ui);
+  background: var(--bg-deep);
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.5;
+  letter-spacing: -0.005em;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overflow: hidden;
+}
+
+::selection {
+  background: rgba(232, 227, 213, 0.22);
+  color: var(--ink-strong);
+}
+
+/* =========================================================
+   Liquid Glass
+   ========================================================= */
+.glass {
+  background: var(--glass-tint), var(--glass-base);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-inset);
+}
+
+/* =========================================================
+   Shell
+   ========================================================= */
+.shell {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  isolation: isolate;
+}
+
+/* A very quiet atmospheric wash keeps the near-black from reading as flat. */
+.shell::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(
+      1200px 700px at 18% -10%,
+      rgba(214, 205, 182, 0.045),
+      transparent 60%
+    ),
+    radial-gradient(
+      900px 600px at 100% 100%,
+      rgba(160, 130, 120, 0.03),
+      transparent 60%
+    ),
+    var(--bg);
+}
+
+.shell > * {
+  position: relative;
+  z-index: 1;
+}
+
+.boot {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  padding: var(--s-12);
+}
+
+.boot-card {
+  width: min(520px, 100%);
+  padding: var(--s-8);
+  border-radius: var(--r-lg);
+  animation: screen-in var(--d-slow) var(--ease);
+}
+
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.eyebrow::before {
+  content: "";
+  width: 18px;
+  height: 1px;
+  background: var(--ink-faint);
+}
+
+.boot-card h1 {
+  margin: var(--s-4) 0 0;
+  font-weight: 300;
+  font-size: 34px;
+  line-height: 1.05;
+  letter-spacing: -0.025em;
+  color: var(--ink-strong);
+}
+
+.boot-card p {
+  margin: var(--s-3) 0 0;
+  color: var(--ink-muted);
+  max-width: 46ch;
+}
+
+.status-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin-top: var(--s-6);
+  padding-top: var(--s-4);
+  border-top: 1px solid var(--border);
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  height: 22px;
+  padding: 0 9px;
+  border-radius: 999px;
+  background: rgba(240, 236, 226, 0.05);
+  border: 1px solid var(--border);
+  color: var(--ink-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.pill .dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--accent);
+  animation: pulse 1.6s var(--ease) infinite;
+}
+
+/* =========================================================
+   Motion
+   ========================================================= */
+@keyframes screen-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(232, 227, 213, 0.4);
+    opacity: 1;
+  }
+  50% {
+    box-shadow: 0 0 0 4px rgba(232, 227, 213, 0);
+    opacity: 0.7;
+  }
+}
+
+/* Motion and Liquid Glass are always on, but non-essential movement yields to
+   the operating system preference. */
+@media (prefers-reduced-motion: reduce) {
+  .boot-card {
+    animation: none;
+  }
+  .pill .dot {
+    animation: none;
+  }
+  *,
+  *::before,
+  *::after {
+    transition-duration: 1ms !important;
+  }
+}
+
+/* Focus is always visible and never conveyed by colour alone. */
+:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 2px;
+}
