@@ -54,31 +54,18 @@
    * the light instead of revealing it.
    */
   --glass-base: rgba(15, 17, 23, 0.4);
-  /*
-   * Held back on purpose. This is the fixed lighting of the surface, and the
-   * field behind supplies the variation; a strong static tint would swamp it
-   * and the panel would read as evenly lit wherever the light was.
-   */
-  --glass-tint: linear-gradient(
-      163deg,
-      rgba(228, 238, 255, 0.075) 0%,
-      rgba(214, 226, 246, 0.038) 22%,
-      rgba(186, 198, 220, 0.016) 52%,
-      rgba(150, 162, 190, 0.032) 100%
-    ),
-    radial-gradient(
-      120% 180% at 0% 0%,
-      rgba(236, 244, 255, 0.045),
-      transparent 58%
-    );
   --glass-blur: blur(32px) saturate(185%) brightness(1.06);
   --glass-blur-deep: blur(48px) saturate(200%) brightness(1.08);
   --glass-border: rgba(222, 232, 246, 0.085);
 
-  /* Specular rim: light catches the top edge, shade collects at the bottom. */
+  /*
+   * Edge only. This defines where the pane of glass ends — it is not lighting.
+   * All brightness on a surface now comes from the ambient field behind it, so
+   * the panels carry no fixed tint, sweep, or corner glow of their own.
+   */
   --glass-rim:
-    inset 0 1px 0 rgba(238, 245, 255, 0.26),
-    inset 0 0 0 1px rgba(222, 232, 246, 0.05),
+    inset 0 1px 0 rgba(238, 245, 255, 0.16),
+    inset 0 0 0 1px rgba(222, 232, 246, 0.04),
     inset 0 -1px 0 rgba(0, 0, 0, 0.55);
 
   --glass-lift:
@@ -166,34 +153,20 @@ body {
 /* =========================================================
    Glass primitives
    ========================================================= */
+/*
+ * A pane of glass and nothing more: a translucent base, a blur, and an edge.
+ * It contributes no light of its own — no baked tint, no fixed diagonal sweep,
+ * no corner glow. Everything bright on a panel is the ambient field showing
+ * through from behind, so when the field moves away the surface genuinely
+ * darkens instead of falling back to a painted-on highlight.
+ */
 .glass {
   position: relative;
-  background: var(--glass-tint), var(--glass-base);
+  background: var(--glass-base);
   backdrop-filter: var(--glass-blur);
   -webkit-backdrop-filter: var(--glass-blur);
   border: 1px solid var(--glass-border);
   box-shadow: var(--glass-rim), var(--glass-lift);
-}
-
-/*
- * A thin specular sweep along the top edge. Real glass catches a highlight
- * where the surface curves away, and this is what stops a blurred panel from
- * reading as flat translucent plastic.
- */
-.glass::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  pointer-events: none;
-  z-index: 0;
-  background: linear-gradient(
-    100deg,
-    rgba(255, 255, 255, 0.045) 0%,
-    rgba(255, 255, 255, 0.012) 18%,
-    transparent 42%
-  );
-  opacity: 0.85;
 }
 
 /*
@@ -446,36 +419,13 @@ body {
 }
 
 /*
- * The ambient ground.
- *
- * This is what the glass refracts. A backdrop blur over a flat colour produces
- * a flat colour, so the frame carries defined luminous pools with real falloff
- * â€” bright enough to bend visibly through the chrome, and drifting slowly so
- * the refraction lives. They stay achromatic: warm bone against cool slate,
- * no hue that would read as decoration.
+ * There is deliberately no fixed wash behind the chrome. An earlier version
+ * painted static luminous pools here, aimed at the strips the rail and top bar
+ * occupy. Those never moved, so they read as permanent bright patches that the
+ * travelling field could only add to — the light appeared to be part of the
+ * panel rather than passing behind it. The ambient field is now the only
+ * source of brightness on the ground.
  */
-.shell::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-  /*
-   * Pools are aimed at the strips the chrome actually occupies â€” the left rail
-   * column and the top bar â€” because native views cover everything else and
-   * glass can only refract what sits behind it. Percentages are relative to
-   * this box, so the box stays inset:0 and the drift animation carries its own
-   * overscan instead.
-   */
-  background:
-    radial-gradient(26% 26% at 3% 6%, rgba(240, 232, 212, 0.5), transparent 70%),
-    radial-gradient(22% 30% at 1% 48%, rgba(198, 208, 232, 0.4), transparent 68%),
-    radial-gradient(20% 26% at 4% 95%, rgba(186, 176, 204, 0.34), transparent 66%),
-    radial-gradient(34% 22% at 42% 1%, rgba(214, 222, 240, 0.3), transparent 72%),
-    radial-gradient(26% 20% at 97% 3%, rgba(232, 224, 206, 0.34), transparent 70%),
-    radial-gradient(70% 60% at 50% 50%, rgba(126, 138, 164, 0.1), transparent 74%);
-  animation: ambient-drift 44s var(--ease-mid) infinite alternate;
-}
 
 /*
  * Fine grain over the whole shell. Keeps large dark areas from banding and adds
@@ -1032,7 +982,7 @@ body {
   place-items: center;
   z-index: 30;
   border-radius: var(--r-md);
-  background: var(--glass-tint), rgba(10, 12, 16, 0.66);
+  background: rgba(10, 12, 16, 0.66);
   backdrop-filter: var(--glass-blur-deep);
   -webkit-backdrop-filter: var(--glass-blur-deep);
   border: 1px dashed rgba(232, 227, 213, 0.28);
@@ -1285,19 +1235,6 @@ input[type="range"]:disabled {
   }
 }
 
-/* Baseline scale stays above 1 so the drift never exposes an unpainted edge. */
-@keyframes ambient-drift {
-  0% {
-    transform: translate3d(0, 0, 0) scale(1.14);
-  }
-  50% {
-    transform: translate3d(2.5%, -2%, 0) scale(1.2);
-  }
-  100% {
-    transform: translate3d(-2%, 2.5%, 0) scale(1.16);
-  }
-}
-
 @keyframes rail-spin {
   to {
     transform: rotate(360deg);
@@ -1321,8 +1258,6 @@ input[type="range"]:disabled {
  * structure, not movement.
  */
 @media (prefers-reduced-motion: reduce) {
-  .shell::before,
-  .glass::before,
   .rail-tab.is-loading::after,
   .split-target,
   .settings {
@@ -1340,7 +1275,6 @@ input[type="range"]:disabled {
   }
 }
 
-:root.motion-off .shell::before,
 :root.motion-off .rail-tab.is-loading::after,
 :root.motion-off .split-target,
 :root.motion-off .settings {
