@@ -615,13 +615,18 @@ body {
   opacity: 0;
 }
 
+/*
+ * The cross itself is small, but the button keeps a 24px hit area with the
+ * extra size as transparent padding. Shrinking the target along with the glyph
+ * would make closing a tab a fiddly aim.
+ */
 .rail-close {
   position: absolute;
   top: 50%;
   left: 50%;
-  width: 22px;
-  height: 22px;
-  margin: -11px 0 0 -11px;
+  width: 24px;
+  height: 24px;
+  margin: -12px 0 0 -12px;
   display: grid;
   place-items: center;
   padding: 0;
@@ -650,30 +655,41 @@ body {
   filter: blur(0);
 }
 
-.rail-close:hover {
-  background: rgba(232, 227, 213, 0.16);
-}
-
 .rail-close:active {
   transform: scale(0.88);
 }
 
-/* The droplet that swells behind the cross, selling the change of state. */
+/*
+ * The droplet that swells behind the cross, selling the change of state. It is
+ * inset from the button so the visible mark stays small while the target does
+ * not, and it doubles as the hover surface.
+ */
 .rail-close::before {
   content: "";
   position: absolute;
-  inset: -3px;
+  inset: 4px;
   border-radius: 999px;
   background: radial-gradient(
     closest-side,
-    rgba(232, 240, 252, 0.22),
-    transparent 78%
+    rgba(232, 240, 252, 0.24),
+    rgba(232, 240, 252, 0.08) 62%,
+    transparent 80%
   );
   opacity: 0;
   transform: scale(0.4);
   transition:
     opacity var(--d-slow) var(--ease),
-    transform var(--d-slow) var(--ease-liquid);
+    transform var(--d-slow) var(--ease-liquid),
+    background var(--d-fast) var(--ease);
+}
+
+.rail-close:hover::before {
+  background: radial-gradient(
+    closest-side,
+    rgba(240, 246, 255, 0.34),
+    rgba(240, 246, 255, 0.14) 62%,
+    transparent 82%
+  );
 }
 
 .rail-slot:hover .rail-close::before,

@@ -224,11 +224,11 @@ export function App(): React.JSX.Element {
                   aria-label={`Close ${name}`}
                   onClick={() => void bridge.closeTab(tab.id)}
                 >
-                  <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" width="9" height="9" aria-hidden="true">
                     <path
                       d="M7 7 L17 17 M17 7 L7 17"
                       stroke="currentColor"
-                      strokeWidth="2.4"
+                      strokeWidth="3.2"
                       strokeLinecap="round"
                     />
                   </svg>
