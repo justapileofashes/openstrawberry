@@ -49,6 +49,8 @@ passes. Planned work is never marked done.
 - [x] Two-pane split browsing with drag-to-split tab targets and pane-local focus.
 - [x] Visible focus states; active tab marked by a rail tick as well as tone, never colour alone.
 - [x] Documentation for architecture, security, releases, and updates.
+- [x] Lean the chrome into Liquid Glass: floating rail and top bar as rounded slabs over an ambient ground, multi-layer tint with specular rim, hover sheen on compact controls, inset address well, and fine grain.
+- [x] Design the application icon and wire it into packaging and the development window.
 - [ ] Icon-only Updates trigger; the Agent, Downloads, and Settings triggers are present but inert until their milestones land.
 - [ ] Responsive behaviour below the minimum desktop width, and a full keyboard traversal pass.
 - [ ] Bundle Inter and JetBrains Mono as local woff2 rather than relying on installed fonts. The renderer must not fetch webfonts from a remote host.
@@ -88,7 +90,7 @@ passes. Planned work is never marked done.
 
 ## M8 — Icons, packaging, CI
 
-- [ ] Generate native macOS, Windows, and Linux icon assets.
+- [x] Generate the application icon: `resources/icon.svg` is the source, `pnpm icon` rasterises the 1024px master plus the seven Linux sizes, and electron-builder derives `.ico` and `.icns` from the master.
 - [ ] Configure macOS universal DMG, Windows x64 one-click per-user NSIS, and Linux AppImage, DEB, and RPM targets.
 - [ ] Validate on Windows: build the NSIS artifact, launch the unpacked app, confirm it stays alive, request a normal close, and require a clean exit. Do not silently install the EXE.
 - [ ] Validate Linux AppImage, DEB, and RPM on a Linux runner.

@@ -20,6 +20,7 @@
   "private": true,
   "scripts": {
     "postinstall": "install-electron",
+    "icon": "electron scripts/render-icon.mjs",
     "dev": "concurrently -k \"vite --host 127.0.0.1\" \"wait-on http://127.0.0.1:5173 && cross-env VITE_DEV_SERVER_URL=http://127.0.0.1:5173 electron .\"",
     "check": "tsc --noEmit -p tsconfig.main.json && tsc --noEmit -p tsconfig.renderer.json",
     "test": "vitest run --config vitest.config.ts",
@@ -69,7 +70,7 @@
       }
     ],
     "mac": {
-      "icon": "resources/icon.icns",
+      "icon": "resources/icon.png",
       "target": [
         {
           "target": "dmg",
@@ -82,7 +83,7 @@
       "category": "public.app-category.productivity"
     },
     "win": {
-      "icon": "resources/icon.ico",
+      "icon": "resources/icon.png",
       "target": [
         "nsis"
       ],

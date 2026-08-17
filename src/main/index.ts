@@ -1,4 +1,5 @@
 import { app, BrowserWindow, Menu, session, shell } from "electron";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { BROWSER_STATE_EVENT, IPC_CHANNELS, type ShellInfo } from "../shared/bridge.js";
 import {
@@ -47,8 +48,24 @@ function requireBrowserManager(): BrowserManager {
   return browserManager;
 }
 
+/**
+ * The window icon for development runs.
+ *
+ * Packaged builds take their icon from the executable that electron-builder
+ * stamps, so this only matters when running from source, where the repository
+ * layout puts resources two levels above the compiled main process.
+ */
+function developmentIconPath(): string | undefined {
+  if (app.isPackaged) return undefined;
+  const candidate = join(import.meta.dirname, "..", "..", "resources", "icon.png");
+  return existsSync(candidate) ? candidate : undefined;
+}
+
 function createWindow(): void {
+  const iconPath = developmentIconPath();
+
   const window = new BrowserWindow({
+    ...(iconPath === undefined ? {} : { icon: iconPath }),
     width: 1440,
     height: 960,
     minWidth: 1024,
