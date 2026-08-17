@@ -45,9 +45,40 @@ Honest status, not aspiration:
 | Target | State |
 |---|---|
 | Windows unpacked launch and clean exit | Validated on Windows 11 |
-| Windows NSIS artifact | Not yet built |
+| Windows NSIS artifact | Built locally and **unsigned**; not installed or published |
 | Linux AppImage / DEB / RPM | Not yet built; requires a Linux runner |
 | macOS DMG | Not yet built; requires a native macOS runner |
+
+electron-builder logs `signing with signtool.exe` while packaging on Windows
+even when no certificate is configured. That line does not mean the artifact is
+signed. Confirm with:
+
+```bash
+powershell -c "(Get-AuthenticodeSignature 'release/OpenStrawberry-win-x64.exe').Status"
+```
+
+The current local build reports `NotSigned`.
+
+## Desktop identity
+
+The app is registered as its own application rather than an anonymous Electron
+host:
+
+- `app.setAppUserModelId` is set to the `appId` before any window exists, which
+  is what drives Windows taskbar grouping, the Start-menu entry, and pinning.
+  It must stay equal to the ID electron-builder stamps on the installed
+  shortcut, or pinning silently splits into two entries.
+- The Windows executable is `OpenStrawberry.exe`, so the process carries the
+  product name.
+- A single-instance lock keeps one taskbar button; a second launch hands its
+  arguments to the running instance and exits.
+- Linux ships a desktop entry with `StartupWMClass` matched to the executable
+  name via `syncDesktopName`, plus `Keywords` so the app is searchable.
+
+**Start-menu search requires installation.** A built or unpacked binary is not
+indexed; Windows resolves search from installed shortcuts. Running the NSIS
+installer creates the Start-menu and desktop shortcuts that make the app
+searchable and pinnable.
 
 Cross-platform packaging is not validated by building on one host. Each target
 is confirmed on its own runner before any claim of readiness.

@@ -6,7 +6,8 @@ import {
   isAllowedUrl,
   isSafeFaviconUrl,
   MAX_ADDRESS_LENGTH,
-  normalizeAddressInput
+  normalizeAddressInput,
+  urlFromCommandLine
 } from "./navigation.js";
 
 describe("isAllowedUrl", () => {
@@ -157,6 +158,46 @@ describe("isSafeFaviconUrl", () => {
     ]) {
       expect(isSafeFaviconUrl(value)).toBe(false);
     }
+  });
+});
+
+describe("urlFromCommandLine", () => {
+  it("finds a URL appended by the desktop shell", () => {
+    expect(
+      urlFromCommandLine(["C:/Program Files/OpenStrawberry/OpenStrawberry.exe", "https://example.com/"])
+    ).toBe("https://example.com/");
+  });
+
+  it("ignores the executable path and the app directory", () => {
+    expect(urlFromCommandLine(["/usr/bin/openstrawberry", "."])).toBeNull();
+    expect(urlFromCommandLine(["electron.exe", "D:\\repo\\openstrawberry"])).toBeNull();
+  });
+
+  it("never treats a switch as a URL", () => {
+    expect(
+      urlFromCommandLine(["app.exe", "--remote-debugging-port=9222", "--inspect"])
+    ).toBeNull();
+  });
+
+  it("refuses schemes the navigation policy rejects", () => {
+    for (const argument of [
+      "file:///etc/passwd",
+      "javascript:alert(1)",
+      "data:text/html,x",
+      "https://user:pass@example.com/"
+    ]) {
+      expect(urlFromCommandLine(["app.exe", argument])).toBeNull();
+    }
+  });
+
+  it("returns the first acceptable URL only", () => {
+    expect(
+      urlFromCommandLine(["app.exe", "https://first.example/", "https://second.example/"])
+    ).toBe("https://first.example/");
+  });
+
+  it("handles an empty argument list", () => {
+    expect(urlFromCommandLine([])).toBeNull();
   });
 });
 

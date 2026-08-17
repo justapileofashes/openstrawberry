@@ -97,20 +97,37 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "OpenStrawberry",
+      "uninstallDisplayName": "OpenStrawberry",
+      "menuCategory": false,
       "runAfterFinish": true,
       "deleteAppDataOnUninstall": false
     },
     "linux": {
       "artifactName": "OpenStrawberry-linux-${arch}.${ext}",
       "icon": "resources/linux-icons",
+      "executableName": "openstrawberry",
       "synopsis": "A local-first agentic desktop browser",
+      "description": "A local-first, open-source desktop browser with browser-native AI companions, review-first agent orchestration, and privacy-aware migration.",
       "syncDesktopName": true,
       "target": [
         "AppImage",
         "deb",
         "rpm"
       ],
-      "category": "Network"
+      "category": "Network",
+      "desktop": {
+        "entry": {
+          "Name": "OpenStrawberry",
+          "GenericName": "Web Browser",
+          "Comment": "A local-first agentic desktop browser",
+          "Categories": "Network;WebBrowser;",
+          "Keywords": "browser;web;internet;chromium;agent;companion;openstrawberry;",
+          "StartupNotify": "true",
+          "StartupWMClass": "openstrawberry",
+          "Terminal": "false",
+          "Type": "Application"
+        }
+      }
     },
     "rpm": {
       "compression": "xz"

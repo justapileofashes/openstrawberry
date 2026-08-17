@@ -96,8 +96,11 @@ passes. Planned work is never marked done.
 ## M8 — Icons, packaging, CI
 
 - [x] Generate the application icon: `resources/icon.svg` is the source, `pnpm icon` rasterises the 1024px master plus the seven Linux sizes, and electron-builder derives `.ico` and `.icns` from the master.
-- [ ] Configure macOS universal DMG, Windows x64 one-click per-user NSIS, and Linux AppImage, DEB, and RPM targets.
-- [ ] Validate on Windows: build the NSIS artifact, launch the unpacked app, confirm it stays alive, request a normal close, and require a clean exit. Do not silently install the EXE.
+- [x] Configure macOS universal DMG, Windows x64 one-click per-user NSIS, and Linux AppImage, DEB, and RPM targets.
+- [x] Register the app as its own desktop application: AppUserModelID matching the installed shortcut, `OpenStrawberry.exe` as the executable, a single-instance lock so one taskbar button is shared, and a Linux desktop entry with `StartupWMClass` and search keywords.
+- [x] Handle a URL passed on the command line, handed to a running instance on relaunch, and via `open-url` on macOS.
+- [x] Validate on Windows: built the NSIS artifact, launched the unpacked app, confirmed it stays alive, handed off a second launch, requested a normal close, and got a clean exit with no error dialog. The EXE was not installed.
+- [ ] Register HTTP(S) scheme handlers so the app can be chosen as the default browser. Deferred until the link-handling path has been exercised end to end.
 - [ ] Validate Linux AppImage, DEB, and RPM on a Linux runner.
 - [ ] Validate the macOS DMG on a native macOS runner.
 

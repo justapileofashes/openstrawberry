@@ -160,6 +160,27 @@ export function isSafeFaviconUrl(value: string | null | undefined): boolean {
   return url !== null && url.protocol === "https:" && url.hostname !== "";
 }
 
+/**
+ * Extracts a navigable URL from process arguments.
+ *
+ * The desktop shell launches the app with a URL appended when the user opens a
+ * link, and Windows re-launches it that way for an already-running instance.
+ * Arguments are attacker-adjacent — anything can invoke the binary — so a
+ * candidate must satisfy the same navigation policy as typed input, and
+ * switches are never treated as URLs.
+ */
+export function urlFromCommandLine(argv: readonly string[]): string | null {
+  // The first argument is the executable, and in development the second is the
+  // app directory. Neither is ever a URL, and both are skipped by the checks
+  // below rather than by index.
+  for (const argument of argv) {
+    if (argument.startsWith("-")) continue;
+    if (!/^https?:\/\//iu.test(argument)) continue;
+    if (isAllowedUrl(argument)) return argument;
+  }
+  return null;
+}
+
 /** A short, safe label for a tab whose page has not reported a title yet. */
 export function displayHostname(value: string): string {
   if (value === BLANK_PAGE) return "New tab";

@@ -13,6 +13,7 @@ import {
   type BrowserSnapshot
 } from "../shared/browser.js";
 import { APP_ID, PROFILE_PARTITION, RELEASE_READY } from "../shared/desktop-shell.js";
+import { isAllowedUrl, urlFromCommandLine } from "../shared/navigation.js";
 import { BrowserManager } from "./browser-manager.js";
 import { buildAllowedUrlPrefixes } from "./ipc-security.js";
 import {
@@ -24,12 +25,29 @@ import {
 // Guest web content must never inherit Node. Enabling the sandbox before the
 // app is ready applies it to every renderer the process later creates.
 app.enableSandbox();
+
+/*
+ * The Application User Model ID is what makes Windows treat OpenStrawberry as
+ * its own app rather than as an anonymous Electron host: it drives taskbar
+ * grouping, the Start-menu entry, and pinning. It must match the ID stamped on
+ * the installed shortcut, which electron-builder takes from `appId`, and it has
+ * to be set before any window exists.
+ */
 app.setAppUserModelId(APP_ID);
+
+/*
+ * A browser must be one application, not one per launch. Without this, opening
+ * a link spawns a second process with its own taskbar button and its own view
+ * of the session file.
+ */
+const hasSingleInstanceLock = app.requestSingleInstanceLock();
 
 const DEV_SERVER_URL = process.env["VITE_DEV_SERVER_URL"];
 
 let mainWindow: BrowserWindow | null = null;
 let browserManager: BrowserManager | null = null;
+/** A link that arrived before the browser core existed. */
+let pendingLaunchUrl: string | null = urlFromCommandLine(process.argv);
 
 function denyAllPermissions(target: Electron.Session): void {
   target.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
@@ -138,7 +156,18 @@ function createWindow(): void {
     : window.loadFile(join(import.meta.dirname, "../renderer/index.html"));
 
   // Restore only once the chrome can receive pushed state.
-  void load.then(() => browserManager?.restore());
+  void load.then(() => {
+    const manager = browserManager;
+    if (manager === null) return;
+
+    manager.restore();
+
+    // A link that launched the app opens alongside the restored session rather
+    // than replacing it.
+    const launchUrl = pendingLaunchUrl;
+    pendingLaunchUrl = null;
+    if (launchUrl !== null) manager.createTab(manager.snapshot().activePaneId, launchUrl);
+  });
 }
 
 function registerIpcHandlers(): void {
@@ -205,21 +234,53 @@ function registerIpcHandlers(): void {
   );
 }
 
-void app.whenReady().then(() => {
-  // Windows ships without the default File/Edit/View/Window menu while keeping
-  // the native title-bar controls intact.
-  if (process.platform === "win32") Menu.setApplicationMenu(null);
+/** Brings the existing window forward and opens a requested link in it. */
+function handleReactivation(argv: readonly string[]): void {
+  const target = mainWindow;
+  if (target === null || target.isDestroyed()) return;
 
-  denyAllPermissions(session.defaultSession);
-  denyAllPermissions(session.fromPartition(PROFILE_PARTITION));
+  if (target.isMinimized()) target.restore();
+  target.focus();
 
-  registerIpcHandlers();
-  createWindow();
+  const url = urlFromCommandLine(argv);
+  if (url !== null) browserManager?.createTab(browserManager.snapshot().activePaneId, url);
+}
 
-  app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+if (!hasSingleInstanceLock) {
+  // Another instance owns the session. It has been handed our arguments and
+  // will surface the request, so this process must exit without touching any
+  // shared state.
+  app.quit();
+} else {
+  app.on("second-instance", (_event, argv) => handleReactivation(argv));
+
+  void app.whenReady().then(() => {
+    // Windows ships without the default File/Edit/View/Window menu while keeping
+    // the native title-bar controls intact.
+    if (process.platform === "win32") Menu.setApplicationMenu(null);
+
+    denyAllPermissions(session.defaultSession);
+    denyAllPermissions(session.fromPartition(PROFILE_PARTITION));
+
+    registerIpcHandlers();
+    createWindow();
+
+    app.on("activate", () => {
+      if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    });
   });
-});
+
+  // macOS delivers links through an event rather than on the command line.
+  app.on("open-url", (event, url) => {
+    event.preventDefault();
+    if (!isAllowedUrl(url)) return;
+    if (browserManager === null) {
+      pendingLaunchUrl = url;
+      return;
+    }
+    browserManager.createTab(browserManager.snapshot().activePaneId, url);
+  });
+}
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
