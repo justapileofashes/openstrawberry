@@ -24,6 +24,11 @@ describe("parseAppearance", () => {
     expect(DEFAULT_APPEARANCE.shineColor).toBe("#dbe6fa");
   });
 
+  it("defaults to a cycle short enough to read as movement", () => {
+    // A drift measured in tens of seconds looks like a static highlight.
+    expect(shineDurationSeconds(DEFAULT_APPEARANCE.shineSpeed)).toBeLessThanOrEqual(20);
+  });
+
   it("accepts a complete valid payload", () => {
     expect(
       parseAppearance({
@@ -99,9 +104,11 @@ describe("shineDurationSeconds", () => {
 
 describe("appearanceCssVariables", () => {
   it("emits the custom properties the chrome reads", () => {
+    // Derived from the defaults rather than hardcoded, so tuning the look does
+    // not break a test that is really about the shape of the output.
     expect(appearanceCssVariables(DEFAULT_APPEARANCE)).toEqual({
       "--shine-rgb": "219, 230, 250",
-      "--shine-intensity": "34",
+      "--shine-intensity": String(DEFAULT_APPEARANCE.shineIntensity),
       "--shine-duration": `${shineDurationSeconds(DEFAULT_APPEARANCE.shineSpeed)}s`
     });
   });

@@ -28,15 +28,20 @@ export interface AppearanceSettings {
 
 export const DEFAULT_APPEARANCE: AppearanceSettings = {
   shineEnabled: true,
-  shineIntensity: 34,
+  shineIntensity: 42,
   // Cool near-white: reads as a specular highlight rather than as colour.
   shineColor: "#dbe6fa",
-  shineSpeed: 40,
+  shineSpeed: 55,
   motionEnabled: true
 };
 
-export const SHINE_SPEED_MIN_SECONDS = 6;
-export const SHINE_SPEED_MAX_SECONDS = 48;
+/*
+ * The cycle bounds. The previous range topped out at 48s, which put the default
+ * near half a minute per pass — slow enough that the light read as static.
+ * A lava lamp should be unhurried but visibly moving.
+ */
+export const SHINE_SPEED_MIN_SECONDS = 5;
+export const SHINE_SPEED_MAX_SECONDS = 30;
 
 const HEX_COLOR = /^#[0-9a-f]{6}$/iu;
 

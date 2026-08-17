@@ -15,6 +15,7 @@ import {
 import type { BrowserPaneId, BrowserSnapshot } from "../shared/browser.js";
 import { BLANK_PAGE } from "../shared/desktop-shell.js";
 import type { AppearanceSettings } from "../shared/settings.js";
+import { GlassSheen } from "./GlassSheen.js";
 import { SettingsPanel } from "./SettingsPanel.js";
 import { applyAppearance, loadAppearance, saveAppearance } from "./settings-store.js";
 import {
@@ -177,6 +178,7 @@ export function App(): React.JSX.Element {
   return (
     <div className="shell">
       <nav className="tab-rail glass" aria-label="Tabs">
+        <GlassSheen />
         <div className="rail-tabs">
           {snapshot.tabs.map((tab) => {
             const isActive = activeTabId(snapshot, tab.paneId) === tab.id;
@@ -249,6 +251,7 @@ export function App(): React.JSX.Element {
 
       <div className="workspace">
         <header className="top-bar glass">
+          <GlassSheen />
           <div className="nav-cluster">
             <IconButton
               label="Back"
