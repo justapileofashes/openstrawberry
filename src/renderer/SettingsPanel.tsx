@@ -1,5 +1,4 @@
 import { X } from "lucide-react";
-import { GlassSheen } from "./GlassSheen.js";
 import {
   DEFAULT_APPEARANCE,
   shineDurationSeconds,
@@ -47,7 +46,6 @@ export function SettingsPanel({
 
   return (
     <aside className="settings glass" role="dialog" aria-label="Appearance settings">
-      <GlassSheen />
       <header className="set-head">
         <div>
           <span className="eyebrow">Obsidian Relay</span>

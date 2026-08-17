@@ -54,7 +54,7 @@ passes. Planned work is never marked done.
 - [x] Show the real page favicon in the tab rail, fetched in the main process and inlined as a data URL so the strict `img-src` policy holds.
 - [x] Fall back to the conventional `/favicon.ico` path when a page declares no icon, and clear the mark on a cross-origin navigation.
 - [x] Melt the favicon into a close cross on hover and focus, with a rebound easing and a swelling droplet behind it.
-- [x] Animate the glass shine as travelling pools of light, two per surface on different periods, clipped by their own layer so the tooltip bubbles are not cut off. Replaces an earlier registered-custom-property approach that never actually moved.
+- [x] Light the chrome from a single ambient field behind the whole workspace rather than per-panel highlights, so the glass reveals what is behind it instead of owning its own shine.
 - [x] Hold back the static tint and edge sweep so the travelling light is the dominant highlight rather than being swamped by fixed lighting.
 - [x] Add an appearance settings panel on the top bar controlling shine on/off, intensity, colour, speed, and non-essential motion, persisted in renderer-owned storage.
 - [ ] Icon-only Updates trigger; the Agent, Downloads, and Settings triggers are present but inert until their milestones land.
