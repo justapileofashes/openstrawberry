@@ -14,6 +14,9 @@ import {
 } from "lucide-react";
 import type { BrowserPaneId, BrowserSnapshot } from "../shared/browser.js";
 import { BLANK_PAGE } from "../shared/desktop-shell.js";
+import type { AppearanceSettings } from "../shared/settings.js";
+import { SettingsPanel } from "./SettingsPanel.js";
+import { applyAppearance, loadAppearance, saveAppearance } from "./settings-store.js";
 import {
   activeTabId,
   faviconFallbackLabel,
@@ -122,6 +125,15 @@ export function App(): React.JSX.Element {
   const [address, setAddress] = useState("");
   const [addressEdited, setAddressEdited] = useState(false);
   const [draggingTabId, setDraggingTabId] = useState<string | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [appearance, setAppearance] = useState<AppearanceSettings>(loadAppearance);
+
+  // Appearance drives CSS custom properties rather than component state, so the
+  // whole chrome responds without re-rendering on every slider tick.
+  useEffect(() => {
+    applyAppearance(appearance);
+    saveAppearance(appearance);
+  }, [appearance]);
   const lastViewports = useRef(new Map<BrowserPaneId, ReturnType<typeof viewportFromRect>>());
 
   useEffect(() => {
@@ -168,13 +180,14 @@ export function App(): React.JSX.Element {
         <div className="rail-tabs">
           {snapshot.tabs.map((tab) => {
             const isActive = activeTabId(snapshot, tab.paneId) === tab.id;
+            const name = tabAccessibleName(tab);
             return (
-              <span className="bubble-host" key={tab.id}>
+              <span className="bubble-host rail-slot" key={tab.id}>
                 <button
                   type="button"
                   className={`rail-tab${isActive ? " is-active" : ""}${tab.isLoading ? " is-loading" : ""}`}
                   onClick={() => void bridge.activateTab(tab.id)}
-                  aria-label={tabAccessibleName(tab)}
+                  aria-label={name}
                   aria-current={isActive}
                   draggable
                   onDragStart={(event) => {
@@ -183,21 +196,44 @@ export function App(): React.JSX.Element {
                   }}
                   onDragEnd={() => setDraggingTabId(null)}
                 >
-                  {tab.faviconUrl === null ? (
-                    tab.url === BLANK_PAGE ? (
-                      <Globe size={15} strokeWidth={1.5} aria-hidden="true" />
+                  <span className="rail-mark" aria-hidden="true">
+                    {tab.faviconUrl === null ? (
+                      tab.url === BLANK_PAGE ? (
+                        <Globe size={15} strokeWidth={1.5} />
+                      ) : (
+                        <span className="rail-letter">{faviconFallbackLabel(tab)}</span>
+                      )
                     ) : (
-                      <span className="rail-letter" aria-hidden="true">
-                        {faviconFallbackLabel(tab)}
-                      </span>
-                    )
-                  ) : (
-                    <img src={tab.faviconUrl} alt="" width={15} height={15} />
-                  )}
+                      <img src={tab.faviconUrl} alt="" width={16} height={16} />
+                    )}
+                  </span>
                   {tab.isAudible && <span className="rail-audio" aria-hidden="true" />}
                 </button>
+
+                {/*
+                  The close control sits above the mark and shares its centre, so
+                  the icon appears to melt into an x on hover. It is a sibling
+                  rather than a child because nesting a button inside a button is
+                  invalid, and it keeps its own accessible name.
+                */}
+                <button
+                  type="button"
+                  className="rail-close"
+                  aria-label={`Close ${name}`}
+                  onClick={() => void bridge.closeTab(tab.id)}
+                >
+                  <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
+                    <path
+                      d="M7 7 L17 17 M17 7 L7 17"
+                      stroke="currentColor"
+                      strokeWidth="2.4"
+                      strokeLinecap="round"
+                    />
+                  </svg>
+                </button>
+
                 <span className="bubble" role="tooltip">
-                  {tabAccessibleName(tab)}
+                  {name}
                 </span>
               </span>
             );
@@ -272,7 +308,10 @@ export function App(): React.JSX.Element {
             <IconButton label="Agents" onClick={() => undefined} disabled>
               <Bot size={16} strokeWidth={1.5} aria-hidden="true" />
             </IconButton>
-            <IconButton label="Settings" onClick={() => undefined} disabled>
+            <IconButton
+              label={settingsOpen ? "Close settings" : "Settings"}
+              onClick={() => setSettingsOpen((open) => !open)}
+            >
               <Settings2 size={16} strokeWidth={1.5} aria-hidden="true" />
             </IconButton>
           </div>
@@ -319,6 +358,14 @@ export function App(): React.JSX.Element {
             >
               <span className="split-target-label">Drop to split</span>
             </div>
+          )}
+
+          {settingsOpen && (
+            <SettingsPanel
+              settings={appearance}
+              onChange={setAppearance}
+              onClose={() => setSettingsOpen(false)}
+            />
           )}
         </div>
       </div>

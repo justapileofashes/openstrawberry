@@ -34,6 +34,7 @@ import {
   isSafeFaviconUrl,
   normalizeAddressInput
 } from "../shared/navigation.js";
+import { conventionalFaviconUrl, FaviconResolver } from "./favicon.js";
 
 interface TabRuntime {
   readonly view: WebContentsView;
@@ -46,6 +47,14 @@ interface PaneRuntime {
 }
 
 const ZERO_VIEWPORT: BrowserViewport = { x: 0, y: 0, width: 0, height: 0 };
+
+function originOf(url: string): string {
+  try {
+    return new URL(url).origin;
+  } catch {
+    return url;
+  }
+}
 
 export interface BrowserManagerOptions {
   readonly window: BrowserWindow;
@@ -67,6 +76,8 @@ export class BrowserManager {
     secondary: { activeTabId: null, viewport: ZERO_VIEWPORT }
   };
 
+  private readonly favicons: FaviconResolver;
+
   private activePaneId: BrowserPaneId = "primary";
   private splitEnabled = false;
   private nextTabSequence = 1;
@@ -77,6 +88,7 @@ export class BrowserManager {
     this.profile = options.profile;
     this.sessionFilePath = options.sessionFilePath;
     this.publish = options.publish;
+    this.favicons = new FaviconResolver(options.profile);
   }
 
   /* --------------------------------------------------------------------- */
@@ -387,11 +399,17 @@ export class BrowserManager {
     contents.on("audio-state-changed", refresh);
 
     contents.on("page-favicon-updated", (_event, favicons) => {
-      const safe = favicons.find((candidate) => isSafeFaviconUrl(candidate)) ?? null;
+      const declared = favicons.find((candidate) => isSafeFaviconUrl(candidate)) ?? null;
+      if (declared !== null) void this.applyFavicon(tabId, declared);
+    });
+
+    // Many sites declare no icon but still serve the conventional path, which
+    // is what a browser is expected to try.
+    contents.on("did-finish-load", () => {
       const current = this.tabs.get(tabId);
-      if (current === undefined) return;
-      current.state = { ...current.state, faviconUrl: safe };
-      this.emit();
+      if (current === undefined || current.state.faviconUrl !== null) return;
+      const fallback = conventionalFaviconUrl(current.state.url);
+      if (fallback !== null) void this.applyFavicon(tabId, fallback);
     });
 
     // The navigation policy is enforced on the guest itself, not just at the
@@ -414,6 +432,23 @@ export class BrowserManager {
     });
   }
 
+  /**
+   * Inlines a resolved favicon into tab state.
+   *
+   * The tab is re-read after the await because it can be closed, or navigated
+   * elsewhere, while the fetch is in flight.
+   */
+  private async applyFavicon(tabId: string, iconUrl: string): Promise<void> {
+    const dataUrl = await this.favicons.resolve(iconUrl);
+    if (dataUrl === null || this.destroyed) return;
+
+    const current = this.tabs.get(tabId);
+    if (current === undefined || current.state.faviconUrl === dataUrl) return;
+
+    current.state = { ...current.state, faviconUrl: dataUrl };
+    this.emit();
+  }
+
   private refreshState(tabId: string): void {
     const tab = this.tabs.get(tabId);
     if (tab === undefined) return;
@@ -423,8 +458,13 @@ export class BrowserManager {
 
     const url = contents.getURL() || tab.state.url;
 
+    // A new site must not keep the previous site's mark, which would otherwise
+    // let one origin appear to be another in the rail.
+    const sameOrigin = originOf(url) === originOf(tab.state.url);
+
     tab.state = {
       ...tab.state,
+      faviconUrl: sameOrigin ? tab.state.faviconUrl : null,
       url,
       title: contents.getTitle() || displayHostname(url),
       isLoading: contents.isLoading(),

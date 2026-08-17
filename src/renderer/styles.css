@@ -110,6 +110,14 @@
   /* frame gutter — the gap that lets the ground show behind the glass */
   --frame: 14px;
 
+  /* Shine defaults. Overwritten at runtime from user settings. */
+  --shine-rgb: 219, 230, 250;
+  --shine-intensity: 34;
+  --shine-duration: 31s;
+
+  /* Overshoot easing: the little rebound that makes the tab morph feel liquid. */
+  --ease-liquid: cubic-bezier(0.34, 1.56, 0.64, 1);
+
   /* type */
   --font-ui: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, "Cascadia Mono", "SF Mono", Menlo,
@@ -168,6 +176,7 @@ body {
   inset: 0;
   border-radius: inherit;
   pointer-events: none;
+  z-index: 0;
   background: linear-gradient(
     100deg,
     rgba(255, 255, 255, 0.09) 0%,
@@ -175,6 +184,80 @@ body {
     transparent 42%
   );
   opacity: 0.85;
+}
+
+/*
+ * The drifting shine.
+ *
+ * A soft pool of light that wanders across each glass surface like a lava lamp.
+ * Its position is animated through registered custom properties, so the
+ * gradient itself is interpolated rather than an element being transformed —
+ * that keeps the pool clipped to the panel without needing overflow hidden,
+ * which would cut off the tooltip bubbles that escape the top bar.
+ *
+ * Colour, intensity, and cycle duration come from user settings.
+ */
+@property --shine-x {
+  syntax: "<percentage>";
+  initial-value: 18%;
+  inherits: false;
+}
+
+@property --shine-y {
+  syntax: "<percentage>";
+  initial-value: 22%;
+  inherits: false;
+}
+
+.glass::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 0;
+  background: radial-gradient(
+    46% 150% at var(--shine-x) var(--shine-y),
+    rgba(var(--shine-rgb), calc(var(--shine-intensity) * 0.011)),
+    rgba(var(--shine-rgb), calc(var(--shine-intensity) * 0.003)) 42%,
+    transparent 72%
+  );
+  animation: shine-lava var(--shine-duration) var(--ease-mid) infinite alternate;
+}
+
+@keyframes shine-lava {
+  0% {
+    --shine-x: 6%;
+    --shine-y: 14%;
+  }
+  25% {
+    --shine-x: 42%;
+    --shine-y: 82%;
+  }
+  50% {
+    --shine-x: 88%;
+    --shine-y: 24%;
+  }
+  75% {
+    --shine-x: 58%;
+    --shine-y: 96%;
+  }
+  100% {
+    --shine-x: 14%;
+    --shine-y: 58%;
+  }
+}
+
+/* Shine off removes the pool entirely; the glass structure stays. */
+:root.shine-off .glass::before {
+  display: none;
+}
+
+/* Motion off freezes the pool mid-surface rather than hiding it. */
+:root.motion-off .glass::before {
+  animation: none;
+  --shine-x: 30%;
+  --shine-y: 28%;
 }
 
 /* =========================================================
@@ -347,12 +430,108 @@ body {
 
 .rail-tab img {
   border-radius: 3px;
+  display: block;
 }
 
 .rail-letter {
   font-family: var(--font-mono);
   font-size: 12px;
   line-height: 1;
+}
+
+/* =========================================================
+   Liquid tab morph
+
+   Hovering a tab melts its favicon into a close cross. The mark contracts and
+   blurs out while the cross swells in through the same centre with a small
+   rebound, so the two read as one substance changing shape rather than two
+   icons swapping.
+   ========================================================= */
+.rail-slot {
+  position: relative;
+}
+
+.rail-mark {
+  display: grid;
+  place-items: center;
+  transition:
+    transform var(--d-base) var(--ease-liquid),
+    filter var(--d-base) var(--ease),
+    opacity var(--d-base) var(--ease);
+}
+
+.rail-slot:hover .rail-mark,
+.rail-slot:focus-within .rail-mark {
+  transform: scale(0.42);
+  filter: blur(6px);
+  opacity: 0;
+}
+
+.rail-close {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 22px;
+  height: 22px;
+  margin: -11px 0 0 -11px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink-strong);
+  cursor: pointer;
+  z-index: 2;
+  opacity: 0;
+  pointer-events: none;
+  transform: scale(0.35);
+  filter: blur(7px);
+  transition:
+    transform var(--d-base) var(--ease-liquid),
+    filter var(--d-base) var(--ease),
+    opacity var(--d-base) var(--ease),
+    background var(--d-fast) var(--ease);
+}
+
+.rail-slot:hover .rail-close,
+.rail-slot:focus-within .rail-close {
+  opacity: 1;
+  pointer-events: auto;
+  transform: scale(1);
+  filter: blur(0);
+}
+
+.rail-close:hover {
+  background: rgba(232, 227, 213, 0.16);
+}
+
+.rail-close:active {
+  transform: scale(0.88);
+}
+
+/* The droplet that swells behind the cross, selling the change of state. */
+.rail-close::before {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  border-radius: 999px;
+  background: radial-gradient(
+    closest-side,
+    rgba(232, 240, 252, 0.22),
+    transparent 78%
+  );
+  opacity: 0;
+  transform: scale(0.4);
+  transition:
+    opacity var(--d-slow) var(--ease),
+    transform var(--d-slow) var(--ease-liquid);
+}
+
+.rail-slot:hover .rail-close::before,
+.rail-slot:focus-within .rail-close::before {
+  opacity: 1;
+  transform: scale(1);
 }
 
 .rail-tab.is-loading::after {
@@ -683,8 +862,242 @@ body {
 }
 
 /* =========================================================
+   Settings panel
+   ========================================================= */
+.settings {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(420px, 100%);
+  z-index: 50;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  border-radius: var(--r-md);
+  animation: panel-in var(--d-slow) var(--ease);
+}
+
+.settings > * {
+  position: relative;
+  z-index: 1;
+}
+
+.set-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s-3);
+  padding: var(--s-5) var(--s-5) var(--s-4);
+  border-bottom: 1px solid rgba(222, 232, 246, 0.08);
+}
+
+.set-head h2 {
+  margin: var(--s-2) 0 0;
+  font-weight: 300;
+  font-size: 24px;
+  letter-spacing: -0.02em;
+  color: var(--ink-strong);
+}
+
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.eyebrow::before {
+  content: "";
+  width: 16px;
+  height: 1px;
+  background: var(--ink-faint);
+}
+
+.set-body {
+  overflow-y: auto;
+  padding: var(--s-2) var(--s-5);
+}
+
+.set-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 132px;
+  align-items: center;
+  gap: var(--s-4);
+  padding: var(--s-4) 0;
+  border-bottom: 1px solid rgba(222, 232, 246, 0.05);
+}
+
+.set-row:last-child {
+  border-bottom: 0;
+}
+
+.set-label {
+  font-size: 13px;
+  color: var(--ink-strong);
+}
+
+/*
+ * Muted rather than faint. The drifting shine passes behind this text, and at
+ * --ink-faint the hints dropped below a comfortable contrast ratio as the pool
+ * crossed them.
+ */
+.set-hint {
+  display: block;
+  margin-top: 3px;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--ink-muted);
+}
+
+.set-control {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.set-foot {
+  padding: var(--s-3) var(--s-5) var(--s-4);
+  border-top: 1px solid rgba(222, 232, 246, 0.08);
+}
+
+.text-btn {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink-muted);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  cursor: pointer;
+  transition: color var(--d-fast) var(--ease);
+}
+
+.text-btn:hover {
+  color: var(--ink-strong);
+}
+
+/* Switch */
+.switch {
+  position: relative;
+  width: 42px;
+  height: 24px;
+  padding: 0;
+  border-radius: 999px;
+  border: 1px solid rgba(222, 232, 246, 0.09);
+  background: rgba(6, 7, 9, 0.5);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.45);
+  cursor: pointer;
+  transition:
+    background var(--d-base) var(--ease),
+    border-color var(--d-base) var(--ease);
+}
+
+.switch.is-on {
+  background: rgba(232, 227, 213, 0.22);
+  border-color: rgba(232, 227, 213, 0.34);
+}
+
+.switch-dot {
+  position: absolute;
+  top: 50%;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  margin-top: -8px;
+  border-radius: 999px;
+  background: var(--ink-muted);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+  transition:
+    transform var(--d-base) var(--ease-liquid),
+    background var(--d-base) var(--ease);
+}
+
+.switch.is-on .switch-dot {
+  transform: translateX(18px);
+  background: var(--ink-strong);
+}
+
+/* Range */
+input[type="range"] {
+  width: 100%;
+  height: 22px;
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+input[type="range"]::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(240, 236, 226, 0.12);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  appearance: none;
+  width: 15px;
+  height: 15px;
+  margin-top: -5.5px;
+  border-radius: 999px;
+  background: var(--accent);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.55);
+  transition: transform var(--d-fast) var(--ease);
+}
+
+input[type="range"]:hover::-webkit-slider-thumb {
+  transform: scale(1.14);
+}
+
+input[type="range"]:disabled {
+  opacity: 0.34;
+  cursor: default;
+}
+
+/* Colour */
+.swatch-field {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  justify-content: flex-end;
+}
+
+.swatch-field input[type="color"] {
+  width: 30px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid rgba(222, 232, 246, 0.14);
+  border-radius: var(--r-xs);
+  background: transparent;
+  cursor: pointer;
+}
+
+.swatch-field code {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--ink-faint);
+}
+
+.swatch-field input[type="color"]:disabled {
+  opacity: 0.34;
+  cursor: default;
+}
+
+/* =========================================================
    Motion
    ========================================================= */
+@keyframes panel-in {
+  from {
+    opacity: 0;
+    transform: translateX(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
 /* Baseline scale stays above 1 so the drift never exposes an unpainted edge. */
 @keyframes ambient-drift {
   0% {
@@ -715,12 +1128,17 @@ body {
   }
 }
 
-/* Motion and Liquid Glass are always on, but non-essential movement yields to
-   the operating system preference. Glass itself is never disabled. */
+/*
+ * Non-essential movement yields both to the operating system preference and to
+ * the in-app Motion switch. Glass itself is never disabled by either: it is
+ * structure, not movement.
+ */
 @media (prefers-reduced-motion: reduce) {
   .shell::before,
+  .glass::before,
   .rail-tab.is-loading::after,
-  .split-target {
+  .split-target,
+  .settings {
     animation: none;
   }
 
@@ -733,6 +1151,26 @@ body {
   *::after {
     transition-duration: 1ms !important;
   }
+}
+
+:root.motion-off .shell::before,
+:root.motion-off .rail-tab.is-loading::after,
+:root.motion-off .split-target,
+:root.motion-off .settings {
+  animation: none;
+}
+
+:root.motion-off .icon-btn::after {
+  display: none;
+}
+
+/* The liquid tab morph is an affordance, so it keeps a short transition even
+   with motion off — it just stops overshooting. */
+:root.motion-off *,
+:root.motion-off *::before,
+:root.motion-off *::after {
+  transition-timing-function: linear !important;
+  transition-duration: 90ms !important;
 }
 
 /* Focus is always visible and never conveyed by colour alone. */

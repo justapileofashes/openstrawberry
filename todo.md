@@ -51,6 +51,11 @@ passes. Planned work is never marked done.
 - [x] Documentation for architecture, security, releases, and updates.
 - [x] Lean the chrome into Liquid Glass: floating rail and top bar as rounded slabs over an ambient ground, multi-layer tint with specular rim, hover sheen on compact controls, inset address well, and fine grain.
 - [x] Design the application icon and wire it into packaging and the development window.
+- [x] Show the real page favicon in the tab rail, fetched in the main process and inlined as a data URL so the strict `img-src` policy holds.
+- [x] Fall back to the conventional `/favicon.ico` path when a page declares no icon, and clear the mark on a cross-origin navigation.
+- [x] Melt the favicon into a close cross on hover and focus, with a rebound easing and a swelling droplet behind it.
+- [x] Animate the glass shine as a drifting pool, positioned through registered custom properties so it stays clipped without hiding the tooltip bubbles.
+- [x] Add an appearance settings panel on the top bar controlling shine on/off, intensity, colour, speed, and non-essential motion, persisted in renderer-owned storage.
 - [ ] Icon-only Updates trigger; the Agent, Downloads, and Settings triggers are present but inert until their milestones land.
 - [ ] Responsive behaviour below the minimum desktop width, and a full keyboard traversal pass.
 - [ ] Bundle Inter and JetBrains Mono as local woff2 rather than relying on installed fonts. The renderer must not fetch webfonts from a remote host.
