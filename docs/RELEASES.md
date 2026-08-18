@@ -40,11 +40,12 @@ signing and verified metadata.
 
 ## How the gate is enforced
 
-The gate is not kept by whoever remembers to read this page. Three scripts hold
+The gate is not kept by whoever remembers to read this page. Four scripts hold
 it, and `pnpm release` chains them:
 
 | Step | Script | What it refuses |
 |---|---|---|
+| `pnpm verify:config` | `scripts/verify-config.mjs` | A packaging option the installed electron-builder does not recognise, on any platform — including the ones the current host cannot build |
 | `pnpm release:preflight` | `scripts/release-preflight.mjs` | Starting a release build on a host that cannot sign, naming the missing credential |
 | `pnpm checksums` | `scripts/checksums.mjs` | — writes `SHA256SUMS.txt` and `provenance.json` |
 | `pnpm verify:artifacts` | `scripts/verify-artifacts.mjs` | A missing, empty, unsigned, un-notarised, or checksum-mismatched artifact |
