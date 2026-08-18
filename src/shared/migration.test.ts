@@ -407,6 +407,19 @@ describe("IPC channels", () => {
     for (const channel of channels) expect(channel.startsWith("migration:")).toBe(true);
   });
 
+  /*
+   * A tripwire on vocabulary, not on behaviour, and deliberately so: it fires
+   * while a channel is being named, which is the moment someone is still
+   * deciding what it will do.
+   *
+   * If this fails on a channel you are adding, the question to ask is whether
+   * the channel really reads something back out. If it does, it does not belong
+   * on this bridge. If it does not, name it for what it does - the downloads
+   * channel that shows a file in the OS file manager is called
+   * `download:show-in-folder` for exactly this reason. Widening the pattern is
+   * the wrong repair, because the next person adding a genuine read path is the
+   * one this test exists to stop.
+   */
   it("exposes no channel that could read a staged password back out", () => {
     for (const channel of Object.values(IPC_CHANNELS)) {
       expect(channel).not.toMatch(/read|reveal|decrypt|export|list-passwords/u);

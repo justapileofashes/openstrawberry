@@ -1,4 +1,4 @@
-﻿/* =========================================================
+/* =========================================================
    Obsidian Relay â€” OpenStrawberry design system
 
    A warm-monochrome near-black workspace. Colour is reserved for meaning, not
@@ -2595,5 +2595,138 @@ input[type="range"]:disabled {
 
   .mig-rail {
     gap: var(--s-3);
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Downloads                                                                   */
+/* -------------------------------------------------------------------------- */
+
+.dl-empty {
+  margin: 0;
+  padding: var(--s-4) 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ink-muted);
+}
+
+.dl-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dl-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-3) 0;
+  border-bottom: 1px solid rgba(222, 232, 246, 0.05);
+}
+
+.dl-item:last-child {
+  border-bottom: 0;
+}
+
+/* minmax(0,...) above plus this is what lets a long name truncate rather than
+   forcing the grid wider than the panel. */
+.dl-main {
+  min-inline-size: 0;
+}
+
+.dl-name {
+  display: block;
+  overflow: hidden;
+  font-size: 13px;
+  color: var(--ink-strong);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dl-meta {
+  display: block;
+  margin-top: 2px;
+  font-size: 11.5px;
+  color: var(--ink-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * A failed download is marked by the word "Failed" in .dl-meta as well as by
+ * tone, so the state never rests on colour alone.
+ */
+.dl-item.is-failed .dl-name {
+  color: var(--ink-muted);
+}
+
+.dl-bar {
+  margin-top: var(--s-2);
+  block-size: 3px;
+  border-radius: 2px;
+  background: rgba(222, 232, 246, 0.09);
+  overflow: hidden;
+}
+
+.dl-fill {
+  display: block;
+  block-size: 100%;
+  border-radius: inherit;
+  background: var(--ink-strong);
+  transition: inline-size var(--d-fast) var(--ease);
+}
+
+/*
+ * A server that declares no length gets a travelling sliver rather than an empty
+ * bar, which would read as a stalled transfer.
+ */
+.dl-fill.is-indeterminate {
+  inline-size: 35%;
+  animation: dl-drift 1.4s var(--ease) infinite;
+}
+
+@keyframes dl-drift {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(340%);
+  }
+}
+
+.dl-actions {
+  display: flex;
+  gap: 2px;
+}
+
+/* The trigger's active marker. Paired with the button label, never alone. */
+.icon-btn .is-active {
+  color: var(--ink-strong);
+  animation: dl-pulse 1.8s var(--ease) infinite;
+}
+
+@keyframes dl-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+/*
+ * Honours the appearance panel's motion switch, and the OS setting behind it.
+ * The bar still fills and the marker still reads; only the movement stops.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .dl-fill.is-indeterminate,
+  .icon-btn .is-active {
+    animation: none;
+  }
+
+  .dl-fill.is-indeterminate {
+    inline-size: 100%;
+    opacity: 0.5;
   }
 }

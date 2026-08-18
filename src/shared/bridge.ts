@@ -26,6 +26,7 @@ import type {
   PickedBookmarkFile,
   PickedPasswordFile
 } from "./migration.js";
+import type { DownloadSnapshot } from "./downloads.js";
 
 /** Channel names, shared so both sides of the boundary cannot drift apart. */
 export const IPC_CHANNELS = {
@@ -70,7 +71,18 @@ export const IPC_CHANNELS = {
   migrationFinish: "migration:finish",
   migrationCancel: "migration:cancel",
   migrationReopen: "migration:reopen",
-  migrationDeleteStaged: "migration:delete-staged"
+  migrationDeleteStaged: "migration:delete-staged",
+  downloadSnapshot: "download:snapshot",
+  downloadPause: "download:pause",
+  downloadResume: "download:resume",
+  downloadCancel: "download:cancel",
+  /*
+   * Named for what it does rather than as "reveal". The name matches
+   * `shell.showItemInFolder`, and it keeps the channel clear of the vocabulary
+   * the migration guard test reserves for reading secrets back out.
+   */
+  downloadShowInFolder: "download:show-in-folder",
+  downloadClearFinished: "download:clear-finished"
 } as const;
 
 /** Push channel the main process uses to broadcast browser state changes. */
@@ -84,6 +96,12 @@ export const WINDOW_STATE_EVENT = "window:state-changed";
  * the chrome renders from pushed snapshots rather than polling.
  */
 export const AGENT_STATE_EVENT = "agent:state";
+
+/**
+ * Push channel for download state. A transfer advances on the network's
+ * schedule, so the panel renders from pushed snapshots rather than polling.
+ */
+export const DOWNLOAD_STATE_EVENT = "download:state";
 
 /** Non-secret facts about the running application. */
 export interface ShellInfo {
@@ -266,6 +284,31 @@ export interface MigrationBridge {
   readonly deleteStagedPasswords: () => Promise<MigrationOverview>;
 }
 
+/**
+ * The downloads capability surface.
+ *
+ * The asymmetry here is about paths. Every verb names a download by an id the
+ * trusted process minted, and `DownloadItem` carries a file name and a folder
+ * *label* rather than a location. `reveal` is the interesting one: it asks for a
+ * file the user already downloaded to be shown in the OS file manager, and
+ * because it takes an id, a compromised renderer can only ask for one of its
+ * own downloads to be revealed - never an arbitrary location.
+ *
+ * `clearFinished` forgets entries. It never deletes files: clearing a list is a
+ * request about the list.
+ */
+export interface DownloadBridge {
+  readonly getSnapshot: () => Promise<DownloadSnapshot>;
+  readonly pause: (downloadId: string) => Promise<DownloadSnapshot>;
+  readonly resume: (downloadId: string) => Promise<DownloadSnapshot>;
+  readonly cancel: (downloadId: string) => Promise<DownloadSnapshot>;
+  /** Shows a completed file in the OS file manager. Takes an id, never a path. */
+  readonly showInFolder: (downloadId: string) => Promise<DownloadSnapshot>;
+  readonly clearFinished: () => Promise<DownloadSnapshot>;
+  /** Subscribes to pushed state. Returns an unsubscribe function. */
+  readonly onState: (listener: (snapshot: DownloadSnapshot) => void) => () => void;
+}
+
 export interface OpenStrawberryBridge {
   readonly shell: {
     /** Available synchronously so first paint does not wait on IPC. */
@@ -276,4 +319,5 @@ export interface OpenStrawberryBridge {
   readonly browser: BrowserBridge;
   readonly agents: AgentBridge;
   readonly migration: MigrationBridge;
+  readonly downloads: DownloadBridge;
 }

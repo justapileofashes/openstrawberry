@@ -21,12 +21,14 @@ import type {
   AGENT_STATE_EVENT as AgentStateEvent,
   BROWSER_STATE_EVENT as BrowserStateEvent,
   CompanionDraft,
+  DOWNLOAD_STATE_EVENT as DownloadStateEvent,
   IPC_CHANNELS,
   OpenStrawberryBridge,
   ShellInfo,
   WINDOW_STATE_EVENT as WindowStateEvent,
   WindowState
 } from "../shared/bridge.js";
+import type { DownloadSnapshot } from "../shared/downloads.js";
 import type { BrowserPaneId, BrowserSnapshot, BrowserViewport } from "../shared/browser.js";
 import type {
   AgentConfigStatus,
@@ -88,12 +90,19 @@ const CHANNEL: Channels = {
   migrationFinish: "migration:finish",
   migrationCancel: "migration:cancel",
   migrationReopen: "migration:reopen",
-  migrationDeleteStaged: "migration:delete-staged"
+  migrationDeleteStaged: "migration:delete-staged",
+  downloadSnapshot: "download:snapshot",
+  downloadPause: "download:pause",
+  downloadResume: "download:resume",
+  downloadCancel: "download:cancel",
+  downloadShowInFolder: "download:show-in-folder",
+  downloadClearFinished: "download:clear-finished"
 };
 
 const STATE_EVENT: typeof BrowserStateEvent = "browser:state";
 const WINDOW_EVENT: typeof WindowStateEvent = "window:state-changed";
 const AGENT_EVENT: typeof AgentStateEvent = "agent:state";
+const DOWNLOAD_EVENT: typeof DownloadStateEvent = "download:state";
 
 async function snapshotCall(channel: string, payload?: unknown): Promise<BrowserSnapshot> {
   return (await electron.ipcRenderer.invoke(channel, payload)) as BrowserSnapshot;
@@ -109,6 +118,10 @@ async function configCall(channel: string, payload?: unknown): Promise<AgentConf
 
 async function migrationCall(channel: string, payload?: unknown): Promise<MigrationOverview> {
   return (await electron.ipcRenderer.invoke(channel, payload)) as MigrationOverview;
+}
+
+async function downloadCall(channel: string, payload?: unknown): Promise<DownloadSnapshot> {
+  return (await electron.ipcRenderer.invoke(channel, payload)) as DownloadSnapshot;
 }
 
 const api: OpenStrawberryBridge = {
@@ -243,6 +256,22 @@ const api: OpenStrawberryBridge = {
     cancel: async () => migrationCall(CHANNEL.migrationCancel),
     reopen: async () => migrationCall(CHANNEL.migrationReopen),
     deleteStagedPasswords: async () => migrationCall(CHANNEL.migrationDeleteStaged)
+  },
+  downloads: {
+    getSnapshot: async () => downloadCall(CHANNEL.downloadSnapshot),
+    pause: async (downloadId: string) => downloadCall(CHANNEL.downloadPause, { downloadId }),
+    resume: async (downloadId: string) => downloadCall(CHANNEL.downloadResume, { downloadId }),
+    cancel: async (downloadId: string) => downloadCall(CHANNEL.downloadCancel, { downloadId }),
+    // Names a download this process already knows about. Note what it cannot
+    // express: a location. There is no path parameter here to point elsewhere.
+    showInFolder: async (downloadId: string) =>
+      downloadCall(CHANNEL.downloadShowInFolder, { downloadId }),
+    clearFinished: async () => downloadCall(CHANNEL.downloadClearFinished),
+    onState: (listener: (snapshot: DownloadSnapshot) => void): (() => void) => {
+      const handler = (_event: unknown, snapshot: DownloadSnapshot): void => listener(snapshot);
+      electron.ipcRenderer.on(DOWNLOAD_EVENT, handler);
+      return () => electron.ipcRenderer.removeListener(DOWNLOAD_EVENT, handler);
+    }
   }
 };
 

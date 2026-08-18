@@ -65,7 +65,7 @@ passes. Planned work is never marked done.
 
 ## M4 — Browser fundamentals
 
-- [ ] Downloads with per-item state and main-process-only reveal.
+- [x] Downloads with per-item state and main-process-only reveal. The save path is chosen in the trusted process and never crosses IPC; the renderer is told a file name and a folder label, and `download:show-in-folder` takes an id, so a compromised renderer can only ask for one of its own downloads to be shown. Server-suggested names go through one sanitiser that flattens separators, strips control characters and bidi overrides, renames Windows device names, and refuses to create a hidden file.
 - [ ] Conservative, transparent tracker blocking with per-site exceptions.
 - [ ] Local text-only reader mode with no network or provider handoff.
 - [ ] Media controls for compatible HTML video with browser-native picture-in-picture fallback.

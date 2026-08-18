@@ -4,11 +4,13 @@ import { join } from "node:path";
 import {
   AGENT_STATE_EVENT,
   BROWSER_STATE_EVENT,
+  DOWNLOAD_STATE_EVENT,
   IPC_CHANNELS,
   WINDOW_STATE_EVENT,
   type ShellInfo,
   type WindowState
 } from "../shared/bridge.js";
+import { parseDownloadIdPayload, type DownloadSnapshot } from "../shared/downloads.js";
 import {
   parseCompanionIdPayload,
   parseCreateCompanionPayload,
@@ -45,6 +47,7 @@ import {
 } from "../shared/migration.js";
 import { isAllowedUrl, urlFromCommandLine } from "../shared/navigation.js";
 import { BrowserManager } from "./browser-manager.js";
+import { DownloadManager } from "./download-manager.js";
 import { MigrationManager, type MigrationDialogPort } from "./migration-manager.js";
 import { AgentManager, type BrowserPort } from "./agent-manager.js";
 import { SecretStore } from "./secret-store.js";
@@ -80,6 +83,7 @@ const DEV_SERVER_URL = process.env["VITE_DEV_SERVER_URL"];
 
 let mainWindow: BrowserWindow | null = null;
 let browserManager: BrowserManager | null = null;
+let downloadManager: DownloadManager | null = null;
 let agentManager: AgentManager | null = null;
 let migrationManager: MigrationManager | null = null;
 /** A link that arrived before the browser core existed. */
@@ -100,6 +104,12 @@ function sendToRenderer(channel: string, payload: unknown): void {
 function requireBrowserManager(): BrowserManager {
   if (browserManager === null) throw new Error("Browser manager is unavailable.");
   return browserManager;
+}
+
+/** Returns the live download runtime, or throws so the router can redact. */
+function requireDownloadManager(): DownloadManager {
+  if (downloadManager === null) throw new Error("Downloads are unavailable.");
+  return downloadManager;
 }
 
 /** Returns the live agent runtime, or throws so the router can redact and report. */
@@ -218,14 +228,32 @@ function createWindow(): void {
     allowedUrlPrefixes: buildAllowedUrlPrefixes(DEV_SERVER_URL)
   });
 
+  const profileSession = session.fromPartition(PROFILE_PARTITION);
+
   const browser = new BrowserManager({
     window,
-    profile: session.fromPartition(PROFILE_PARTITION),
+    profile: profileSession,
     sessionFilePath: join(app.getPath("userData"), "session.json"),
     publish: (snapshot: BrowserSnapshot) => sendToRenderer(BROWSER_STATE_EVENT, snapshot)
   });
 
   browserManager = browser;
+
+  /*
+   * Downloads are attached to the same partition the guests render into, so a
+   * transfer a page starts is the one this manager adopts. The save directory
+   * and the reveal call are the only two places a path exists, and both stay
+   * here: the manager is given the directory and a reveal function, and the
+   * renderer is told a folder label instead.
+   */
+  downloadManager = new DownloadManager({
+    session: profileSession,
+    downloadDir: app.getPath("downloads"),
+    directoryLabel: "Downloads",
+    statePath: join(app.getPath("userData"), "downloads.json"),
+    reveal: (path: string) => shell.showItemInFolder(path),
+    publish: (snapshot: DownloadSnapshot) => sendToRenderer(DOWNLOAD_STATE_EVENT, snapshot)
+  });
 
   /*
    * The OS keychain, as the credential store needs it. `createOsCipher` owns the
@@ -323,6 +351,11 @@ function createWindow(): void {
     agentManager = null;
     agents?.destroy();
 
+    // Downloads persist their history before the session they belong to goes.
+    const downloads = downloadManager;
+    downloadManager = null;
+    downloads?.destroy();
+
     const manager = browserManager;
     browserManager = null;
     manager?.destroy();
@@ -345,6 +378,7 @@ function createWindow(): void {
 
     manager.restore();
     agentManager?.restore();
+    downloadManager?.restore();
 
     // A link that launched the app opens alongside the restored session rather
     // than replacing it.
@@ -436,6 +470,35 @@ function registerIpcHandlers(): void {
 
   registerTrustedHandler(IPC_CHANNELS.browserSetActivePane, parseActivePanePayload, (paneId) =>
     requireBrowserManager().setActivePane(paneId)
+  );
+
+  /*
+   * Downloads. Every verb names an item by an id the trusted process minted;
+   * none of them accepts a path, which is what keeps `downloadShowInFolder` from
+   * being a way to open an arbitrary location.
+   */
+  registerTrustedQuery(IPC_CHANNELS.downloadSnapshot, () =>
+    requireDownloadManager().snapshot()
+  );
+
+  registerTrustedHandler(IPC_CHANNELS.downloadPause, parseDownloadIdPayload, (payload) =>
+    requireDownloadManager().pause(payload.downloadId)
+  );
+
+  registerTrustedHandler(IPC_CHANNELS.downloadResume, parseDownloadIdPayload, (payload) =>
+    requireDownloadManager().resume(payload.downloadId)
+  );
+
+  registerTrustedHandler(IPC_CHANNELS.downloadCancel, parseDownloadIdPayload, (payload) =>
+    requireDownloadManager().cancel(payload.downloadId)
+  );
+
+  registerTrustedHandler(IPC_CHANNELS.downloadShowInFolder, parseDownloadIdPayload, (payload) =>
+    requireDownloadManager().showInFolder(payload.downloadId)
+  );
+
+  registerTrustedQuery(IPC_CHANNELS.downloadClearFinished, () =>
+    requireDownloadManager().clearFinished()
   );
 
   registerTrustedQuery(IPC_CHANNELS.agentSnapshot, () => requireAgentManager().snapshot());

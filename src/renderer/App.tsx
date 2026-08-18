@@ -15,9 +15,11 @@ import {
 import type { BrowserPaneId, BrowserSnapshot } from "../shared/browser.js";
 import { BLANK_PAGE, usesCustomWindowControls } from "../shared/desktop-shell.js";
 import { shouldOfferWizard, type MigrationOverview } from "../shared/migration.js";
+import { emptyDownloadSnapshot, type DownloadSnapshot } from "../shared/downloads.js";
 import type { AppearanceSettings } from "../shared/settings.js";
 import { AgentPanel } from "./AgentPanel.js";
 import { AmbientField } from "./AmbientField.js";
+import { DownloadsPanel } from "./DownloadsPanel.js";
 import { MigrationWizard } from "./MigrationWizard.js";
 import { SettingsPanel } from "./SettingsPanel.js";
 import { WindowControls } from "./WindowControls.js";
@@ -132,6 +134,8 @@ export function App(): React.JSX.Element {
   const [draggingTabId, setDraggingTabId] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [agentOpen, setAgentOpen] = useState(false);
+  const [downloadsOpen, setDownloadsOpen] = useState(false);
+  const [downloads, setDownloads] = useState<DownloadSnapshot>(emptyDownloadSnapshot);
   const [appearance, setAppearance] = useState<AppearanceSettings>(loadAppearance);
   const [migration, setMigration] = useState<MigrationOverview | null>(null);
   const [migrationOpen, setMigrationOpen] = useState(false);
@@ -170,6 +174,28 @@ export function App(): React.JSX.Element {
     void bridge.getSnapshot().then(setSnapshot);
     return unsubscribe;
   }, [bridge]);
+
+  /*
+   * Downloads are subscribed to whether or not the panel is open, because the
+   * trigger carries an active marker: a transfer starting while the panel is
+   * closed still has to show up somewhere.
+   */
+  useEffect(() => {
+    const downloadBridge = window.openstrawberry.downloads;
+    const unsubscribe = downloadBridge.onState(setDownloads);
+    void downloadBridge.getSnapshot().then(setDownloads).catch(() => undefined);
+    return unsubscribe;
+  }, []);
+
+  /*
+   * A download starting opens the panel once, the way a browser reveals its
+   * downloads shelf. Keyed on there being active work rather than on a count, so
+   * a second download starting while the panel is already open does not reopen
+   * something the user just closed.
+   */
+  useEffect(() => {
+    if (downloads.hasActive) setDownloadsOpen(true);
+  }, [downloads.hasActive]);
 
   const current = useMemo(() => focusedTab(snapshot), [snapshot]);
 
@@ -361,8 +387,22 @@ export function App(): React.JSX.Element {
             >
               <Columns2 size={16} strokeWidth={1.5} aria-hidden="true" />
             </IconButton>
-            <IconButton label="Downloads" onClick={() => undefined} disabled>
-              <Download size={16} strokeWidth={1.5} aria-hidden="true" />
+            <IconButton
+              label={downloadsOpen ? "Close downloads" : "Downloads"}
+              onClick={() => setDownloadsOpen((open) => !open)}
+            >
+              {/*
+                The active marker is a class rather than a different glyph, so a
+                running transfer is legible without the control changing shape
+                under the pointer. Tone alone never carries it: the label above
+                is what a screen reader announces.
+              */}
+              <Download
+                size={16}
+                strokeWidth={1.5}
+                aria-hidden="true"
+                className={downloads.hasActive ? "is-active" : undefined}
+              />
             </IconButton>
             <IconButton
               label={agentOpen ? "Close agents" : "Agents"}
@@ -441,6 +481,25 @@ export function App(): React.JSX.Element {
 
           {agentOpen && (
             <AgentPanel browser={snapshot} onClose={() => setAgentOpen(false)} />
+          )}
+
+          {/*
+            Every handler sends an id. There is no path on this surface, which is
+            what keeps `reveal` a request to show one of the user's own downloads
+            rather than a way to open an arbitrary location.
+          */}
+          {downloadsOpen && (
+            <DownloadsPanel
+              snapshot={downloads}
+              onPause={(id) => void window.openstrawberry.downloads.pause(id).then(setDownloads)}
+              onResume={(id) => void window.openstrawberry.downloads.resume(id).then(setDownloads)}
+              onCancel={(id) => void window.openstrawberry.downloads.cancel(id).then(setDownloads)}
+              onReveal={(id) => void window.openstrawberry.downloads.showInFolder(id).then(setDownloads)}
+              onClearFinished={() => {
+                void window.openstrawberry.downloads.clearFinished().then(setDownloads);
+              }}
+              onClose={() => setDownloadsOpen(false)}
+            />
           )}
 
           {settingsOpen && (
