@@ -33,6 +33,7 @@ import type { WorkspaceSnapshot } from "./workspaces.js";
 import type { MediaAction, MediaState } from "./media.js";
 import type { GroupColour } from "./tab-groups.js";
 import type { BookmarkPage } from "./bookmarks.js";
+import type { Plan, PlanDraftPayload } from "./orchestration.js";
 
 /** Channel names, shared so both sides of the boundary cannot drift apart. */
 export const IPC_CHANNELS = {
@@ -105,7 +106,12 @@ export const IPC_CHANNELS = {
   groupUpdate: "group:update",
   groupAssign: "group:assign",
   groupRemove: "group:remove",
-  bookmarkSearch: "bookmark:search"
+  bookmarkSearch: "bookmark:search",
+  planSnapshot: "plan:snapshot",
+  planPropose: "plan:propose",
+  planApprove: "plan:approve",
+  planResolveStep: "plan:resolve-step",
+  planCancel: "plan:cancel"
 } as const;
 
 /** Push channel the main process uses to broadcast browser state changes. */
@@ -131,6 +137,9 @@ export const DOWNLOAD_STATE_EVENT = "download:state";
  * so the indicator is pushed rather than polled.
  */
 export const TRACKING_STATE_EVENT = "tracking:state";
+
+/** Push channel for orchestration plans, which advance without being asked. */
+export const PLAN_STATE_EVENT = "plan:state";
 
 /** Non-secret facts about the running application. */
 export interface ShellInfo {
@@ -440,6 +449,32 @@ export interface MediaBridge {
   readonly run: (tabId: string, action: MediaAction) => Promise<MediaState>;
 }
 
+/**
+ * Orchestration plans.
+ *
+ * `propose` builds a plan in draft and returns it for review; nothing runs until
+ * `approve`. That ordering is enforced in the graph rather than here, so a
+ * renderer cannot skip the review by calling in a different order.
+ *
+ * A plan carries step titles, statuses, and artifacts — never a credential, and
+ * never a page's contents. A context grant is a list of tab ids the user
+ * approved, which the trusted process resolves; the renderer never sees what a
+ * step actually read.
+ */
+export interface PlanBridge {
+  readonly getPlans: () => Promise<readonly Plan[]>;
+  readonly propose: (draft: PlanDraftPayload) => Promise<readonly Plan[]>;
+  readonly approve: (planId: string) => Promise<readonly Plan[]>;
+  /** Answers a step waiting on a person. */
+  readonly resolveStep: (
+    planId: string,
+    stepId: string,
+    allow: boolean
+  ) => Promise<readonly Plan[]>;
+  readonly cancel: (planId: string) => Promise<readonly Plan[]>;
+  readonly onState: (listener: (plans: readonly Plan[]) => void) => () => void;
+}
+
 export interface OpenStrawberryBridge {
   readonly shell: {
     /** Available synchronously so first paint does not wait on IPC. */
@@ -455,4 +490,5 @@ export interface OpenStrawberryBridge {
   readonly reader: ReaderBridge;
   readonly workspaces: WorkspaceBridge;
   readonly media: MediaBridge;
+  readonly plans: PlanBridge;
 }

@@ -467,6 +467,41 @@ export function parsePlanDraftPayload(raw: unknown): PlanDraftPayload {
   };
 }
 
+export interface PlanIdPayload {
+  readonly planId: string;
+}
+
+export function parsePlanIdPayload(raw: unknown): PlanIdPayload {
+  const root = requirePlainObject(raw, "Plan request");
+  return { planId: requireIdentifier(root["planId"], "Plan ID") };
+}
+
+export interface PlanDecisionPayload {
+  readonly planId: string;
+  readonly stepId: string;
+  readonly allow: boolean;
+}
+
+/**
+ * A decision on a gated step.
+ *
+ * `allow` is required to be a boolean rather than read for truthiness: a payload
+ * that omitted it must not read as permission.
+ */
+export function parsePlanDecisionPayload(raw: unknown): PlanDecisionPayload {
+  const root = requirePlainObject(raw, "Plan decision");
+  const allow = root["allow"];
+  if (typeof allow !== "boolean") {
+    throw new IpcValidationError("Plan decision must be a boolean.");
+  }
+
+  return {
+    planId: requireIdentifier(root["planId"], "Plan ID"),
+    stepId: requireIdentifier(root["stepId"], "Step ID"),
+    allow
+  };
+}
+
 export interface PlanStepPayload {
   readonly planId: string;
   readonly stepId: string;

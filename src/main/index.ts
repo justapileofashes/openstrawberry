@@ -7,6 +7,7 @@ import {
   BROWSER_STATE_EVENT,
   DOWNLOAD_STATE_EVENT,
   IPC_CHANNELS,
+  PLAN_STATE_EVENT,
   TRACKING_STATE_EVENT,
   WINDOW_STATE_EVENT,
   type ShellInfo,
@@ -60,6 +61,12 @@ import { TrackerBlocker } from "./tracker-blocker.js";
 import { extractReaderDocument } from "./reader.js";
 import { callProvider } from "./http-provider.js";
 import { callCli, type SpawnedProcess } from "./cli-provider.js";
+import { PlanRunner } from "./plan-runner.js";
+import {
+  parsePlanDecisionPayload,
+  parsePlanDraftPayload,
+  parsePlanIdPayload
+} from "../shared/orchestration.js";
 import { parseReaderTabPayload, type ReaderState } from "../shared/reader.js";
 import { WorkspaceStore } from "./workspace-store.js";
 import { readMediaState, runMediaAction } from "./media.js";
@@ -123,6 +130,7 @@ let trackerBlocker: TrackerBlocker | null = null;
  */
 let workspaceStore: WorkspaceStore | null = null;
 let agentManager: AgentManager | null = null;
+let planRunner: PlanRunner | null = null;
 let migrationManager: MigrationManager | null = null;
 /** A link that arrived before the browser core existed. */
 let pendingLaunchUrl: string | null = urlFromCommandLine(process.argv);
@@ -162,6 +170,12 @@ function requireWorkspaceStore(): WorkspaceStore {
     statePath: join(app.getPath("userData"), "workspaces.json")
   });
   return workspaceStore;
+}
+
+/** Returns the live plan runner, or throws so the router can redact. */
+function requirePlanRunner(): PlanRunner {
+  if (planRunner === null) throw new Error("Orchestration is unavailable.");
+  return planRunner;
 }
 
 /** Returns the live agent runtime, or throws so the router can redact and report. */
@@ -385,6 +399,29 @@ function createWindow(): void {
   });
 
   /*
+   * Orchestration. A step is executed through the agent runtime's own dispatch,
+   * so a plan step and a chat turn reach a provider by exactly the same path -
+   * two paths would be two places for the credential rule to be got right.
+   *
+   * The runner is given the open tab ids fresh for every step, because a grant
+   * approved earlier is intersected with what is actually open at the moment the
+   * step runs.
+   */
+  const agents = agentManager;
+  planRunner = new PlanRunner({
+    publish: (plans) => sendToRenderer(PLAN_STATE_EVENT, plans),
+    openTabIds: () => browser.snapshot().tabs.map((tab) => tab.id),
+    execute: (step, contextTabIds, signal) =>
+      agents.dispatch(
+        step.companionId,
+        contextTabIds.length === 0
+          ? step.title
+          : `${step.title}\n\nGranted tabs: ${contextTabIds.join(", ")}`,
+        signal
+      )
+  });
+
+  /*
    * Migration shares the credential store's cipher, so the same judgement about
    * when this platform's encryption is worth trusting governs staged passwords
    * and provider keys alike. It is given the environment to resolve profile
@@ -450,6 +487,10 @@ function createWindow(): void {
 
     // The agent runtime is torn down next: it holds tab handles through its
     // port, and persisting its state must happen while those are still valid.
+    const plans = planRunner;
+    planRunner = null;
+    plans?.destroy();
+
     const agents = agentManager;
     agentManager = null;
     agents?.destroy();
@@ -736,6 +777,41 @@ function registerIpcHandlers(): void {
   registerTrustedHandler(IPC_CHANNELS.groupRemove, parseGroupIdPayload, (payload) =>
     requireBrowserManager().removeGroup(payload.groupId)
   );
+
+  /*
+   * Orchestration plans. `propose` returns a draft for review; the graph itself
+   * refuses to offer a runnable step until `approve`, so the ordering cannot be
+   * skipped by calling these in a different sequence.
+   */
+  registerTrustedQuery(IPC_CHANNELS.planSnapshot, () => requirePlanRunner().snapshot());
+
+  registerTrustedHandler(IPC_CHANNELS.planPropose, parsePlanDraftPayload, (payload) => {
+    const runner = requirePlanRunner();
+    runner.propose(payload.goal, payload.steps);
+    return runner.snapshot();
+  });
+
+  registerTrustedHandler(IPC_CHANNELS.planApprove, parsePlanIdPayload, (payload) => {
+    const runner = requirePlanRunner();
+    runner.approve(payload.planId);
+    return runner.snapshot();
+  });
+
+  registerTrustedHandler(
+    IPC_CHANNELS.planResolveStep,
+    parsePlanDecisionPayload,
+    (payload) => {
+      const runner = requirePlanRunner();
+      runner.resolveApproval(payload.planId, payload.stepId, payload.allow);
+      return runner.snapshot();
+    }
+  );
+
+  registerTrustedHandler(IPC_CHANNELS.planCancel, parsePlanIdPayload, (payload) => {
+    const runner = requirePlanRunner();
+    runner.cancel(payload.planId);
+    return runner.snapshot();
+  });
 
   registerTrustedQuery(IPC_CHANNELS.agentSnapshot, () => requireAgentManager().snapshot());
 

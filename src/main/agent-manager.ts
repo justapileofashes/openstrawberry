@@ -600,6 +600,54 @@ export class AgentManager {
    * on, so none of them is swallowed - and none of them carries a provider's own
    * error text, which is remote content.
    */
+  /**
+   * Dispatches one prompt for one agent, and returns what came back.
+   *
+   * The route resolution, the credential read, and the choice between a request
+   * and a process all live here, so a plan step and a chat turn reach a provider
+   * by exactly the same path. Two paths would be two places for the credential
+   * rule to be got right.
+   *
+   * Never throws: a broken port is a failure code, not an exception for the
+   * caller to handle.
+   */
+  public async dispatch(
+    companionId: string,
+    prompt: string,
+    signal: AbortSignal
+  ): Promise<ProviderResult> {
+    const companion = this.companions.find((entry) => entry.id === companionId) ?? null;
+    const route = resolvedProvider(companion, this.getConfig());
+
+    if (route.command !== null) {
+      if (this.command === null) return { ok: false, code: "unsupported-provider" };
+      try {
+        return await this.command({ command: route.command, prompt, signal });
+      } catch {
+        return { ok: false, code: "command-failed" };
+      }
+    }
+
+    if (this.provider === null) return { ok: false, code: "unsupported-provider" };
+
+    const descriptor = providerDescriptor(route.provider);
+    if (descriptor === null) return { ok: false, code: "unsupported-provider" };
+
+    try {
+      return await this.provider({
+        provider: descriptor.id,
+        model: route.model,
+        baseUrl: route.baseUrl,
+        // Read immediately before the call and handed straight on; never held.
+        credential: this.secrets.readCredential(descriptor.id, companionId),
+        prompt,
+        signal
+      });
+    } catch {
+      return { ok: false, code: "network" };
+    }
+  }
+
   private async callModel(
     runId: string,
     payload: StartRunPayload,

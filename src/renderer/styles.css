@@ -3337,3 +3337,126 @@ input[type="range"]:disabled {
   line-height: 1.6;
   color: var(--ink-muted);
 }
+
+/* -------------------------------------------------------------------------- */
+/* Plans                                                                       */
+/* -------------------------------------------------------------------------- */
+
+.pl-plan {
+  padding: var(--s-4) 0;
+  border-bottom: 1px solid rgba(222, 232, 246, 0.05);
+}
+
+.pl-plan:last-child {
+  border-bottom: 0;
+}
+
+.pl-plan-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s-3);
+}
+
+.pl-goal {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink-strong);
+}
+
+.pl-plan-meta {
+  margin: 2px 0 0;
+  font-size: 11.5px;
+  color: var(--ink-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.pl-plan-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--ink-muted);
+}
+
+.pl-steps {
+  margin: var(--s-3) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+/*
+ * A step's state is carried by its inline-start rule as well as by the words
+ * beside it, so nothing here rests on colour alone.
+ */
+.pl-step {
+  padding: var(--s-2) 0 var(--s-2) var(--s-3);
+  border-inline-start: 2px solid rgba(222, 232, 246, 0.12);
+}
+
+.pl-step.is-running {
+  border-inline-start-color: var(--ink-strong);
+}
+
+.pl-step.is-done {
+  border-inline-start-color: #6fc0b4;
+}
+
+.pl-step.is-failed,
+.pl-step.is-blocked {
+  border-inline-start-color: #d98098;
+}
+
+.pl-step.is-needs-user {
+  border-inline-start-color: #d8a657;
+}
+
+.pl-step-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-3);
+}
+
+.pl-step-title {
+  font-size: 13px;
+  color: var(--ink-strong);
+}
+
+.pl-step-status {
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: var(--ink-muted);
+}
+
+.pl-step-meta {
+  margin: 2px 0 0;
+  font-size: 11px;
+  color: var(--ink-faint);
+}
+
+.pl-decide {
+  display: flex;
+  gap: var(--s-2);
+  margin-top: var(--s-2);
+}
+
+/* An artifact is a step's own output, so it reads as quoted material. */
+.pl-artifact {
+  margin: var(--s-2) 0 0;
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-2);
+  background: rgba(222, 232, 246, 0.04);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--ink);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.pl-empty {
+  margin: var(--s-4) 0 0;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--ink-muted);
+}

@@ -35,6 +35,8 @@ import { CommandPalette } from "./CommandPalette.js";
 import { WorkspacesPanel } from "./WorkspacesPanel.js";
 import { GroupsPanel } from "./GroupsPanel.js";
 import { BookmarksPanel } from "./BookmarksPanel.js";
+import { PlansPanel } from "./PlansPanel.js";
+import type { Plan } from "../shared/orchestration.js";
 import { emptyBookmarkPage, type BookmarkPage } from "../shared/bookmarks.js";
 import { emptyWorkspaceSnapshot, type WorkspaceSnapshot } from "../shared/workspaces.js";
 import { emptyMediaState, type MediaAction, type MediaState } from "../shared/media.js";
@@ -164,6 +166,8 @@ export function App(): React.JSX.Element {
   const [workspacesOpen, setWorkspacesOpen] = useState(false);
   const [groupsOpen, setGroupsOpen] = useState(false);
   const [bookmarksOpen, setBookmarksOpen] = useState(false);
+  const [plansOpen, setPlansOpen] = useState(false);
+  const [plans, setPlans] = useState<readonly Plan[]>([]);
   const [bookmarkQuery, setBookmarkQuery] = useState("");
   const [bookmarks, setBookmarks] = useState<BookmarkPage>(emptyBookmarkPage);
   const [workspaces, setWorkspaces] = useState<WorkspaceSnapshot>(emptyWorkspaceSnapshot);
@@ -229,6 +233,17 @@ export function App(): React.JSX.Element {
   useEffect(() => {
     if (downloads.hasActive) setDownloadsOpen(true);
   }, [downloads.hasActive]);
+
+  /*
+   * Plans advance without being asked - a step finishing makes others ready -
+   * so the panel renders from pushed state rather than polling.
+   */
+  useEffect(() => {
+    const planBridge = window.openstrawberry.plans;
+    const unsubscribe = planBridge.onState(setPlans);
+    void planBridge.getPlans().then(setPlans).catch(() => undefined);
+    return unsubscribe;
+  }, []);
 
   useEffect(() => {
     const trackingBridge = window.openstrawberry.tracking;
@@ -392,6 +407,9 @@ export function App(): React.JSX.Element {
           return;
         case "tools.bookmarks":
           setBookmarksOpen((open) => !open);
+          return;
+        case "tools.plans":
+          setPlansOpen((open) => !open);
           return;
         case "group.toggle": {
           const group = current === null ? null : groupForTab(snapshot, current);
@@ -891,6 +909,22 @@ export function App(): React.JSX.Element {
           )}
 
           <ReaderView state={reader} onClose={() => setReader(closedReaderState())} />
+
+          {plansOpen && (
+            <PlansPanel
+              plans={plans}
+              onApprove={(planId) => {
+                void window.openstrawberry.plans.approve(planId).then(setPlans);
+              }}
+              onDecide={(planId, stepId, allow) => {
+                void window.openstrawberry.plans.resolveStep(planId, stepId, allow).then(setPlans);
+              }}
+              onCancel={(planId) => {
+                void window.openstrawberry.plans.cancel(planId).then(setPlans);
+              }}
+              onClose={() => setPlansOpen(false)}
+            />
+          )}
 
           {bookmarksOpen && (
             <BookmarksPanel

@@ -23,6 +23,7 @@ import type {
   CompanionDraft,
   DOWNLOAD_STATE_EVENT as DownloadStateEvent,
   IPC_CHANNELS,
+  PLAN_STATE_EVENT as PlanStateEvent,
   TRACKING_STATE_EVENT as TrackingStateEvent,
   OpenStrawberryBridge,
   ShellInfo,
@@ -36,6 +37,7 @@ import type { WorkspaceSnapshot } from "../shared/workspaces.js";
 import type { MediaAction, MediaState } from "../shared/media.js";
 import type { GroupColour } from "../shared/tab-groups.js";
 import type { BookmarkPage } from "../shared/bookmarks.js";
+import type { Plan, PlanDraftPayload } from "../shared/orchestration.js";
 import type { BrowserPaneId, BrowserSnapshot, BrowserViewport } from "../shared/browser.js";
 import type {
   AgentConfigStatus,
@@ -120,7 +122,12 @@ const CHANNEL: Channels = {
   groupUpdate: "group:update",
   groupAssign: "group:assign",
   groupRemove: "group:remove",
-  bookmarkSearch: "bookmark:search"
+  bookmarkSearch: "bookmark:search",
+  planSnapshot: "plan:snapshot",
+  planPropose: "plan:propose",
+  planApprove: "plan:approve",
+  planResolveStep: "plan:resolve-step",
+  planCancel: "plan:cancel"
 };
 
 const STATE_EVENT: typeof BrowserStateEvent = "browser:state";
@@ -128,6 +135,7 @@ const WINDOW_EVENT: typeof WindowStateEvent = "window:state-changed";
 const AGENT_EVENT: typeof AgentStateEvent = "agent:state";
 const DOWNLOAD_EVENT: typeof DownloadStateEvent = "download:state";
 const TRACKING_EVENT: typeof TrackingStateEvent = "tracking:state";
+const PLAN_EVENT: typeof PlanStateEvent = "plan:state";
 
 async function snapshotCall(channel: string, payload?: unknown): Promise<BrowserSnapshot> {
   return (await electron.ipcRenderer.invoke(channel, payload)) as BrowserSnapshot;
@@ -355,6 +363,33 @@ const api: OpenStrawberryBridge = {
       (await electron.ipcRenderer.invoke(CHANNEL.workspaceRemove, {
         workspaceId
       })) as WorkspaceSnapshot
+  },
+  plans: {
+    getPlans: async (): Promise<readonly Plan[]> =>
+      (await electron.ipcRenderer.invoke(CHANNEL.planSnapshot)) as readonly Plan[],
+    // Returns a draft for review. The graph refuses to offer a runnable step
+    // until it is approved, so the ordering cannot be skipped from here.
+    propose: async (draft: PlanDraftPayload): Promise<readonly Plan[]> =>
+      (await electron.ipcRenderer.invoke(CHANNEL.planPropose, draft)) as readonly Plan[],
+    approve: async (planId: string): Promise<readonly Plan[]> =>
+      (await electron.ipcRenderer.invoke(CHANNEL.planApprove, { planId })) as readonly Plan[],
+    resolveStep: async (
+      planId: string,
+      stepId: string,
+      allow: boolean
+    ): Promise<readonly Plan[]> =>
+      (await electron.ipcRenderer.invoke(CHANNEL.planResolveStep, {
+        planId,
+        stepId,
+        allow
+      })) as readonly Plan[],
+    cancel: async (planId: string): Promise<readonly Plan[]> =>
+      (await electron.ipcRenderer.invoke(CHANNEL.planCancel, { planId })) as readonly Plan[],
+    onState: (listener: (plans: readonly Plan[]) => void): (() => void) => {
+      const handler = (_event: unknown, plans: readonly Plan[]): void => listener(plans);
+      electron.ipcRenderer.on(PLAN_EVENT, handler);
+      return () => electron.ipcRenderer.removeListener(PLAN_EVENT, handler);
+    }
   },
   media: {
     getState: async (tabId: string): Promise<MediaState> =>

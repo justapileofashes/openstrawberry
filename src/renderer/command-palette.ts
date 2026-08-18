@@ -137,6 +137,12 @@ export const COMMANDS: readonly Command[] = [
     keywords: ["article", "read", "text"]
   },
   {
+    id: "tools.plans",
+    title: "Plans",
+    group: "Tools",
+    keywords: ["orchestration", "review", "approve", "steps"]
+  },
+  {
     id: "tools.agents",
     title: "Agents",
     group: "Tools",
