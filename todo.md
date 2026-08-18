@@ -62,7 +62,8 @@ passes. Planned work is never marked done.
 - [x] Icon-only Updates trigger, reachable from the command palette. The Agent, Downloads, and Settings triggers are all live now that their milestones have landed.
 - [x] Keyboard traversal pass. Every panel is a dialog that now holds the keyboard: Tab and Shift+Tab cycle within it and wrap at both ends, focus moves in when it opens, and returns to whatever had it when it closes — without which a user who opened a panel from the keyboard is dropped at the top of the document. A modified Tab is left to the window rather than swallowed. The selection arithmetic is pure and tested; only the hook touches the DOM.
 - [ ] Responsive behaviour below the minimum desktop width. The window enforces a 1024px minimum today, so nothing can currently render narrower than the layout assumes; lowering that bound is the change this item describes.
-- [ ] Bundle Inter and JetBrains Mono as local woff2 rather than relying on installed fonts. The renderer must not fetch webfonts from a remote host.
+- [x] The renderer fetches no webfont from a remote host. Verified rather than assumed: the stylesheet contains no `@import` and no remote `url()`, and the shipped policy is `font-src 'self' data:`, so a remote fetch is refused even if one were introduced. Both faces name system fallbacks, so text renders everywhere.
+- [ ] Bundle Inter and JetBrains Mono as local woff2, so the chrome looks the same on a machine that has neither installed. Fidelity only — the privacy property above already holds without it.
 
 ## M4 — Browser fundamentals
 

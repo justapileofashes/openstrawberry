@@ -97,9 +97,11 @@
       ],
       "artifactName": "OpenStrawberry-win-x64.${ext}",
       "requestedExecutionLevel": "asInvoker",
-      "signingHashAlgorithms": [
-        "sha256"
-      ]
+      "signtoolOptions": {
+        "signingHashAlgorithms": [
+          "sha256"
+        ]
+      }
     },
     "nsis": {
       "oneClick": true,
