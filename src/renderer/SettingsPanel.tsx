@@ -1,4 +1,6 @@
+import { useRef } from "react";
 import { X } from "lucide-react";
+import { useFocusTrap } from "./focus-trap.js";
 import {
   DEFAULT_APPEARANCE,
   shineDurationSeconds,
@@ -52,8 +54,11 @@ export function SettingsPanel({
   const patch = (part: Partial<AppearanceSettings>): void =>
     onChange({ ...settings, ...part });
 
+  const trapRef = useRef<HTMLElement>(null);
+  useFocusTrap(trapRef);
+
   return (
-    <aside className="settings glass" role="dialog" aria-label="Appearance settings">
+    <aside className="settings glass" role="dialog" ref={trapRef} aria-label="Appearance settings">
       <header className="set-head">
         <div>
           <span className="eyebrow">Obsidian Relay</span>

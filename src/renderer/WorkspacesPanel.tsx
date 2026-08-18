@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { FolderOpen, Trash2, X } from "lucide-react";
+import { useFocusTrap } from "./focus-trap.js";
 import {
   MAX_WORKSPACE_NAME_LENGTH,
   type WorkspaceSnapshot
@@ -26,6 +27,8 @@ export function WorkspacesPanel({
   readonly onClose: () => void;
 }): React.JSX.Element {
   const [name, setName] = useState("");
+  const trapRef = useRef<HTMLElement>(null);
+  useFocusTrap(trapRef);
 
   const save = (): void => {
     const trimmed = name.trim();
@@ -35,7 +38,7 @@ export function WorkspacesPanel({
   };
 
   return (
-    <aside className="settings glass" role="dialog" aria-label="Saved workspaces">
+    <aside className="settings glass" role="dialog" ref={trapRef} aria-label="Saved workspaces">
       <header className="set-head">
         <div>
           <span className="eyebrow">Workspace</span>

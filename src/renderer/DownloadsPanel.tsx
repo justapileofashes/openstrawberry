@@ -1,4 +1,6 @@
+import { useRef } from "react";
 import { FolderOpen, Pause, Play, X } from "lucide-react";
+import { useFocusTrap } from "./focus-trap.js";
 import {
   actionsFor,
   describeProgress,
@@ -141,8 +143,11 @@ export function DownloadsPanel({
   const folder = items[0]?.directoryLabel ?? "Downloads";
   const hasFinished = items.some((item) => actionsFor(item).canCancel === false);
 
+  const trapRef = useRef<HTMLElement>(null);
+  useFocusTrap(trapRef);
+
   return (
-    <aside className="settings glass" role="dialog" aria-label="Downloads">
+    <aside className="settings glass" role="dialog" ref={trapRef} aria-label="Downloads">
       <header className="set-head">
         <div>
           <span className="eyebrow">Workspace</span>

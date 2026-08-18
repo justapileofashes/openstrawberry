@@ -60,7 +60,8 @@ passes. Planned work is never marked done.
 - [x] Hold back the static tint and edge sweep so the travelling light is the dominant highlight rather than being swamped by fixed lighting.
 - [x] Add an appearance settings panel on the top bar controlling shine on/off, intensity, colour, speed, and non-essential motion, persisted in renderer-owned storage.
 - [ ] Icon-only Updates trigger; the Agent, Downloads, and Settings triggers are present but inert until their milestones land.
-- [ ] Responsive behaviour below the minimum desktop width, and a full keyboard traversal pass.
+- [x] Keyboard traversal pass. Every panel is a dialog that now holds the keyboard: Tab and Shift+Tab cycle within it and wrap at both ends, focus moves in when it opens, and returns to whatever had it when it closes — without which a user who opened a panel from the keyboard is dropped at the top of the document. A modified Tab is left to the window rather than swallowed. The selection arithmetic is pure and tested; only the hook touches the DOM.
+- [ ] Responsive behaviour below the minimum desktop width. The window enforces a 1024px minimum today, so nothing can currently render narrower than the layout assumes; lowering that bound is the change this item describes.
 - [ ] Bundle Inter and JetBrains Mono as local woff2 rather than relying on installed fonts. The renderer must not fetch webfonts from a remote host.
 
 ## M4 — Browser fundamentals

@@ -1,4 +1,6 @@
+import { useRef } from "react";
 import { X } from "lucide-react";
+import { useFocusTrap } from "./focus-trap.js";
 import {
   readingMinutes,
   type ReaderBlock,
@@ -79,13 +81,22 @@ export function ReaderView({
   state,
   onClose
 }: {
-  readonly state: ReaderState;
+  /** Never `closed`: the caller mounts this only when there is something to show. */
+  readonly state: Exclude<ReaderState, { status: "closed" }>;
   readonly onClose: () => void;
-}): React.JSX.Element | null {
-  if (state.status === "closed") return null;
+}): React.JSX.Element {
+  /*
+   * The closed case is handled by not rendering this component at all, rather
+   * than by returning null from inside it. Returning early would put the hooks
+   * below behind a condition, and it would also keep the component mounted with
+   * no content - so the focus trap would run once against an empty ref and never
+   * again. Mounting on open is what makes focus move in every time.
+   */
+  const trapRef = useRef<HTMLElement>(null);
+  useFocusTrap(trapRef);
 
   return (
-    <section className="reader glass" role="dialog" aria-label="Reader mode">
+    <section className="reader glass" role="dialog" ref={trapRef} aria-label="Reader mode">
       <header className="rd-head">
         <span className="eyebrow">Reader</span>
         <button type="button" className="icon-btn" onClick={onClose} aria-label="Close reader">

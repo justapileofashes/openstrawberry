@@ -908,7 +908,9 @@ export function App(): React.JSX.Element {
             <AgentPanel browser={snapshot} onClose={() => setAgentOpen(false)} />
           )}
 
-          <ReaderView state={reader} onClose={() => setReader(closedReaderState())} />
+          {reader.status !== "closed" && (
+            <ReaderView state={reader} onClose={() => setReader(closedReaderState())} />
+          )}
 
           {plansOpen && (
             <PlansPanel

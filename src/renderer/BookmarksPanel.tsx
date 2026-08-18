@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
+import { useFocusTrap } from "./focus-trap.js";
 import {
   MAX_BOOKMARK_QUERY_LENGTH,
   type BookmarkPage
@@ -35,8 +36,11 @@ export function BookmarksPanel({
     inputRef.current?.focus();
   }, []);
 
+  const trapRef = useRef<HTMLElement>(null);
+  useFocusTrap(trapRef);
+
   return (
-    <aside className="settings glass" role="dialog" aria-label="Bookmarks">
+    <aside className="settings glass" role="dialog" ref={trapRef} aria-label="Bookmarks">
       <header className="set-head">
         <div>
           <span className="eyebrow">Workspace</span>

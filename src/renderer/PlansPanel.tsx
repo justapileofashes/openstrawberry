@@ -1,4 +1,6 @@
+import { useRef } from "react";
 import { Check, Play, X } from "lucide-react";
+import { useFocusTrap } from "./focus-trap.js";
 import type { Plan, PlanStep, StepStatus } from "../shared/orchestration.js";
 
 /**
@@ -82,8 +84,11 @@ export function PlansPanel({
   readonly onCancel: (planId: string) => void;
   readonly onClose: () => void;
 }): React.JSX.Element {
+  const trapRef = useRef<HTMLElement>(null);
+  useFocusTrap(trapRef);
+
   return (
-    <aside className="settings glass" role="dialog" aria-label="Plans">
+    <aside className="settings glass" role="dialog" ref={trapRef} aria-label="Plans">
       <header className="set-head">
         <div>
           <span className="eyebrow">Agents</span>

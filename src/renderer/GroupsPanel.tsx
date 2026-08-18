@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { ChevronDown, ChevronRight, Trash2, X } from "lucide-react";
+import { useFocusTrap } from "./focus-trap.js";
 import {
   GROUP_COLOURS,
   MAX_GROUP_NAME_LENGTH,
@@ -130,8 +131,11 @@ export function GroupsPanel({
   readonly onRemove: (groupId: string) => void;
   readonly onClose: () => void;
 }): React.JSX.Element {
+  const trapRef = useRef<HTMLElement>(null);
+  useFocusTrap(trapRef);
+
   return (
-    <aside className="settings glass" role="dialog" aria-label="Tab groups">
+    <aside className="settings glass" role="dialog" ref={trapRef} aria-label="Tab groups">
       <header className="set-head">
         <div>
           <span className="eyebrow">Workspace</span>
