@@ -6,11 +6,18 @@ import {
   BROWSER_STATE_EVENT,
   DOWNLOAD_STATE_EVENT,
   IPC_CHANNELS,
+  TRACKING_STATE_EVENT,
   WINDOW_STATE_EVENT,
   type ShellInfo,
   type WindowState
 } from "../shared/bridge.js";
 import { parseDownloadIdPayload, type DownloadSnapshot } from "../shared/downloads.js";
+import {
+  parseTrackingEnabledPayload,
+  parseTrackingExceptionPayload,
+  parseTrackingSitePayload,
+  type TrackingSnapshot
+} from "../shared/tracking.js";
 import {
   parseCompanionIdPayload,
   parseCreateCompanionPayload,
@@ -48,6 +55,7 @@ import {
 import { isAllowedUrl, urlFromCommandLine } from "../shared/navigation.js";
 import { BrowserManager } from "./browser-manager.js";
 import { DownloadManager } from "./download-manager.js";
+import { TrackerBlocker } from "./tracker-blocker.js";
 import { MigrationManager, type MigrationDialogPort } from "./migration-manager.js";
 import { AgentManager, type BrowserPort } from "./agent-manager.js";
 import { SecretStore } from "./secret-store.js";
@@ -84,6 +92,7 @@ const DEV_SERVER_URL = process.env["VITE_DEV_SERVER_URL"];
 let mainWindow: BrowserWindow | null = null;
 let browserManager: BrowserManager | null = null;
 let downloadManager: DownloadManager | null = null;
+let trackerBlocker: TrackerBlocker | null = null;
 let agentManager: AgentManager | null = null;
 let migrationManager: MigrationManager | null = null;
 /** A link that arrived before the browser core existed. */
@@ -110,6 +119,12 @@ function requireBrowserManager(): BrowserManager {
 function requireDownloadManager(): DownloadManager {
   if (downloadManager === null) throw new Error("Downloads are unavailable.");
   return downloadManager;
+}
+
+/** Returns the live tracker blocker, or throws so the router can redact. */
+function requireTrackerBlocker(): TrackerBlocker {
+  if (trackerBlocker === null) throw new Error("Tracking protection is unavailable.");
+  return trackerBlocker;
 }
 
 /** Returns the live agent runtime, or throws so the router can redact and report. */
@@ -256,6 +271,23 @@ function createWindow(): void {
   });
 
   /*
+   * Tracker blocking is attached to the same partition, so it sees every
+   * subresource a guest requests. It is given a read-only view of the tab engine
+   * because deciding whether a request is first-party needs the page it came
+   * from, and nothing more: the port can answer questions about tabs and do
+   * nothing to them.
+   */
+  trackerBlocker = new TrackerBlocker({
+    webRequest: profileSession.webRequest,
+    browser: {
+      pageForWebContents: (id) => browser.pageForWebContents(id),
+      focusedTab: () => browser.focusedTab()
+    },
+    statePath: join(app.getPath("userData"), "tracking.json"),
+    publish: (snapshot: TrackingSnapshot) => sendToRenderer(TRACKING_STATE_EVENT, snapshot)
+  });
+
+  /*
    * The OS keychain, as the credential store needs it. `createOsCipher` owns the
    * judgement of when the platform's encryption is worth trusting — notably that
    * a keyringless Linux session does not count, however cheerfully
@@ -355,6 +387,11 @@ function createWindow(): void {
     const downloads = downloadManager;
     downloadManager = null;
     downloads?.destroy();
+
+    // The blocker persists the user's exceptions, and drops its per-page counts.
+    const tracking = trackerBlocker;
+    trackerBlocker = null;
+    tracking?.destroy();
 
     const manager = browserManager;
     browserManager = null;
@@ -499,6 +536,34 @@ function registerIpcHandlers(): void {
 
   registerTrustedQuery(IPC_CHANNELS.downloadClearFinished, () =>
     requireDownloadManager().clearFinished()
+  );
+
+  /*
+   * Tracker blocking. What crosses back is counts and site names; no blocked URL
+   * is ever reported, because that list would be a browsing history.
+   */
+  registerTrustedQuery(IPC_CHANNELS.trackingSnapshot, () =>
+    requireTrackerBlocker().snapshot()
+  );
+
+  registerTrustedHandler(
+    IPC_CHANNELS.trackingSetEnabled,
+    parseTrackingEnabledPayload,
+    (payload) => requireTrackerBlocker().setEnabled(payload.enabled)
+  );
+
+  registerTrustedHandler(IPC_CHANNELS.trackingExceptSite, parseTrackingSitePayload, (payload) =>
+    requireTrackerBlocker().exceptSite(payload.tabId)
+  );
+
+  registerTrustedHandler(IPC_CHANNELS.trackingResumeSite, parseTrackingSitePayload, (payload) =>
+    requireTrackerBlocker().resumeSite(payload.tabId)
+  );
+
+  registerTrustedHandler(
+    IPC_CHANNELS.trackingRemoveException,
+    parseTrackingExceptionPayload,
+    (payload) => requireTrackerBlocker().removeException(payload.site)
   );
 
   registerTrustedQuery(IPC_CHANNELS.agentSnapshot, () => requireAgentManager().snapshot());

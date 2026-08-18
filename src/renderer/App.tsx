@@ -9,6 +9,7 @@ import {
   Plus,
   RotateCw,
   Settings2,
+  ShieldCheck,
   Square,
   X
 } from "lucide-react";
@@ -16,6 +17,7 @@ import type { BrowserPaneId, BrowserSnapshot } from "../shared/browser.js";
 import { BLANK_PAGE, usesCustomWindowControls } from "../shared/desktop-shell.js";
 import { shouldOfferWizard, type MigrationOverview } from "../shared/migration.js";
 import { emptyDownloadSnapshot, type DownloadSnapshot } from "../shared/downloads.js";
+import { emptyTrackingSnapshot, type TrackingSnapshot } from "../shared/tracking.js";
 import type { AppearanceSettings } from "../shared/settings.js";
 import { AgentPanel } from "./AgentPanel.js";
 import { AmbientField } from "./AmbientField.js";
@@ -136,6 +138,7 @@ export function App(): React.JSX.Element {
   const [agentOpen, setAgentOpen] = useState(false);
   const [downloadsOpen, setDownloadsOpen] = useState(false);
   const [downloads, setDownloads] = useState<DownloadSnapshot>(emptyDownloadSnapshot);
+  const [tracking, setTracking] = useState<TrackingSnapshot>(emptyTrackingSnapshot);
   const [appearance, setAppearance] = useState<AppearanceSettings>(loadAppearance);
   const [migration, setMigration] = useState<MigrationOverview | null>(null);
   const [migrationOpen, setMigrationOpen] = useState(false);
@@ -196,6 +199,25 @@ export function App(): React.JSX.Element {
   useEffect(() => {
     if (downloads.hasActive) setDownloadsOpen(true);
   }, [downloads.hasActive]);
+
+  useEffect(() => {
+    const trackingBridge = window.openstrawberry.tracking;
+    const unsubscribe = trackingBridge.onState(setTracking);
+    void trackingBridge.getSnapshot().then(setTracking).catch(() => undefined);
+    return unsubscribe;
+  }, []);
+
+  /*
+   * The blocker reports on the focused tab, so switching tabs has to re-ask.
+   * The count is per page, and the previous tab's number would otherwise sit
+   * there describing something the user is no longer looking at.
+   */
+  useEffect(() => {
+    void window.openstrawberry.tracking
+      .getSnapshot()
+      .then(setTracking)
+      .catch(() => undefined);
+  }, [snapshot.activePaneId, snapshot.panes]);
 
   const current = useMemo(() => focusedTab(snapshot), [snapshot]);
 
@@ -381,6 +403,40 @@ export function App(): React.JSX.Element {
           <span className="drag-handle" aria-hidden="true" />
 
           <div className="tool-cluster">
+            {/*
+              The shield is the whole interface to tracker blocking: it says how
+              many requests were blocked on this page, and clicking it excepts
+              the site. The count is text rather than tone alone, and the label
+              spells out the state for a screen reader.
+            */}
+            {tracking.site.length > 0 && (
+              <IconButton
+                label={
+                  tracking.siteExcepted
+                    ? `Tracking protection off for ${tracking.site}. Turn it back on`
+                    : `${tracking.blockedOnPage} tracker${
+                        tracking.blockedOnPage === 1 ? "" : "s"
+                      } blocked on ${tracking.site}. Allow trackers on this site`
+                }
+                onClick={() => {
+                  const tabId = current?.id;
+                  if (tabId === undefined) return;
+                  const call = tracking.siteExcepted
+                    ? window.openstrawberry.tracking.resumeSite(tabId)
+                    : window.openstrawberry.tracking.exceptSite(tabId);
+                  void call.then(setTracking);
+                }}
+              >
+                <span className={`shield${tracking.siteExcepted ? " is-off" : ""}`}>
+                  <ShieldCheck size={16} strokeWidth={1.5} aria-hidden="true" />
+                  {!tracking.siteExcepted && tracking.blockedOnPage > 0 && (
+                    <span className="shield-count" aria-hidden="true">
+                      {tracking.blockedOnPage > 99 ? "99+" : tracking.blockedOnPage}
+                    </span>
+                  )}
+                </span>
+              </IconButton>
+            )}
             <IconButton
               label={snapshot.splitEnabled ? "Close split" : "Split workspace"}
               onClick={() => void bridge.setSplitEnabled(!snapshot.splitEnabled)}

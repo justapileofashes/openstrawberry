@@ -23,12 +23,14 @@ import type {
   CompanionDraft,
   DOWNLOAD_STATE_EVENT as DownloadStateEvent,
   IPC_CHANNELS,
+  TRACKING_STATE_EVENT as TrackingStateEvent,
   OpenStrawberryBridge,
   ShellInfo,
   WINDOW_STATE_EVENT as WindowStateEvent,
   WindowState
 } from "../shared/bridge.js";
 import type { DownloadSnapshot } from "../shared/downloads.js";
+import type { TrackingSnapshot } from "../shared/tracking.js";
 import type { BrowserPaneId, BrowserSnapshot, BrowserViewport } from "../shared/browser.js";
 import type {
   AgentConfigStatus,
@@ -96,13 +98,19 @@ const CHANNEL: Channels = {
   downloadResume: "download:resume",
   downloadCancel: "download:cancel",
   downloadShowInFolder: "download:show-in-folder",
-  downloadClearFinished: "download:clear-finished"
+  downloadClearFinished: "download:clear-finished",
+  trackingSnapshot: "tracking:snapshot",
+  trackingSetEnabled: "tracking:set-enabled",
+  trackingExceptSite: "tracking:except-site",
+  trackingResumeSite: "tracking:resume-site",
+  trackingRemoveException: "tracking:remove-exception"
 };
 
 const STATE_EVENT: typeof BrowserStateEvent = "browser:state";
 const WINDOW_EVENT: typeof WindowStateEvent = "window:state-changed";
 const AGENT_EVENT: typeof AgentStateEvent = "agent:state";
 const DOWNLOAD_EVENT: typeof DownloadStateEvent = "download:state";
+const TRACKING_EVENT: typeof TrackingStateEvent = "tracking:state";
 
 async function snapshotCall(channel: string, payload?: unknown): Promise<BrowserSnapshot> {
   return (await electron.ipcRenderer.invoke(channel, payload)) as BrowserSnapshot;
@@ -122,6 +130,10 @@ async function migrationCall(channel: string, payload?: unknown): Promise<Migrat
 
 async function downloadCall(channel: string, payload?: unknown): Promise<DownloadSnapshot> {
   return (await electron.ipcRenderer.invoke(channel, payload)) as DownloadSnapshot;
+}
+
+async function trackingCall(channel: string, payload?: unknown): Promise<TrackingSnapshot> {
+  return (await electron.ipcRenderer.invoke(channel, payload)) as TrackingSnapshot;
 }
 
 const api: OpenStrawberryBridge = {
@@ -271,6 +283,22 @@ const api: OpenStrawberryBridge = {
       const handler = (_event: unknown, snapshot: DownloadSnapshot): void => listener(snapshot);
       electron.ipcRenderer.on(DOWNLOAD_EVENT, handler);
       return () => electron.ipcRenderer.removeListener(DOWNLOAD_EVENT, handler);
+    }
+  },
+  tracking: {
+    getSnapshot: async () => trackingCall(CHANNEL.trackingSnapshot),
+    setEnabled: async (enabled: boolean) =>
+      trackingCall(CHANNEL.trackingSetEnabled, { enabled }),
+    // Names a tab, not a site, so a site the user is not looking at cannot be
+    // excepted from here.
+    exceptSite: async (tabId: string) => trackingCall(CHANNEL.trackingExceptSite, { tabId }),
+    resumeSite: async (tabId: string) => trackingCall(CHANNEL.trackingResumeSite, { tabId }),
+    removeException: async (site: string) =>
+      trackingCall(CHANNEL.trackingRemoveException, { site }),
+    onState: (listener: (snapshot: TrackingSnapshot) => void): (() => void) => {
+      const handler = (_event: unknown, snapshot: TrackingSnapshot): void => listener(snapshot);
+      electron.ipcRenderer.on(TRACKING_EVENT, handler);
+      return () => electron.ipcRenderer.removeListener(TRACKING_EVENT, handler);
     }
   }
 };

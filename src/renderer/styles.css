@@ -2730,3 +2730,44 @@ input[type="range"]:disabled {
     opacity: 0.5;
   }
 }
+
+/* -------------------------------------------------------------------------- */
+/* Tracker blocking                                                            */
+/* -------------------------------------------------------------------------- */
+
+.shield {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/*
+ * The count sits on the shield rather than beside it, so the control keeps the
+ * same footprint as every other icon in the cluster and the row does not reflow
+ * as a page loads.
+ */
+.shield-count {
+  position: absolute;
+  inset-block-start: -5px;
+  inset-inline-start: 9px;
+  min-inline-size: 13px;
+  padding: 0 3px;
+  border-radius: 7px;
+  background: var(--ink-strong);
+  color: var(--ground);
+  font-size: 9px;
+  font-weight: 600;
+  line-height: 13px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * An excepted site dims the shield. The state is never carried by tone alone:
+ * the count disappears, and the button's accessible label says protection is
+ * off for the site by name.
+ */
+.shield.is-off {
+  opacity: 0.4;
+}

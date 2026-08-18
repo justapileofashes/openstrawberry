@@ -382,6 +382,31 @@ export class BrowserManager {
     return tab.view.webContents;
   }
 
+  /**
+   * The tab a WebContents belongs to, with the page it is currently showing.
+   *
+   * Exists for the tracker blocker, which sees requests identified by
+   * WebContents rather than by tab and has to know what page a request is being
+   * made *from* before it can decide whether it is first-party.
+   */
+  public pageForWebContents(webContentsId: number): { tabId: string; url: string } | null {
+    for (const [tabId, tab] of this.tabs) {
+      if (tab.view.webContents.isDestroyed()) continue;
+      if (tab.view.webContents.id !== webContentsId) continue;
+      return { tabId, url: tab.state.url };
+    }
+    return null;
+  }
+
+  /** The tab the user is looking at, which is the one the chrome reports on. */
+  public focusedTab(): { tabId: string; url: string } | null {
+    const tabId = this.panes[this.activePaneId].activeTabId;
+    if (tabId === null) return null;
+
+    const tab = this.tabs.get(tabId);
+    return tab === undefined ? null : { tabId, url: tab.state.url };
+  }
+
   private loadUrl(tabId: string, url: string): void {
     const contents = this.contentsFor(tabId);
     if (contents === null) return;

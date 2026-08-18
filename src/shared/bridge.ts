@@ -27,6 +27,7 @@ import type {
   PickedPasswordFile
 } from "./migration.js";
 import type { DownloadSnapshot } from "./downloads.js";
+import type { TrackingSnapshot } from "./tracking.js";
 
 /** Channel names, shared so both sides of the boundary cannot drift apart. */
 export const IPC_CHANNELS = {
@@ -82,7 +83,12 @@ export const IPC_CHANNELS = {
    * the migration guard test reserves for reading secrets back out.
    */
   downloadShowInFolder: "download:show-in-folder",
-  downloadClearFinished: "download:clear-finished"
+  downloadClearFinished: "download:clear-finished",
+  trackingSnapshot: "tracking:snapshot",
+  trackingSetEnabled: "tracking:set-enabled",
+  trackingExceptSite: "tracking:except-site",
+  trackingResumeSite: "tracking:resume-site",
+  trackingRemoveException: "tracking:remove-exception"
 } as const;
 
 /** Push channel the main process uses to broadcast browser state changes. */
@@ -102,6 +108,12 @@ export const AGENT_STATE_EVENT = "agent:state";
  * schedule, so the panel renders from pushed snapshots rather than polling.
  */
 export const DOWNLOAD_STATE_EVENT = "download:state";
+
+/**
+ * Push channel for tracker-blocking state. The count changes as a page loads,
+ * so the indicator is pushed rather than polled.
+ */
+export const TRACKING_STATE_EVENT = "tracking:state";
 
 /** Non-secret facts about the running application. */
 export interface ShellInfo {
@@ -309,6 +321,28 @@ export interface DownloadBridge {
   readonly onState: (listener: (snapshot: DownloadSnapshot) => void) => () => void;
 }
 
+/**
+ * The tracker-blocking capability surface.
+ *
+ * What crosses is counts and site names. No blocked URL is ever reported,
+ * because a list of what a page tried to load is a browsing history with extra
+ * steps, and keeping one to power a privacy feature would defeat the point.
+ *
+ * `exceptSite` and `resumeSite` name a tab rather than a site, so the renderer
+ * cannot except a site the user is not looking at.
+ */
+export interface TrackingBridge {
+  readonly getSnapshot: () => Promise<TrackingSnapshot>;
+  readonly setEnabled: (enabled: boolean) => Promise<TrackingSnapshot>;
+  /** Stops blocking on the site the given tab is showing. */
+  readonly exceptSite: (tabId: string) => Promise<TrackingSnapshot>;
+  readonly resumeSite: (tabId: string) => Promise<TrackingSnapshot>;
+  /** Revokes an exception from the Settings list, where a tab is not in play. */
+  readonly removeException: (site: string) => Promise<TrackingSnapshot>;
+  /** Subscribes to pushed state. Returns an unsubscribe function. */
+  readonly onState: (listener: (snapshot: TrackingSnapshot) => void) => () => void;
+}
+
 export interface OpenStrawberryBridge {
   readonly shell: {
     /** Available synchronously so first paint does not wait on IPC. */
@@ -320,4 +354,5 @@ export interface OpenStrawberryBridge {
   readonly agents: AgentBridge;
   readonly migration: MigrationBridge;
   readonly downloads: DownloadBridge;
+  readonly tracking: TrackingBridge;
 }
