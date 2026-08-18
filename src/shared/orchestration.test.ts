@@ -251,6 +251,48 @@ describe("approval gates", () => {
     const plan = gatedPlan();
     expect(resolveStepApproval(plan, "a", true)).toEqual(plan);
   });
+
+  it("blocks what followed a denial, rather than leaving the plan hung", () => {
+    // A denial has to end the plan as decisively as a failure does. Without
+    // propagating, the dependent stays pending forever: nothing can make it
+    // ready, and the plan never reaches a terminal state.
+    let plan = approvePlan(
+      createPlan({
+        id: "p",
+        goal: "g",
+        steps: [
+          { id: "a", title: "Send", companionId: "c", requiresApproval: true },
+          { id: "b", title: "After", companionId: "c", dependsOn: ["a"] }
+        ]
+      })
+    );
+
+    plan = resolveStepApproval(startStep(plan, "a"), "a", false);
+
+    expect(plan.steps.map((step) => step.status)).toEqual(["failed", "blocked"]);
+    expect(plan.status).toBe("failed");
+  });
+
+  it("blocks what followed a gate that outlived its budget", () => {
+    let plan = approvePlan(
+      createPlan({
+        id: "p",
+        goal: "g",
+        steps: [
+          { id: "a", title: "A", companionId: "c" },
+          { id: "b", title: "B", companionId: "c", requiresApproval: true },
+          { id: "c", title: "C", companionId: "c", dependsOn: ["b"] }
+        ],
+        budget: 1
+      })
+    );
+
+    plan = startStep(plan, "b");
+    plan = startStep(plan, "a");
+    plan = resolveStepApproval(plan, "b", true);
+
+    expect(plan.steps.map((step) => step.status)).toEqual(["running", "blocked", "blocked"]);
+  });
 });
 
 describe("budgets", () => {

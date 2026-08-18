@@ -287,10 +287,24 @@ export function resolveStepApproval(plan: Plan, stepId: string, allow: boolean):
   const step = stepOf(plan, stepId);
   if (step === null || step.status !== "needs-user") return plan;
 
-  if (!allow) return settle(withStep(plan, stepId, (c) => ({ ...c, status: "failed" })));
+  /*
+   * Both endings below go through `blockUnreachable` before settling, for the
+   * same reason `completeStep` does: a step that will now never finish strands
+   * everything downstream of it. Failing one without propagating leaves those
+   * dependents `pending` forever - nothing can make them ready, and `settle`
+   * sees live work, so the plan never reaches a terminal state and simply
+   * hangs. A denial has to end the plan as decisively as a failure does.
+   */
+  if (!allow) {
+    return settle(
+      blockUnreachable(withStep(plan, stepId, (c) => ({ ...c, status: "failed" })))
+    );
+  }
 
   if (plan.budgetRemaining <= 0) {
-    return settle(withStep(plan, stepId, (c) => ({ ...c, status: "blocked" })));
+    return settle(
+      blockUnreachable(withStep(plan, stepId, (c) => ({ ...c, status: "blocked" })))
+    );
   }
 
   return withStep({ ...plan, budgetRemaining: plan.budgetRemaining - 1 }, stepId, (current) => ({
