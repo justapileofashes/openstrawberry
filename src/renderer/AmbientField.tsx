@@ -14,10 +14,21 @@
 export function AmbientField(): React.JSX.Element {
   return (
     <div className="ambient" aria-hidden="true">
-      <span className="ambient-blob blob-1" />
-      <span className="ambient-blob blob-2" />
-      <span className="ambient-blob blob-3" />
-      <span className="ambient-blob blob-4" />
+      {/*
+        The beat lands on this wrapper rather than on the pools themselves. Each
+        pool's own `transform` is already spoken for by its drift keyframes, and
+        a second transform on the same element would overwrite the first. Since
+        the wrapper spans the field exactly, scaling it swells every pool about
+        the centre of the window without moving any of them relative to their
+        paths - and the clipping stays on `.ambient` outside it, so a swell
+        cannot push light past the window edge.
+      */}
+      <div className="ambient-pulse">
+        <span className="ambient-blob blob-1" />
+        <span className="ambient-blob blob-2" />
+        <span className="ambient-blob blob-3" />
+        <span className="ambient-blob blob-4" />
+      </div>
     </div>
   );
 }

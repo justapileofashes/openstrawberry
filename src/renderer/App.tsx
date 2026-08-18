@@ -6,7 +6,6 @@ import {
   Bot,
   Columns2,
   Download,
-  Globe,
   Pause,
   PictureInPicture2,
   Play,
@@ -25,9 +24,12 @@ import { shouldOfferWizard, type MigrationOverview } from "../shared/migration.j
 import { emptyDownloadSnapshot, type DownloadSnapshot } from "../shared/downloads.js";
 import { emptyTrackingSnapshot, type TrackingSnapshot } from "../shared/tracking.js";
 import { closedReaderState, type ReaderState } from "../shared/reader.js";
-import type { AppearanceSettings } from "../shared/settings.js";
+import { audioReactionActive, type AppearanceSettings } from "../shared/settings.js";
+import type { DefaultBrowserState } from "../shared/default-browser.js";
+import { emptySnapshot as emptyAgentSnapshot, type AgentSnapshot } from "../shared/agents.js";
 import { AgentPanel } from "./AgentPanel.js";
 import { AmbientField } from "./AmbientField.js";
+import { CommandCenter } from "./CommandCenter.js";
 import { DownloadsPanel } from "./DownloadsPanel.js";
 import { MigrationWizard } from "./MigrationWizard.js";
 import { ReaderView } from "./ReaderView.js";
@@ -46,6 +48,7 @@ import { commandForChord, isPaletteChord } from "./command-palette.js";
 import { SettingsPanel } from "./SettingsPanel.js";
 import { WindowControls } from "./WindowControls.js";
 import { applyAppearance, loadAppearance, saveAppearance } from "./settings-store.js";
+import { startAudioVisualizer, type VisualizerHandle } from "./audio-visualizer.js";
 import {
   activeTabId,
   faviconFallbackLabel,
@@ -53,6 +56,7 @@ import {
   groupForTab,
   railTabsForPane,
   sameViewport,
+  showsCommandCenter,
   tabAccessibleName,
   viewportFromRect,
   visiblePanes
@@ -97,16 +101,24 @@ function IconButton({
 /**
  * A pane is an empty measured region. The real page is a native view the main
  * process composites into these exact bounds, so nothing may be drawn here.
+ *
+ * `isCollapsed` squeezes it to nothing, which is how the chrome takes the region
+ * back: the ResizeObserver below reports the zero rect, the main process shrinks
+ * the native view away, and whatever the slot draws instead is then the only
+ * thing there. It is not a cosmetic hide — a merely invisible pane would still be
+ * composited over.
  */
 function Pane({
   paneId,
   isActive,
+  isCollapsed,
   onBounds,
   onFocus,
   onDropTab
 }: {
   readonly paneId: BrowserPaneId;
   readonly isActive: boolean;
+  readonly isCollapsed: boolean;
   readonly onBounds: (paneId: BrowserPaneId, rect: DOMRect) => void;
   readonly onFocus: (paneId: BrowserPaneId) => void;
   readonly onDropTab: (tabId: string, paneId: BrowserPaneId) => void;
@@ -134,7 +146,9 @@ function Pane({
   return (
     <div
       ref={ref}
-      className={`pane${isActive ? " is-active" : ""}${isDropTarget ? " is-drop-target" : ""}`}
+      className={`pane${isActive ? " is-active" : ""}${isDropTarget ? " is-drop-target" : ""}${
+        isCollapsed ? " is-collapsed" : ""
+      }`}
       onMouseDown={() => onFocus(paneId)}
       onDragOver={(event) => {
         event.preventDefault();
@@ -161,6 +175,7 @@ export function App(): React.JSX.Element {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [agentOpen, setAgentOpen] = useState(false);
   const [downloadsOpen, setDownloadsOpen] = useState(false);
+  const [agents, setAgents] = useState<AgentSnapshot>(emptyAgentSnapshot);
   const [downloads, setDownloads] = useState<DownloadSnapshot>(emptyDownloadSnapshot);
   const [tracking, setTracking] = useState<TrackingSnapshot>(emptyTrackingSnapshot);
   const [reader, setReader] = useState<ReaderState>(closedReaderState);
@@ -181,8 +196,50 @@ export function App(): React.JSX.Element {
   const [media, setMedia] = useState<MediaState>(emptyMediaState);
   const addressRef = useRef<HTMLInputElement>(null);
   const [appearance, setAppearance] = useState<AppearanceSettings>(loadAppearance);
+  /*
+   * Read before the first paint rather than defaulted and corrected. Starting
+   * at `false` would open an audio device and close it again a tick later for
+   * every user who has reduced motion set, which is the one group that must
+   * never have it opened at all.
+   */
+  const [reducedMotion, setReducedMotion] = useState(
+    () => window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false
+  );
+  const visualizer = useRef<VisualizerHandle | null>(null);
+  const audioActive = audioReactionActive(appearance, reducedMotion);
+  /*
+   * Any pane, not just the focused one. A track playing in a background tab is
+   * still the machine making noise, which is the thing the shine is reacting
+   * to.
+   */
+  const anyTabAudible = snapshot.tabs.some((tab) => tab.isAudible);
   const [migration, setMigration] = useState<MigrationOverview | null>(null);
   const [migrationOpen, setMigrationOpen] = useState(false);
+  const [defaultBrowser, setDefaultBrowser] = useState<DefaultBrowserState | null>(null);
+
+  /*
+   * Asked each time the panel opens rather than once at launch. The default
+   * browser is a system-wide setting another application can take at any moment,
+   * so a value cached at startup would be stale exactly when someone came to
+   * Settings to look at it.
+   */
+  useEffect(() => {
+    if (!settingsOpen) return;
+
+    let cancelled = false;
+    void window.openstrawberry.defaultBrowser
+      .getState()
+      .then((state) => {
+        if (!cancelled) setDefaultBrowser(state);
+      })
+      .catch(() => {
+        if (!cancelled) setDefaultBrowser(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [settingsOpen]);
 
   /*
    * The wizard offers itself once, on a launch where migration has neither run
@@ -209,6 +266,50 @@ export function App(): React.JSX.Element {
     applyAppearance(appearance);
     saveAppearance(appearance);
   }, [appearance]);
+
+  /*
+   * Reduced motion is watched rather than read once.
+   *
+   * It is a system preference, and someone who turns it on mid-session is
+   * asking for the movement to stop now, not at the next launch.
+   */
+  useEffect(() => {
+    const query = window.matchMedia?.("(prefers-reduced-motion: reduce)");
+    if (query === undefined) return;
+
+    const update = (): void => setReducedMotion(query.matches);
+    update();
+    query.addEventListener("change", update);
+    return () => query.removeEventListener("change", update);
+  }, []);
+
+  /*
+   * The audio visualiser owns an audio device and a frame loop, so it is
+   * started and stopped rather than merely ignored: switching the reaction off
+   * releases the capture instead of leaving it running with its output
+   * discarded. `audioReactionActive` is what decides, and it answers to the
+   * motion switch and the system preference as well as to the reaction's own.
+   */
+  useEffect(() => {
+    if (!audioActive) return;
+
+    const handle = startAudioVisualizer();
+    visualizer.current = handle;
+
+    return () => {
+      visualizer.current = null;
+      handle.stop();
+    };
+  }, [audioActive]);
+
+  /*
+   * Only the fallback consumes this. When loopback capture is working the
+   * visualiser hears the whole machine - including applications this browser
+   * knows nothing about - and ignores what the tabs report.
+   */
+  useEffect(() => {
+    visualizer.current?.setAudible(anyTabAudible);
+  }, [anyTabAudible, audioActive]);
   const lastViewports = useRef(new Map<BrowserPaneId, ReturnType<typeof viewportFromRect>>());
   /** Set while a click is in the middle of focusing the address field. */
   const selectAllOnMouseUp = useRef(false);
@@ -218,6 +319,19 @@ export function App(): React.JSX.Element {
     void bridge.getSnapshot().then(setSnapshot);
     return unsubscribe;
   }, [bridge]);
+
+  /*
+   * Agents are subscribed to here rather than inside the companion panel,
+   * because a new tab draws the command center whether or not the panel is open.
+   * One subscription feeds both, so the roster in a new tab and the roster in
+   * the panel cannot show different things.
+   */
+  useEffect(() => {
+    const agentBridge = window.openstrawberry.agents;
+    const unsubscribe = agentBridge.onState(setAgents);
+    void agentBridge.getSnapshot().then(setAgents).catch(() => undefined);
+    return unsubscribe;
+  }, []);
 
   /*
    * Downloads are subscribed to whether or not the panel is open, because the
@@ -593,8 +707,13 @@ export function App(): React.JSX.Element {
                 >
                   <span className="rail-mark" aria-hidden="true">
                     {tab.faviconUrl === null ? (
+                      /*
+                        A new tab is the command center, so its mark is the one
+                        the agents surface uses everywhere else rather than a
+                        globe promising a page it does not have.
+                      */
                       tab.url === BLANK_PAGE ? (
-                        <Globe size={15} strokeWidth={1.5} />
+                        <Bot size={15} strokeWidth={1.5} />
                       ) : (
                         <span className="rail-letter">{faviconFallbackLabel(tab)}</span>
                       )
@@ -879,28 +998,61 @@ export function App(): React.JSX.Element {
             agentOpen ? " has-agent" : ""
           }${migrationOpen || reader.status !== "closed" ? " is-migrating" : ""}`}
         >
-          {panes.map((paneId) => (
-            <div className="pane-slot" key={paneId}>
-              {snapshot.splitEnabled && (
-                <div className="pane-head">
-                  <span className="pane-label">{paneId}</span>
-                  <IconButton
-                    label={`Close ${paneId} pane`}
-                    onClick={() => void bridge.setSplitEnabled(false)}
+          {panes.map((paneId) => {
+            /*
+              A new tab has no page to composite, so the pane gives its area to
+              the command center: opening a tab lands on the agents rather than
+              on an empty rectangle. Navigating anywhere hands the area straight
+              back, because this reads the tab's address rather than a mode the
+              chrome would then have to remember to leave.
+            */
+            const isNewTab = showsCommandCenter(snapshot, paneId);
+
+            return (
+              <div className="pane-slot" key={paneId}>
+                {snapshot.splitEnabled && (
+                  <div className="pane-head">
+                    <span className="pane-label">{paneId}</span>
+                    <IconButton
+                      label={`Close ${paneId} pane`}
+                      onClick={() => void bridge.setSplitEnabled(false)}
+                    >
+                      <X size={13} strokeWidth={1.5} aria-hidden="true" />
+                    </IconButton>
+                  </div>
+                )}
+                <Pane
+                  paneId={paneId}
+                  isActive={snapshot.activePaneId === paneId}
+                  isCollapsed={isNewTab}
+                  onBounds={handleBounds}
+                  onFocus={(next) => void bridge.setActivePane(next)}
+                  onDropTab={(tabId, target) => void bridge.moveTab(tabId, target)}
+                />
+
+                {/*
+                  The drop and focus handling is repeated here rather than left
+                  to the collapsed pane underneath, which is zero pixels tall and
+                  can no longer be aimed at. Dragging a tab into a pane showing a
+                  new tab is exactly when someone would want to.
+                */}
+                {isNewTab && (
+                  <div
+                    className="pane-newtab"
+                    onMouseDown={() => void bridge.setActivePane(paneId)}
+                    onDragOver={(event) => event.preventDefault()}
+                    onDrop={(event) => {
+                      event.preventDefault();
+                      const tabId = event.dataTransfer.getData("text/plain");
+                      if (tabId.length > 0) void bridge.moveTab(tabId, paneId);
+                    }}
                   >
-                    <X size={13} strokeWidth={1.5} aria-hidden="true" />
-                  </IconButton>
-                </div>
-              )}
-              <Pane
-                paneId={paneId}
-                isActive={snapshot.activePaneId === paneId}
-                onBounds={handleBounds}
-                onFocus={(next) => void bridge.setActivePane(next)}
-                onDropTab={(tabId, target) => void bridge.moveTab(tabId, target)}
-              />
-            </div>
-          ))}
+                    <CommandCenter snapshot={agents} variant="page" />
+                  </div>
+                )}
+              </div>
+            );
+          })}
 
           {/*
             With split off there is no second pane to aim at, so dragging a tab
@@ -922,7 +1074,11 @@ export function App(): React.JSX.Element {
           )}
 
           {agentOpen && (
-            <AgentPanel browser={snapshot} onClose={() => setAgentOpen(false)} />
+            <AgentPanel
+              snapshot={agents}
+              browser={snapshot}
+              onClose={() => setAgentOpen(false)}
+            />
           )}
 
           {reader.status !== "closed" && (
@@ -1048,6 +1204,15 @@ export function App(): React.JSX.Element {
               }}
               onDeleteStagedPasswords={() => {
                 void window.openstrawberry.migration.deleteStagedPasswords().then(setMigration);
+              }}
+              defaultBrowser={defaultBrowser}
+              onSetDefaultBrowser={() => {
+                // The panel stays open on purpose: on Windows the request only
+                // opens Settings, and the row is where the person comes back to.
+                void window.openstrawberry.defaultBrowser
+                  .request()
+                  .then(setDefaultBrowser)
+                  .catch(() => undefined);
               }}
             />
           )}

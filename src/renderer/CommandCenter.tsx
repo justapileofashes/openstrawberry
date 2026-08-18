@@ -222,11 +222,21 @@ function ProviderFields({
 }
 
 /**
+ * Where this surface is being drawn.
+ *
+ * `sheet` is the companion panel's own settings surface, opened over the
+ * transcript and closed again. `page` is a new tab: the same three sections, but
+ * they are what the tab *is* rather than something covering it, so there is
+ * nothing to dismiss and no close control to offer.
+ */
+export type CommandCenterVariant = "sheet" | "page";
+
+/**
  * The agent command center.
  *
- * It sits over the companion panel rather than beside it, because the panel is
- * already a grid column the pane gave up its width for — taking more would move
- * the page out from under the user to show them a settings sheet.
+ * As a sheet it sits over the companion panel rather than beside it, because the
+ * panel is already a grid column the pane gave up its width for — taking more
+ * would move the page out from under the user to show them a settings sheet.
  *
  * Three things live here, in the order a user meets them: what the orchestrator
  * runs on, the roster of agents and what each one is pinned to, and the keys
@@ -236,10 +246,12 @@ function ProviderFields({
  */
 export function CommandCenter({
   snapshot,
+  variant = "sheet",
   onClose
 }: {
   readonly snapshot: AgentSnapshot;
-  readonly onClose: () => void;
+  readonly variant?: CommandCenterVariant;
+  readonly onClose?: () => void;
 }): React.JSX.Element {
   const bridge = window.openstrawberry.agents;
   const config = snapshot.config;
@@ -313,24 +325,38 @@ export function CommandCenter({
     [bridge, keyDraft, config]
   );
 
-  // Deliberately not `.glass`: this sheet covers the transcript rather than
+  const isPage = variant === "page";
+
+  // Deliberately not `.glass`: as a sheet this covers the transcript rather than
   // sitting beside it, and a backdrop blur would turn the log underneath into
   // texture instead of hiding it.
   return (
-    <section className="cc" role="dialog" aria-label="Agent command center">
+    <section
+      className={`cc${isPage ? " is-page" : ""}`}
+      /*
+       * A dialog only when it behaves like one. As a new tab this is the tab's
+       * own content, and announcing it as a dialog would tell a screen-reader
+       * user there is something to dismiss to get back to the page — when this
+       * is the page.
+       */
+      role={isPage ? "region" : "dialog"}
+      aria-label="Agent command center"
+    >
       <header className="set-head">
         <div>
           <span className="eyebrow">Command center</span>
           <h2>Agents</h2>
         </div>
-        <button
-          type="button"
-          className="icon-btn"
-          onClick={onClose}
-          aria-label="Close command center"
-        >
-          <X size={15} strokeWidth={1.5} aria-hidden="true" />
-        </button>
+        {onClose !== undefined && (
+          <button
+            type="button"
+            className="icon-btn"
+            onClick={onClose}
+            aria-label="Close command center"
+          >
+            <X size={15} strokeWidth={1.5} aria-hidden="true" />
+          </button>
+        )}
       </header>
 
       <div className="set-body cc-body">

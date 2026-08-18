@@ -35,6 +35,7 @@ import type { GroupColour } from "./tab-groups.js";
 import type { BookmarkPage } from "./bookmarks.js";
 import type { Plan, PlanDraftPayload } from "./orchestration.js";
 import type { UpdateState } from "./updates.js";
+import type { DefaultBrowserState } from "./default-browser.js";
 
 /** Channel names, shared so both sides of the boundary cannot drift apart. */
 export const IPC_CHANNELS = {
@@ -116,7 +117,9 @@ export const IPC_CHANNELS = {
   updateState: "update:state",
   updateCheck: "update:check",
   updateDownload: "update:download",
-  updateInstall: "update:install"
+  updateInstall: "update:install",
+  defaultBrowserState: "default-browser:state",
+  defaultBrowserRequest: "default-browser:request"
 } as const;
 
 /** Push channel the main process uses to broadcast browser state changes. */
@@ -499,6 +502,22 @@ export interface UpdateBridge {
   readonly onState: (listener: (state: UpdateState) => void) => () => void;
 }
 
+/**
+ * The default-browser request.
+ *
+ * Two verbs and no arguments between them, which is the whole safety story:
+ * `request` names no protocol and no URL, so a compromised renderer can ask for
+ * exactly one registration - the one the product exists to make - and nothing
+ * else. Every refusal comes back as state carrying its reasons, so a build that
+ * must not register itself is something the panel can explain rather than an
+ * error it has to swallow.
+ */
+export interface DefaultBrowserBridge {
+  readonly getState: () => Promise<DefaultBrowserState>;
+  /** Asks the OS. May end in `pending` where the person finishes in Settings. */
+  readonly request: () => Promise<DefaultBrowserState>;
+}
+
 export interface OpenStrawberryBridge {
   readonly shell: {
     /** Available synchronously so first paint does not wait on IPC. */
@@ -516,4 +535,5 @@ export interface OpenStrawberryBridge {
   readonly media: MediaBridge;
   readonly plans: PlanBridge;
   readonly updates: UpdateBridge;
+  readonly defaultBrowser: DefaultBrowserBridge;
 }

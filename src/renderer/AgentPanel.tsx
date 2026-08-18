@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowUp, SlidersHorizontal, Square, X } from "lucide-react";
 import {
   activeCompanion as findActiveCompanion,
-  emptySnapshot,
   pendingApproval as findPendingApproval,
   type AgentSnapshot
 } from "../shared/agents.js";
@@ -33,26 +32,26 @@ import {
  * the chrome's `ResizeObserver` then re-reports the smaller viewport.
  */
 export function AgentPanel({
+  snapshot,
   browser,
   onClose
 }: {
+  /*
+   * Passed in rather than subscribed to here. A new tab draws the same command
+   * center from the same state, and two subscriptions to one pushed snapshot is
+   * two chances for the roster on screen to disagree with itself.
+   */
+  readonly snapshot: AgentSnapshot;
   readonly browser: BrowserSnapshot;
   readonly onClose: () => void;
 }): React.JSX.Element {
   const bridge = window.openstrawberry.agents;
-  const [snapshot, setSnapshot] = useState<AgentSnapshot>(emptySnapshot);
   const [task, setTask] = useState("");
   const [contextTabIds, setContextTabIds] = useState<readonly string[]>(() =>
     defaultContextTabIds(browser)
   );
   const [commandCenterOpen, setCommandCenterOpen] = useState(false);
   const logRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const unsubscribe = bridge.onState(setSnapshot);
-    void bridge.getSnapshot().then(setSnapshot);
-    return unsubscribe;
-  }, [bridge]);
 
   const run = useMemo(() => visibleRun(snapshot), [snapshot]);
   const status = run?.status ?? null;

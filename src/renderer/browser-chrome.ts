@@ -11,6 +11,7 @@ import type {
   BrowserTabState,
   BrowserViewport
 } from "../shared/browser.js";
+import { BLANK_PAGE } from "../shared/desktop-shell.js";
 import type { TabGroup } from "../shared/tab-groups.js";
 
 /**
@@ -113,6 +114,25 @@ export function focusedTab(snapshot: BrowserSnapshot): BrowserTabState | null {
 /** Panes that currently host a visible native view. */
 export function visiblePanes(snapshot: BrowserSnapshot): readonly BrowserPaneId[] {
   return snapshot.splitEnabled ? (["primary", "secondary"] as const) : (["primary"] as const);
+}
+
+/**
+ * Whether a pane should draw the command center instead of a page.
+ *
+ * A new tab has nowhere to go yet, so rather than composite an empty native view
+ * the pane hands its area to the agents surface. The test is the tab's address
+ * rather than a flag on the tab: navigating away from the blank page is what ends
+ * the new-tab state, and reading the address is the only way that cannot drift
+ * out of step with where the tab actually is.
+ *
+ * A pane holding no tab at all is not a new tab - it is an empty pane - and gets
+ * nothing.
+ */
+export function showsCommandCenter(
+  snapshot: BrowserSnapshot,
+  paneId: BrowserPaneId
+): boolean {
+  return activeTab(snapshot, paneId)?.url === BLANK_PAGE;
 }
 
 /**

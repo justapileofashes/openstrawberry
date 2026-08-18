@@ -7,6 +7,43 @@ import {
   type AppearanceSettings
 } from "../shared/settings.js";
 import type { MigrationOverview } from "../shared/migration.js";
+import {
+  canPressSetDefault,
+  type DefaultBrowserState
+} from "../shared/default-browser.js";
+
+/**
+ * What the default-browser row says, for each state the request can be in.
+ *
+ * The wording is here rather than in the trusted process for the usual reason:
+ * a state is a code, and codes are what cross IPC. It is also the only place
+ * that knows Windows finishes elsewhere, which is the one thing a person must
+ * be told before they press the button and go looking for a confirmation that
+ * is not coming.
+ */
+function defaultBrowserHint(state: DefaultBrowserState | null): string {
+  if (state === null) return "Checking with the system.";
+
+  switch (state.status) {
+    case "default":
+      return "Links from other applications open here.";
+    case "pending":
+      return "Windows asks you to confirm. Pick OpenStrawberry under Web browser in Settings.";
+    case "not-default":
+      return state.method === "system-settings"
+        ? "Opens Windows Settings, where the choice is yours to make."
+        : "Links from other applications will open here.";
+    case "unavailable":
+      return state.blockers.includes("not-packaged")
+        ? "Only an installed build can register itself, so this development run will not."
+        : "This system has no way to be asked.";
+  }
+}
+
+function defaultBrowserLabel(state: DefaultBrowserState | null): string {
+  if (state !== null && state.status === "pending") return "Open Settings again";
+  return "Set as default";
+}
 
 function Row({
   label,
@@ -41,11 +78,16 @@ export function SettingsPanel({
   onClose,
   migration,
   onRunMigration,
-  onDeleteStagedPasswords
+  onDeleteStagedPasswords,
+  defaultBrowser,
+  onSetDefaultBrowser
 }: {
   readonly settings: AppearanceSettings;
   readonly onChange: (next: AppearanceSettings) => void;
   readonly onClose: () => void;
+  /** Null while the system is still being asked. */
+  readonly defaultBrowser: DefaultBrowserState | null;
+  readonly onSetDefaultBrowser: () => void;
   /** Null while the overview is loading, or if migration is unavailable. */
   readonly migration: MigrationOverview | null;
   readonly onRunMigration: () => void;
@@ -137,6 +179,31 @@ export function SettingsPanel({
           }
         />
 
+        {/*
+          Placed under the shine controls it modifies rather than beside the
+          media controls, because what it changes is the highlight. The hint
+          names the whole machine rather than the page: loopback hears the
+          system mix, so a track playing in another application moves the field
+          too, and someone would otherwise reasonably read this as "reacts to
+          tabs".
+        */}
+        <Row
+          label="React to audio"
+          hint="The shine speeds up and brightens with whatever the machine is playing."
+          control={
+            <button
+              type="button"
+              role="switch"
+              aria-checked={settings.audioReactive}
+              className={`switch${settings.audioReactive ? " is-on" : ""}`}
+              disabled={!settings.shineEnabled || !settings.motionEnabled}
+              onClick={() => patch({ audioReactive: !settings.audioReactive })}
+            >
+              <span className="switch-dot" />
+            </button>
+          }
+        />
+
         <Row
           label="Motion"
           hint="Turns off non-essential movement. Glass itself stays."
@@ -150,6 +217,31 @@ export function SettingsPanel({
             >
               <span className="switch-dot" />
             </button>
+          }
+        />
+
+        {/*
+          The one row here that changes something outside the application. It
+          states the outcome before the press rather than after it, because on
+          Windows the press only opens Settings, and a button that quietly does
+          less than its label says is worse than one that says less.
+        */}
+        <Row
+          label="Default browser"
+          hint={defaultBrowserHint(defaultBrowser)}
+          control={
+            defaultBrowser !== null && defaultBrowser.status === "default" ? (
+              <span className="set-note">Already default</span>
+            ) : (
+              <button
+                type="button"
+                className="text-btn"
+                disabled={defaultBrowser === null || !canPressSetDefault(defaultBrowser)}
+                onClick={onSetDefaultBrowser}
+              >
+                {defaultBrowserLabel(defaultBrowser)}
+              </button>
+            )
           }
         />
 

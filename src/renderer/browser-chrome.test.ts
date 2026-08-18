@@ -10,6 +10,7 @@ import {
   groupForTab,
   hiddenCountForGroup,
   railTabsForPane,
+  showsCommandCenter,
   tabAccessibleName,
   tabsForPane,
   viewportFromRect,
@@ -155,6 +156,44 @@ describe("pane selectors", () => {
   it("reports only the primary pane as visible until split is enabled", () => {
     expect(visiblePanes(snapshot())).toEqual(["primary"]);
     expect(visiblePanes(snapshot({ splitEnabled: true }))).toEqual(["primary", "secondary"]);
+  });
+});
+
+describe("showsCommandCenter", () => {
+  it("gives a new tab's area to the command center", () => {
+    expect(showsCommandCenter(snapshot({ activePaneId: "secondary" }), "secondary")).toBe(true);
+  });
+
+  it("leaves a pane showing a real page alone", () => {
+    // The native view is composited into the pane's bounds, so drawing here
+    // while a page is loaded would put the surface behind it.
+    expect(showsCommandCenter(snapshot(), "primary")).toBe(false);
+  });
+
+  it("hands the area back the moment the tab navigates", () => {
+    const navigated = snapshot({
+      tabs: [tab({ id: "tab-1", url: "https://example.com/" })],
+      panes: [
+        { id: "primary", activeTabId: "tab-1" },
+        { id: "secondary", activeTabId: null }
+      ]
+    });
+
+    expect(showsCommandCenter(navigated, "primary")).toBe(false);
+  });
+
+  it("draws nothing for a pane holding no tab at all", () => {
+    // An empty pane is not a new tab, and inventing one would put a surface in
+    // a pane the user never opened anything in.
+    const empty = snapshot({
+      tabs: [],
+      panes: [
+        { id: "primary", activeTabId: null },
+        { id: "secondary", activeTabId: null }
+      ]
+    });
+
+    expect(showsCommandCenter(empty, "primary")).toBe(false);
   });
 });
 

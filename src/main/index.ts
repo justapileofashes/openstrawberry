@@ -1,4 +1,14 @@
-import { app, BrowserWindow, dialog, Menu, net, safeStorage, session, shell } from "electron";
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  Menu,
+  net,
+  safeStorage,
+  session,
+  shell,
+  webContents
+} from "electron";
 import { existsSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { join } from "node:path";
@@ -65,6 +75,7 @@ import { callProvider } from "./http-provider.js";
 import { callCli, type SpawnedProcess } from "./cli-provider.js";
 import { PlanRunner } from "./plan-runner.js";
 import { UpdateManager } from "./update-manager.js";
+import { readDefaultBrowserState, requestDefaultBrowser } from "./default-browser.js";
 import {
   parsePlanDecisionPayload,
   parsePlanDraftPayload,
@@ -73,6 +84,7 @@ import {
 import { parseReaderTabPayload, type ReaderState } from "../shared/reader.js";
 import { WorkspaceStore } from "./workspace-store.js";
 import { readMediaState, runMediaAction } from "./media.js";
+import { installLoopbackAudio } from "./loopback-audio.js";
 import {
   emptyMediaState,
   parseMediaCommandPayload,
@@ -316,6 +328,29 @@ function createWindow(): void {
   setTrustedRendererPolicy({
     trustedWebContentsId: window.webContents.id,
     allowedUrlPrefixes: buildAllowedUrlPrefixes(DEV_SERVER_URL)
+  });
+
+  /*
+   * The shine's audio tap, bound to the same WebContents the IPC trust boundary
+   * just claimed. This runs after the blanket denial applied at startup and
+   * deliberately narrows rather than lifts it: see the module for what the
+   * handler is structurally unable to hand back. Guests are untouched - they
+   * render into the profile partition, which is left with no display-media
+   * handler at all and so refuses capture outright.
+   */
+  installLoopbackAudio({
+    session: window.webContents.session,
+    trustedWebContentsId: window.webContents.id,
+    platform: process.platform,
+    webContentsIdForFrame: (frame) => {
+      try {
+        return webContents.fromFrame(frame as Electron.WebFrameMain)?.id ?? null;
+      } catch {
+        // A frame that has already gone cannot be identified, and unidentified
+        // is refused.
+        return null;
+      }
+    }
   });
 
   const profileSession = session.fromPartition(PROFILE_PARTITION);
@@ -846,6 +881,9 @@ function registerIpcHandlers(): void {
   registerTrustedQuery(IPC_CHANNELS.updateCheck, () => requireUpdateManager().check());
   registerTrustedQuery(IPC_CHANNELS.updateDownload, () => requireUpdateManager().download());
   registerTrustedQuery(IPC_CHANNELS.updateInstall, () => requireUpdateManager().install());
+
+  registerTrustedQuery(IPC_CHANNELS.defaultBrowserState, () => readDefaultBrowserState());
+  registerTrustedQuery(IPC_CHANNELS.defaultBrowserRequest, () => requestDefaultBrowser());
 
   registerTrustedQuery(IPC_CHANNELS.agentSnapshot, () => requireAgentManager().snapshot());
 

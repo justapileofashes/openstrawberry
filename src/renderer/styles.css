@@ -113,6 +113,11 @@
   --shine-intensity: 34;
   --shine-duration: 31s;
 
+  /* The audio reaction. Both rest at 1; the visualiser writes them per frame
+     while something is playing, and removes them when it stops. */
+  --shine-audio-gain: 1;
+  --shine-audio-punch: 1;
+
   /* Overshoot easing: the little rebound that makes the tab morph feel liquid. */
   --ease-liquid: cubic-bezier(0.34, 1.56, 0.64, 1);
 
@@ -190,13 +195,28 @@ body {
   pointer-events: none;
 }
 
+/*
+ * The audio reaction, as two multipliers against the settings above.
+ *
+ * Both rest at 1, so a silent machine - or one where capture was refused, or a
+ * user who turned the reaction off - renders exactly the appearance the
+ * appearance panel describes. Nothing here has an opinion about the look; it
+ * only scales whatever the user already chose.
+ */
+.ambient-pulse {
+  position: absolute;
+  inset: 0;
+  transform: scale(var(--shine-audio-punch, 1));
+  will-change: transform;
+}
+
 .ambient-blob {
   position: absolute;
   border-radius: 50%;
   background: radial-gradient(
     closest-side,
-    rgba(var(--shine-rgb), calc(var(--shine-intensity) * 0.019)),
-    rgba(var(--shine-rgb), calc(var(--shine-intensity) * 0.007)) 52%,
+    rgba(var(--shine-rgb), calc(var(--shine-intensity) * var(--shine-audio-gain, 1) * 0.019)),
+    rgba(var(--shine-rgb), calc(var(--shine-intensity) * var(--shine-audio-gain, 1) * 0.007)) 52%,
     transparent 76%
   );
   /* Heavy blur so neighbouring pools bleed into one field rather than reading
@@ -215,9 +235,30 @@ body {
   animation-play-state: paused;
 }
 
+/*
+ * Both switches also neutralise the audio reaction here, in CSS, even though
+ * the engine is already stopped by the time either is set. A pulsing highlight
+ * is precisely the movement someone turns motion off to be rid of, so it is
+ * worth being unable to leave one behind: a stale custom property cannot
+ * outlive the setting that permitted it.
+ */
+:root.motion-off .ambient-pulse,
+:root.shine-off .ambient-pulse {
+  transform: none;
+}
+
+:root.motion-off .ambient-blob {
+  --shine-audio-gain: 1;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .ambient-blob {
     animation-play-state: paused;
+    --shine-audio-gain: 1;
+  }
+
+  .ambient-pulse {
+    transform: none;
   }
 }
 
@@ -1063,6 +1104,32 @@ body {
   min-height: 0;
 }
 
+/*
+ * A pane showing a new tab is squeezed to nothing rather than hidden. The
+ * ResizeObserver reports the zero rect, the main process shrinks the native view
+ * away, and the command center below is then the only thing in the slot. Merely
+ * hiding it would leave a live view composited over the top.
+ */
+.pane.is-collapsed {
+  flex: 0 0 0;
+  height: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/*
+ * What a new tab is: the command center, taking the area the collapsed pane gave
+ * up. A flex child rather than an overlay, so the pane head keeps its row while
+ * the workspace is split.
+ */
+.pane-newtab {
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+}
+
 .pane-slot:has(.pane.is-active) {
   box-shadow:
     inset 0 0 0 1px rgba(232, 227, 213, 0.16),
@@ -1195,6 +1262,17 @@ body {
 .set-control {
   display: flex;
   justify-content: flex-end;
+}
+
+/*
+ * A settled fact where a control would otherwise sit. Sized and coloured like a
+ * .text-btn at rest but with no hover and no cursor, so a row that has nothing
+ * left to do does not look like one that does.
+ */
+.set-note {
+  font-size: 12px;
+  color: var(--ink-faint);
+  white-space: nowrap;
 }
 
 .set-foot {
@@ -1738,6 +1816,33 @@ input[type="range"]:disabled {
   to {
     opacity: 1;
   }
+}
+
+/*
+ * The same surface as a new tab's whole content. It fills the slot instead of
+ * covering something, so it takes no sheet backdrop and no lift — a pane is
+ * already a lit, rounded card and a second one inside it would read as a dialog
+ * the user has to get out of.
+ */
+.cc.is-page {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  animation: sheet-in var(--d-base) var(--ease);
+}
+
+/*
+ * A pane is as wide as the window, and form rows dragged out to that width are
+ * unreadable. Both the head and the body are capped to one measure and centred
+ * together, so the heading still sits above the fields it names.
+ */
+.cc.is-page > .set-head,
+.cc.is-page > .cc-body {
+  width: 100%;
+  max-width: 46rem;
+  margin-inline: auto;
 }
 
 .cc-body {

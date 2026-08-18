@@ -40,6 +40,7 @@ import type { GroupColour } from "../shared/tab-groups.js";
 import type { BookmarkPage } from "../shared/bookmarks.js";
 import type { Plan, PlanDraftPayload } from "../shared/orchestration.js";
 import type { UpdateState } from "../shared/updates.js";
+import type { DefaultBrowserState } from "../shared/default-browser.js";
 import type { BrowserPaneId, BrowserSnapshot, BrowserViewport } from "../shared/browser.js";
 import type {
   AgentConfigStatus,
@@ -133,7 +134,9 @@ const CHANNEL: Channels = {
   updateState: "update:state",
   updateCheck: "update:check",
   updateDownload: "update:download",
-  updateInstall: "update:install"
+  updateInstall: "update:install",
+  defaultBrowserState: "default-browser:state",
+  defaultBrowserRequest: "default-browser:request"
 };
 
 const STATE_EVENT: typeof BrowserStateEvent = "browser:state";
@@ -385,6 +388,14 @@ const api: OpenStrawberryBridge = {
       electron.ipcRenderer.on(UPDATE_EVENT, handler);
       return () => electron.ipcRenderer.removeListener(UPDATE_EVENT, handler);
     }
+  },
+  defaultBrowser: {
+    getState: async (): Promise<DefaultBrowserState> =>
+      (await electron.ipcRenderer.invoke(CHANNEL.defaultBrowserState)) as DefaultBrowserState,
+    // No arguments, deliberately: the trusted process decides which protocols a
+    // browser must own, so this asks for one fixed registration or nothing.
+    request: async (): Promise<DefaultBrowserState> =>
+      (await electron.ipcRenderer.invoke(CHANNEL.defaultBrowserRequest)) as DefaultBrowserState
   },
   plans: {
     getPlans: async (): Promise<readonly Plan[]> =>
