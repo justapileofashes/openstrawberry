@@ -88,6 +88,60 @@ export interface PersistedTab {
   readonly groupId: string | null;
 }
 
+/* ------------------------------------------------------------------------- */
+/* Attachment bookkeeping                                                     */
+/* ------------------------------------------------------------------------- */
+
+/**
+ * Which tabs should be attached to the window right now.
+ *
+ * Exactly the active tab of each visible pane. An inactive tab stays alive but
+ * unattached, so switching back is instant while only what is on screen costs
+ * compositing.
+ *
+ * Pure, because getting this wrong is how native views end up composited over
+ * the chrome or left attached to a window that is closing - both of which are
+ * hard to see by eye and easy to check here.
+ */
+export function visibleTabIds(
+  activeByPane: Readonly<Record<BrowserPaneId, string | null>>,
+  splitEnabled: boolean
+): ReadonlySet<string> {
+  const panes: readonly BrowserPaneId[] = splitEnabled ? PANE_IDS : ["primary"];
+
+  const visible = new Set<string>();
+  for (const paneId of panes) {
+    const tabId = activeByPane[paneId];
+    if (tabId !== null) visible.add(tabId);
+  }
+
+  return visible;
+}
+
+/**
+ * What to detach and what to attach, given what is attached now.
+ *
+ * Detachments are listed first because the caller must apply them first: a tab
+ * moving between panes appears in both sets, and attaching before detaching
+ * would leave the bookkeeping claiming it twice.
+ */
+export function attachmentPlan(
+  attached: ReadonlySet<string>,
+  visible: ReadonlySet<string>
+): { readonly toDetach: readonly string[]; readonly toAttach: readonly string[] } {
+  const toDetach: string[] = [];
+  for (const tabId of attached) {
+    if (!visible.has(tabId)) toDetach.push(tabId);
+  }
+
+  const toAttach: string[] = [];
+  for (const tabId of visible) {
+    if (!attached.has(tabId)) toAttach.push(tabId);
+  }
+
+  return { toDetach, toAttach };
+}
+
 export interface PersistedSession {
   readonly version: number;
   readonly tabs: readonly PersistedTab[];

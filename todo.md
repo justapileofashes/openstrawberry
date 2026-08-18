@@ -41,7 +41,7 @@ passes. Planned work is never marked done.
 - [x] Tolerate a byte-order mark in the session file so an external editor cannot silently discard a session.
 - [x] Destruction-safe teardown: release views at the window `close` lifecycle, idempotent, tolerant of a destroyed parent.
 - [x] Validate: real pages render in both split panes, session restore works, and a normal window close exits cleanly with no main-process error dialog.
-- [ ] Add unit coverage for attach/detach bookkeeping; teardown is currently proven by the launch-and-close smoke test only.
+- [x] Add unit coverage for attach/detach bookkeeping. The decision — which tabs should be attached, and what to detach and attach to get there — is now two pure functions the manager calls, so the case that produced "Object has been destroyed" dialogs is checkable without a window. Detachments are applied first, which is what stops a tab moving between panes being claimed twice.
 
 ## M3 — Obsidian Relay chrome
 

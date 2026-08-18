@@ -18,9 +18,11 @@
 import { WebContentsView, type BrowserWindow, type Session } from "electron";
 import { writeFileSync, readFileSync } from "node:fs";
 import {
+  attachmentPlan,
   PANE_IDS,
   parsePersistedSession,
   toPersistedSession,
+  visibleTabIds,
   type BrowserPaneId,
   type BrowserSnapshot,
   type BrowserTabState,
@@ -657,16 +659,23 @@ export class BrowserManager {
     if (this.destroyed || this.window.isDestroyed()) return;
 
     const visiblePanes: readonly BrowserPaneId[] = this.splitEnabled ? PANE_IDS : ["primary"];
-    const visibleTabIds = new Set(
-      visiblePanes
-        .map((paneId) => this.panes[paneId].activeTabId)
-        .filter((tabId): tabId is string => tabId !== null)
+
+    /*
+     * The decision is made by pure functions so it can be tested without a
+     * window. Detachments are applied first, which matters when a tab moves
+     * between panes: it is in both sets, and attaching first would leave the
+     * bookkeeping claiming it twice.
+     */
+    const visible = visibleTabIds(
+      {
+        primary: this.panes.primary.activeTabId,
+        secondary: this.panes.secondary.activeTabId
+      },
+      this.splitEnabled
     );
 
-    for (const tabId of [...this.attachedTabIds]) {
-      if (visibleTabIds.has(tabId)) continue;
-      this.detachTab(tabId);
-    }
+    const { toDetach } = attachmentPlan(this.attachedTabIds, visible);
+    for (const tabId of toDetach) this.detachTab(tabId);
 
     for (const paneId of visiblePanes) {
       const tabId = this.panes[paneId].activeTabId;
