@@ -59,6 +59,12 @@ import { TrackerBlocker } from "./tracker-blocker.js";
 import { extractReaderDocument } from "./reader.js";
 import { parseReaderTabPayload, type ReaderState } from "../shared/reader.js";
 import { WorkspaceStore } from "./workspace-store.js";
+import { readMediaState, runMediaAction } from "./media.js";
+import {
+  emptyMediaState,
+  parseMediaCommandPayload,
+  parseMediaTabPayload
+} from "../shared/media.js";
 import {
   parseSaveWorkspacePayload,
   parseWorkspaceIdPayload
@@ -633,6 +639,21 @@ function registerIpcHandlers(): void {
   registerTrustedHandler(IPC_CHANNELS.workspaceRemove, parseWorkspaceIdPayload, (payload) =>
     requireWorkspaceStore().remove(payload.workspaceId)
   );
+
+  /*
+   * Media. The renderer names an action from a closed set; the scripts live in
+   * `media.ts` and are selected by that validated identifier, so nothing the
+   * renderer sends is ever evaluated in a page.
+   */
+  registerTrustedHandler(IPC_CHANNELS.mediaState, parseMediaTabPayload, async (payload) => {
+    const contents = requireBrowserManager().contentsFor(payload.tabId);
+    return contents === null ? emptyMediaState() : readMediaState(contents);
+  });
+
+  registerTrustedHandler(IPC_CHANNELS.mediaCommand, parseMediaCommandPayload, async (payload) => {
+    const contents = requireBrowserManager().contentsFor(payload.tabId);
+    return contents === null ? emptyMediaState() : runMediaAction(contents, payload.action);
+  });
 
   registerTrustedQuery(IPC_CHANNELS.agentSnapshot, () => requireAgentManager().snapshot());
 

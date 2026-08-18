@@ -7,11 +7,16 @@ import {
   Columns2,
   Download,
   Globe,
+  Pause,
+  PictureInPicture2,
+  Play,
   Plus,
   RotateCw,
   Settings2,
   ShieldCheck,
   Square,
+  Volume2,
+  VolumeX,
   X
 } from "lucide-react";
 import type { BrowserPaneId, BrowserSnapshot } from "../shared/browser.js";
@@ -29,6 +34,7 @@ import { ReaderView } from "./ReaderView.js";
 import { CommandPalette } from "./CommandPalette.js";
 import { WorkspacesPanel } from "./WorkspacesPanel.js";
 import { emptyWorkspaceSnapshot, type WorkspaceSnapshot } from "../shared/workspaces.js";
+import { emptyMediaState, type MediaAction, type MediaState } from "../shared/media.js";
 import { commandForChord, isPaletteChord } from "./command-palette.js";
 import { SettingsPanel } from "./SettingsPanel.js";
 import { WindowControls } from "./WindowControls.js";
@@ -150,6 +156,7 @@ export function App(): React.JSX.Element {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [workspacesOpen, setWorkspacesOpen] = useState(false);
   const [workspaces, setWorkspaces] = useState<WorkspaceSnapshot>(emptyWorkspaceSnapshot);
+  const [media, setMedia] = useState<MediaState>(emptyMediaState);
   const addressRef = useRef<HTMLInputElement>(null);
   const [appearance, setAppearance] = useState<AppearanceSettings>(loadAppearance);
   const [migration, setMigration] = useState<MigrationOverview | null>(null);
@@ -243,6 +250,56 @@ export function App(): React.JSX.Element {
   useEffect(() => {
     setReader(closedReaderState());
   }, [current?.id, current?.url]);
+
+  /*
+   * Media state is polled rather than pushed.
+   *
+   * There is no main-process event for "this page started playing" - the fact
+   * lives in the page's DOM, and reading it means asking. A slow, fixed interval
+   * is the honest trade: the control appears a beat late rather than the trusted
+   * process running a script in every page continuously.
+   *
+   * The audible flag from the tab snapshot is what makes that acceptable: a page
+   * that is making noise is polled, and a silent one is asked once per
+   * navigation and then left alone.
+   */
+  useEffect(() => {
+    const tabId = current?.id;
+    if (tabId === undefined || current?.url === BLANK_PAGE) {
+      setMedia(emptyMediaState());
+      return;
+    }
+
+    let cancelled = false;
+    const read = (): void => {
+      void window.openstrawberry.media
+        .getState(tabId)
+        .then((next) => {
+          if (!cancelled) setMedia(next);
+        })
+        .catch(() => undefined);
+    };
+
+    read();
+    const timer = window.setInterval(read, 2000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [current?.id, current?.url]);
+
+  const runMedia = useCallback(
+    (action: MediaAction): void => {
+      const tabId = current?.id;
+      if (tabId === undefined) return;
+      void window.openstrawberry.media
+        .run(tabId, action)
+        .then(setMedia)
+        .catch(() => undefined);
+    },
+    [current?.id]
+  );
 
   /**
    * Runs one command by id.
@@ -588,6 +645,45 @@ export function App(): React.JSX.Element {
                 </span>
               </IconButton>
             )}
+            {/*
+              Media controls appear only when the page actually has media, so
+              the cluster does not carry a permanently dead control. Every
+              button's action is an identifier from a closed set; none of them
+              can express code.
+            */}
+            {media.hasMedia && (
+              <>
+                <IconButton
+                  label={media.playing ? "Pause media" : "Play media"}
+                  onClick={() => runMedia(media.playing ? "pause" : "play")}
+                >
+                  {media.playing ? (
+                    <Pause size={16} strokeWidth={1.5} aria-hidden="true" />
+                  ) : (
+                    <Play size={16} strokeWidth={1.5} aria-hidden="true" />
+                  )}
+                </IconButton>
+                <IconButton
+                  label={media.muted ? "Unmute media" : "Mute media"}
+                  onClick={() => runMedia(media.muted ? "unmute" : "mute")}
+                >
+                  {media.muted ? (
+                    <VolumeX size={16} strokeWidth={1.5} aria-hidden="true" />
+                  ) : (
+                    <Volume2 size={16} strokeWidth={1.5} aria-hidden="true" />
+                  )}
+                </IconButton>
+                {media.canPictureInPicture && (
+                  <IconButton
+                    label="Picture in picture"
+                    onClick={() => runMedia("picture-in-picture")}
+                  >
+                    <PictureInPicture2 size={16} strokeWidth={1.5} aria-hidden="true" />
+                  </IconButton>
+                )}
+              </>
+            )}
+
             {/*
               Reader mode is offered only for a real page. On about:blank there
               is nothing to lay out, and a control that always reports failure is

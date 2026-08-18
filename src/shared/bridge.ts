@@ -30,6 +30,7 @@ import type { DownloadSnapshot } from "./downloads.js";
 import type { TrackingSnapshot } from "./tracking.js";
 import type { ReaderState } from "./reader.js";
 import type { WorkspaceSnapshot } from "./workspaces.js";
+import type { MediaAction, MediaState } from "./media.js";
 
 /** Channel names, shared so both sides of the boundary cannot drift apart. */
 export const IPC_CHANNELS = {
@@ -95,7 +96,9 @@ export const IPC_CHANNELS = {
   workspaceSnapshot: "workspace:snapshot",
   workspaceSave: "workspace:save",
   workspaceOpen: "workspace:open",
-  workspaceRemove: "workspace:remove"
+  workspaceRemove: "workspace:remove",
+  mediaState: "media:state",
+  mediaCommand: "media:command"
 } as const;
 
 /** Push channel the main process uses to broadcast browser state changes. */
@@ -384,6 +387,23 @@ export interface WorkspaceBridge {
   readonly remove: (workspaceId: string) => Promise<WorkspaceSnapshot>;
 }
 
+/**
+ * Media controls for HTML video and audio.
+ *
+ * `run` takes an action identifier from a closed set, never code. The trusted
+ * process holds one fixed script per action and selects by that identifier, so
+ * there is no field on this surface through which a renderer could get
+ * JavaScript evaluated in a page - the difference between a media control and a
+ * remote-execution primitive.
+ *
+ * Each action is something the user could already do with the page's own
+ * controls, so the chrome offering it grants no new capability.
+ */
+export interface MediaBridge {
+  readonly getState: (tabId: string) => Promise<MediaState>;
+  readonly run: (tabId: string, action: MediaAction) => Promise<MediaState>;
+}
+
 export interface OpenStrawberryBridge {
   readonly shell: {
     /** Available synchronously so first paint does not wait on IPC. */
@@ -398,4 +418,5 @@ export interface OpenStrawberryBridge {
   readonly tracking: TrackingBridge;
   readonly reader: ReaderBridge;
   readonly workspaces: WorkspaceBridge;
+  readonly media: MediaBridge;
 }

@@ -33,6 +33,7 @@ import type { DownloadSnapshot } from "../shared/downloads.js";
 import type { TrackingSnapshot } from "../shared/tracking.js";
 import type { ReaderState } from "../shared/reader.js";
 import type { WorkspaceSnapshot } from "../shared/workspaces.js";
+import type { MediaAction, MediaState } from "../shared/media.js";
 import type { BrowserPaneId, BrowserSnapshot, BrowserViewport } from "../shared/browser.js";
 import type {
   AgentConfigStatus,
@@ -110,7 +111,9 @@ const CHANNEL: Channels = {
   workspaceSnapshot: "workspace:snapshot",
   workspaceSave: "workspace:save",
   workspaceOpen: "workspace:open",
-  workspaceRemove: "workspace:remove"
+  workspaceRemove: "workspace:remove",
+  mediaState: "media:state",
+  mediaCommand: "media:command"
 };
 
 const STATE_EVENT: typeof BrowserStateEvent = "browser:state";
@@ -329,6 +332,17 @@ const api: OpenStrawberryBridge = {
       (await electron.ipcRenderer.invoke(CHANNEL.workspaceRemove, {
         workspaceId
       })) as WorkspaceSnapshot
+  },
+  media: {
+    getState: async (tabId: string): Promise<MediaState> =>
+      (await electron.ipcRenderer.invoke(CHANNEL.mediaState, { tabId })) as MediaState,
+    // An action identifier, never code. The script for it lives in the trusted
+    // process and is selected by this value after validation.
+    run: async (tabId: string, action: MediaAction): Promise<MediaState> =>
+      (await electron.ipcRenderer.invoke(CHANNEL.mediaCommand, {
+        tabId,
+        action
+      })) as MediaState
   }
 };
 
