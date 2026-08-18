@@ -74,7 +74,10 @@ const PROVIDER_ERROR_TEXT: Readonly<Record<ProviderErrorCode, string>> = {
   "provider-error": "it returned an error.",
   "malformed-reply": "its reply could not be read.",
   "too-large": "its reply was larger than will be read.",
-  cancelled: "the run was cancelled."
+  cancelled: "the run was cancelled.",
+  "command-not-allowed": "that program is not one this app will run.",
+  "command-failed": "the command did not run successfully.",
+  "no-output": "the command printed nothing."
 };
 
 /**
@@ -109,6 +112,20 @@ export type ProviderPort = (request: {
   readonly signal: AbortSignal;
 }) => Promise<ProviderResult>;
 
+/**
+ * Running a local tool.
+ *
+ * Separate from `ProviderPort` because the two do genuinely different things -
+ * one makes a request, the other starts a process - and collapsing them would
+ * hide which of those a route is about to do. Both are optional and both end in
+ * the same result type.
+ */
+export type CommandPort = (request: {
+  readonly command: string;
+  readonly prompt: string;
+  readonly signal: AbortSignal;
+}) => Promise<ProviderResult>;
+
 export interface AgentManagerOptions {
   readonly statePath: string;
   readonly browser: BrowserPort;
@@ -116,6 +133,8 @@ export interface AgentManagerOptions {
   readonly publish: (snapshot: AgentSnapshot) => void;
   /** Absent means no model is ever called; the run reports that plainly. */
   readonly provider?: ProviderPort;
+  /** Absent means no process is ever started, and the run says so. */
+  readonly command?: CommandPort;
 }
 
 /** The companion seeded on first launch, so the panel is never empty. */
@@ -138,6 +157,7 @@ export class AgentManager {
   private readonly secrets: SecretStore;
   private readonly publish: (snapshot: AgentSnapshot) => void;
   private readonly provider: ProviderPort | null;
+  private readonly command: CommandPort | null;
   /** One controller per live run, so cancelling abandons a request in flight. */
   private readonly inFlight = new Map<string, AbortController>();
 
@@ -157,6 +177,7 @@ export class AgentManager {
     this.secrets = options.secrets;
     this.publish = options.publish;
     this.provider = options.provider ?? null;
+    this.command = options.command ?? null;
   }
 
   /* --------------------------------------------------------------------- */
@@ -598,17 +619,42 @@ export class AgentManager {
       return;
     }
 
-    // A CLI route runs a program on this machine, which is its own milestone
-    // with its own allowlist and execution bounds. It is not quietly treated as
-    // an HTTP call.
+    /*
+     * A CLI route starts a program on this machine rather than making a
+     * request, so it takes its own port. Both end in the same `ProviderResult`,
+     * which is what lets the reporting below be shared: the run log says what
+     * happened without the user needing to know which kind of route it was.
+     */
     if (route.command !== null) {
-      this.appendStep(
-        runId,
-        "message",
-        `${routeLabel} is a local command, and command execution is not implemented yet.`,
-        null,
-        tabId
-      );
+      if (this.command === null) {
+        this.appendStep(
+          runId,
+          "message",
+          `${routeLabel} is a local command, and this build has no way to run one.`,
+          null,
+          tabId
+        );
+        return;
+      }
+
+      const controller = new AbortController();
+      this.inFlight.set(runId, controller);
+
+      let outcome: ProviderResult;
+      try {
+        outcome = await this.command({
+          command: route.command,
+          prompt: payload.task,
+          signal: controller.signal
+        });
+      } catch {
+        outcome = { ok: false, code: "command-failed" };
+      } finally {
+        this.inFlight.delete(runId);
+      }
+
+      if (!this.isRunnable(runId)) return;
+      this.reportOutcome(runId, outcome, routeLabel, tabId);
       return;
     }
 
@@ -657,9 +703,26 @@ export class AgentManager {
     }
 
     if (!this.isRunnable(runId)) return;
+    this.reportOutcome(runId, result, routeLabel, tabId, descriptor.label);
+  }
 
+  /**
+   * Turns a route's outcome into a step.
+   *
+   * Shared by both transports, and the only place a failure becomes words. The
+   * wording is held in this file rather than taken from the provider or the
+   * tool, because both produce remote or local text that can echo whatever was
+   * sent to them.
+   */
+  private reportOutcome(
+    runId: string,
+    result: ProviderResult,
+    routeLabel: string,
+    tabId: string | null,
+    replyLabel = "The command"
+  ): void {
     if (result.ok) {
-      this.appendStep(runId, "message", `${descriptor.label} replied.`, result.text, tabId);
+      this.appendStep(runId, "message", `${replyLabel} replied.`, result.text, tabId);
       return;
     }
 

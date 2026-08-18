@@ -1,5 +1,6 @@
 import { app, BrowserWindow, dialog, Menu, net, safeStorage, session, shell } from "electron";
 import { existsSync } from "node:fs";
+import { spawn } from "node:child_process";
 import { join } from "node:path";
 import {
   AGENT_STATE_EVENT,
@@ -58,6 +59,7 @@ import { DownloadManager } from "./download-manager.js";
 import { TrackerBlocker } from "./tracker-blocker.js";
 import { extractReaderDocument } from "./reader.js";
 import { callProvider } from "./http-provider.js";
+import { callCli, type SpawnedProcess } from "./cli-provider.js";
 import { parseReaderTabPayload, type ReaderState } from "../shared/reader.js";
 import { WorkspaceStore } from "./workspace-store.js";
 import { readMediaState, runMediaAction } from "./media.js";
@@ -366,6 +368,19 @@ function createWindow(): void {
             redirect: init.redirect,
             signal: init.signal
           })
+      }),
+    /*
+     * Local tools. The working directory is a scratch folder under userData
+     * rather than the user's documents or the app's own install: a tool that
+     * writes a file should not land it somewhere surprising, and should not be
+     * able to see what is beside the application.
+     */
+    command: (request) =>
+      callCli({
+        ...request,
+        cwd: app.getPath("userData"),
+        spawn: (command, args, spawnOptions) =>
+          spawn(command, [...args], spawnOptions) as unknown as SpawnedProcess
       })
   });
 

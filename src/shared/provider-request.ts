@@ -48,7 +48,11 @@ export const PROVIDER_ERRORS = [
   "provider-error",
   "malformed-reply",
   "too-large",
-  "cancelled"
+  "cancelled",
+  // Local command routes.
+  "command-not-allowed",
+  "command-failed",
+  "no-output"
 ] as const;
 
 export type ProviderErrorCode = (typeof PROVIDER_ERRORS)[number];
