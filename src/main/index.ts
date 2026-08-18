@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, Menu, safeStorage, session, shell } from "electron";
+import { app, BrowserWindow, dialog, Menu, net, safeStorage, session, shell } from "electron";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import {
@@ -57,6 +57,7 @@ import { BrowserManager } from "./browser-manager.js";
 import { DownloadManager } from "./download-manager.js";
 import { TrackerBlocker } from "./tracker-blocker.js";
 import { extractReaderDocument } from "./reader.js";
+import { callProvider } from "./http-provider.js";
 import { parseReaderTabPayload, type ReaderState } from "../shared/reader.js";
 import { WorkspaceStore } from "./workspace-store.js";
 import { readMediaState, runMediaAction } from "./media.js";
@@ -344,7 +345,28 @@ function createWindow(): void {
     statePath: join(app.getPath("userData"), "agents.json"),
     browser: browserPortFor(browser),
     secrets,
-    publish: (snapshot: AgentSnapshot) => sendToRenderer(AGENT_STATE_EVENT, snapshot)
+    publish: (snapshot: AgentSnapshot) => sendToRenderer(AGENT_STATE_EVENT, snapshot),
+    /*
+     * The transport. `net.fetch` rather than the global one so the request
+     * honours the system proxy and certificate store the rest of the app uses,
+     * and so it is not the renderer's fetch under any circumstance.
+     *
+     * It is given its own session, not the browsing partition: a provider call
+     * is the application's, and must not carry cookies the user picked up while
+     * browsing, nor deposit any there.
+     */
+    provider: (request) =>
+      callProvider({
+        ...request,
+        fetch: (url, init) =>
+          net.fetch(url, {
+            method: init.method,
+            headers: init.headers,
+            body: init.body,
+            redirect: init.redirect,
+            signal: init.signal
+          })
+      })
   });
 
   /*

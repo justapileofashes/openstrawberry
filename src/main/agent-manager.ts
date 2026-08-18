@@ -11,11 +11,15 @@
  *   - The manager never receives `BrowserManager`. It gets a `BrowserPort`, so
  *     the set of things an agent can do to the browser is a list you can read in
  *     one place rather than "whatever the tab engine exposes".
- *   - No credential passes through here. `SecretStore` will own that, and the
- *     manager only ever reports status.
+ *   - A credential is read from SecretStore immediately before a call and
+ *     handed straight to the transport. It is never stored on this class, never
+ *     put in a step, and never included in an error: failures arrive as codes
+ *     and are turned into wording held in this file.
  *
- * This milestone runs a scripted loop rather than a model, so the state machine,
- * the IPC contract, and the panel can be verified before a provider exists.
+ * A run plans, reads its named context, then dispatches to the resolved provider
+ * through an injected port. The port is optional: with none, the runtime stays
+ * inert and says so, which is what keeps a build with no network stack - and
+ * every test here - from making a request as a side effect of a run.
  */
 import { writeFileSync, readFileSync } from "node:fs";
 import {
@@ -25,6 +29,7 @@ import {
   isTerminalStatus,
   MAX_AGENTS,
   parsePersistedAgentState,
+  providerDescriptor,
   resolvedProvider,
   toPersistedAgentState,
   type AgentCompanion,
@@ -47,6 +52,30 @@ import {
 import type { BrowserPaneId, BrowserSnapshot } from "../shared/browser.js";
 import { displayHostname } from "../shared/navigation.js";
 import type { SecretStore } from "./secret-store.js";
+import type { ProviderErrorCode, ProviderResult } from "../shared/provider-request.js";
+import type { ProviderId } from "../shared/agents.js";
+
+/**
+ * Wording for each failure code.
+ *
+ * Held here rather than taken from the provider, because a provider's error body
+ * is remote content and could carry anything - including, from a misconfigured
+ * gateway, fragments of the request that was sent to it.
+ */
+const PROVIDER_ERROR_TEXT: Readonly<Record<ProviderErrorCode, string>> = {
+  "no-credential": "no key is stored for it.",
+  "unsupported-provider": "this build has no transport for that provider.",
+  "bad-endpoint": "its endpoint is not a usable https address.",
+  network: "the request did not complete.",
+  timeout: "it did not answer in time.",
+  redirected: "it redirected the request, which is refused.",
+  unauthorised: "the stored key was rejected.",
+  "rate-limited": "it is rate limiting requests.",
+  "provider-error": "it returned an error.",
+  "malformed-reply": "its reply could not be read.",
+  "too-large": "its reply was larger than will be read.",
+  cancelled: "the run was cancelled."
+};
 
 /**
  * Everything an agent may do to the browser.
@@ -64,11 +93,29 @@ export interface BrowserPort {
   readonly contentsFor: (tabId: string) => Electron.WebContents | null;
 }
 
+/**
+ * Calling a model.
+ *
+ * Injected, and optional. With no port the runtime stays exactly as inert as it
+ * was - which is what keeps every existing test, and any build that has not
+ * wired a network stack, from making a request as a side effect of a run.
+ */
+export type ProviderPort = (request: {
+  readonly provider: ProviderId;
+  readonly model: string;
+  readonly baseUrl: string | null;
+  readonly credential: string | null;
+  readonly prompt: string;
+  readonly signal: AbortSignal;
+}) => Promise<ProviderResult>;
+
 export interface AgentManagerOptions {
   readonly statePath: string;
   readonly browser: BrowserPort;
   readonly secrets: SecretStore;
   readonly publish: (snapshot: AgentSnapshot) => void;
+  /** Absent means no model is ever called; the run reports that plainly. */
+  readonly provider?: ProviderPort;
 }
 
 /** The companion seeded on first launch, so the panel is never empty. */
@@ -90,6 +137,9 @@ export class AgentManager {
   private readonly browser: BrowserPort;
   private readonly secrets: SecretStore;
   private readonly publish: (snapshot: AgentSnapshot) => void;
+  private readonly provider: ProviderPort | null;
+  /** One controller per live run, so cancelling abandons a request in flight. */
+  private readonly inFlight = new Map<string, AbortController>();
 
   private companions: readonly AgentCompanion[] = [];
   private activeCompanionId: string | null = null;
@@ -106,6 +156,7 @@ export class AgentManager {
     this.browser = options.browser;
     this.secrets = options.secrets;
     this.publish = options.publish;
+    this.provider = options.provider ?? null;
   }
 
   /* --------------------------------------------------------------------- */
@@ -155,6 +206,11 @@ export class AgentManager {
     if (this.destroyed) return;
     this.destroyed = true;
 
+    // Requests still in flight are abandoned; the window is going away and
+    // nothing will be there to receive a reply.
+    for (const controller of this.inFlight.values()) controller.abort();
+    this.inFlight.clear();
+
     try {
       this.persistState();
     } catch {
@@ -198,6 +254,11 @@ export class AgentManager {
 
     // The status is the cancellation signal — the loop checks it between steps.
     // Keeping one source of truth means a cancelled run cannot look live.
+    // A request already in flight is abandoned rather than left to finish into
+    // a run nobody is watching.
+    this.inFlight.get(runId)?.abort();
+    this.inFlight.delete(runId);
+
     this.appendStep(runId, "message", "Cancelled by you.", null, null);
     return this.setStatus(runId, "cancelled");
   }
@@ -492,11 +553,6 @@ export class AgentManager {
         "tool-result",
         `Read context from ${contextLabel}.`,
         context.map((tab) => `${tab.title} — ${tab.url}`).join("\n") || null
-      ],
-      [
-        "message",
-        `No provider adapter is wired up yet, so ${routeLabel} was not called.`,
-        "The scripted loop proves the run lifecycle, the step log, and the IPC contract. Dispatching to the selected provider is the next milestone."
       ]
     ];
 
@@ -508,7 +564,112 @@ export class AgentManager {
     }
 
     if (!this.isRunnable(runId)) return;
+
+    await this.callModel(runId, payload, route, routeLabel, contextLabel, context.at(0)?.id ?? null);
+
+    if (!this.isRunnable(runId)) return;
     this.setStatus(runId, "done");
+  }
+
+  /**
+   * Dispatches to the resolved provider, or explains why it did not.
+   *
+   * Every outcome ends as a step the user can read. A missing key, an
+   * unsupported route, and a provider that refused are all things they can act
+   * on, so none of them is swallowed - and none of them carries a provider's own
+   * error text, which is remote content.
+   */
+  private async callModel(
+    runId: string,
+    payload: StartRunPayload,
+    route: ReturnType<typeof resolvedProvider>,
+    routeLabel: string,
+    contextLabel: string,
+    tabId: string | null
+  ): Promise<void> {
+    if (this.provider === null) {
+      this.appendStep(
+        runId,
+        "message",
+        `No provider transport is available in this build, so ${routeLabel} was not called.`,
+        null,
+        tabId
+      );
+      return;
+    }
+
+    // A CLI route runs a program on this machine, which is its own milestone
+    // with its own allowlist and execution bounds. It is not quietly treated as
+    // an HTTP call.
+    if (route.command !== null) {
+      this.appendStep(
+        runId,
+        "message",
+        `${routeLabel} is a local command, and command execution is not implemented yet.`,
+        null,
+        tabId
+      );
+      return;
+    }
+
+    /*
+     * `resolvedProvider` returns a plain string, because it also serves the
+     * chrome, which renders whatever was stored. Narrowing it through the
+     * descriptor rather than casting means a provider the app no longer ships
+     * reports as unsupported instead of being sent to a transport that has no
+     * table entry for it.
+     */
+    const descriptor = providerDescriptor(route.provider);
+    if (descriptor === null) {
+      this.appendStep(
+        runId,
+        "error",
+        `${routeLabel} is not a provider this build ships.`,
+        null,
+        tabId
+      );
+      return;
+    }
+
+    const credential = this.secrets.readCredential(descriptor.id, payload.companionId);
+
+    const controller = new AbortController();
+    this.inFlight.set(runId, controller);
+
+    let result: ProviderResult;
+    try {
+      result = await this.provider({
+        provider: descriptor.id,
+        model: route.model,
+        baseUrl: route.baseUrl,
+        credential,
+        // The context is named, not pasted: a page's whole text is not the
+        // agent's to send anywhere until context grants exist.
+        prompt: `${payload.task}\n\nOpen tabs: ${contextLabel}`,
+        signal: controller.signal
+      });
+    } catch {
+      // The port is documented never to throw; treating a broken one as a
+      // network failure keeps a run from dying on a contract violation.
+      result = { ok: false, code: "network" };
+    } finally {
+      this.inFlight.delete(runId);
+    }
+
+    if (!this.isRunnable(runId)) return;
+
+    if (result.ok) {
+      this.appendStep(runId, "message", `${descriptor.label} replied.`, result.text, tabId);
+      return;
+    }
+
+    this.appendStep(
+      runId,
+      "error",
+      `${routeLabel} could not be reached: ${PROVIDER_ERROR_TEXT[result.code]}`,
+      null,
+      tabId
+    );
   }
 
   /** False once the run was cancelled, finished, or the process is tearing down. */
