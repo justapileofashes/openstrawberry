@@ -84,6 +84,25 @@ export const COMMANDS: readonly Command[] = [
     shortcut: { key: "\\", mod: true }
   },
   {
+    id: "group.new",
+    title: "Group this tab",
+    group: "Workspace",
+    keywords: ["tab group", "organise", "colour"],
+    shortcut: { key: "g", mod: true, shift: true }
+  },
+  {
+    id: "group.toggle",
+    title: "Collapse or expand this group",
+    group: "Workspace",
+    keywords: ["tab group", "fold", "hide"]
+  },
+  {
+    id: "group.ungroup",
+    title: "Remove this tab from its group",
+    group: "Workspace",
+    keywords: ["tab group", "ungroup"]
+  },
+  {
     id: "workspace.snapshots",
     title: "Saved workspaces",
     group: "Workspace",

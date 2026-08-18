@@ -23,6 +23,7 @@ import {
 } from "./ipc-validation.js";
 import { BLANK_PAGE } from "./desktop-shell.js";
 import { isAllowedUrl } from "./navigation.js";
+import { parseTabGroups, pruneEmptyGroups, type TabGroup } from "./tab-groups.js";
 
 export const PANE_IDS = ["primary", "secondary"] as const;
 export type BrowserPaneId = (typeof PANE_IDS)[number];
@@ -51,6 +52,14 @@ export interface BrowserTabState {
   readonly faviconUrl: string | null;
   readonly isAudible: boolean;
   readonly paneId: BrowserPaneId;
+  /**
+   * The group this tab belongs to, or null.
+   *
+   * Membership lives here rather than as a list of tab ids on the group, so a
+   * tab is in at most one group by construction and closing one cannot leave a
+   * group referring to something gone.
+   */
+  readonly groupId: string | null;
 }
 
 export interface BrowserPaneState {
@@ -63,6 +72,7 @@ export interface BrowserSnapshot {
   readonly panes: readonly BrowserPaneState[];
   readonly activePaneId: BrowserPaneId;
   readonly splitEnabled: boolean;
+  readonly groups: readonly TabGroup[];
 }
 
 /* ------------------------------------------------------------------------- */
@@ -75,6 +85,7 @@ export interface PersistedTab {
   readonly id: string;
   readonly url: string;
   readonly paneId: BrowserPaneId;
+  readonly groupId: string | null;
 }
 
 export interface PersistedSession {
@@ -83,6 +94,7 @@ export interface PersistedSession {
   readonly activeTabByPane: Readonly<Record<BrowserPaneId, string | null>>;
   readonly activePaneId: BrowserPaneId;
   readonly splitEnabled: boolean;
+  readonly groups: readonly TabGroup[];
 }
 
 export function emptySession(): PersistedSession {
@@ -91,7 +103,8 @@ export function emptySession(): PersistedSession {
     tabs: [],
     activeTabByPane: { primary: null, secondary: null },
     activePaneId: "primary",
-    splitEnabled: false
+    splitEnabled: false,
+    groups: []
   };
 }
 
@@ -112,10 +125,21 @@ export function toPersistedSession(snapshot: BrowserSnapshot): PersistedSession 
 
   return {
     version: SESSION_VERSION,
-    tabs: snapshot.tabs.map((tab) => ({ id: tab.id, url: tab.url, paneId: tab.paneId })),
+    tabs: snapshot.tabs.map((tab) => ({
+      id: tab.id,
+      url: tab.url,
+      paneId: tab.paneId,
+      groupId: tab.groupId
+    })),
     activeTabByPane,
     activePaneId: snapshot.activePaneId,
-    splitEnabled: snapshot.splitEnabled
+    splitEnabled: snapshot.splitEnabled,
+    // Only groups something still belongs to. An emptied group has no rail
+    // presence and no way to be reached again.
+    groups: pruneEmptyGroups(
+      snapshot.groups,
+      snapshot.tabs.map((tab) => tab.groupId)
+    )
   };
 }
 
@@ -148,9 +172,33 @@ export function parsePersistedSession(raw: unknown): PersistedSession {
       if (!isAllowedUrl(url)) continue;
       if (seen.has(id)) continue;
 
+      const rawGroupId = tab["groupId"];
+      const groupId =
+        typeof rawGroupId === "string" ? requireIdentifier(rawGroupId, "Session tab group") : null;
+
       seen.add(id);
-      tabs.push({ id, url, paneId });
+      tabs.push({ id, url, paneId, groupId });
     }
+
+    /*
+     * Groups are read after the tabs, then reduced to those something actually
+     * belongs to, and finally each tab's membership is checked against what
+     * survived. A hand-edited file naming a group that is not in the list leaves
+     * the tab ungrouped rather than pointing at nothing.
+     */
+    const parsedGroups = parseTabGroups(root["groups"]);
+    const groupIds = new Set(parsedGroups.map((group) => group.id));
+
+    for (let index = 0; index < tabs.length; index += 1) {
+      const tab = tabs[index];
+      if (tab === undefined || tab.groupId === null) continue;
+      if (!groupIds.has(tab.groupId)) tabs[index] = { ...tab, groupId: null };
+    }
+
+    const groups = pruneEmptyGroups(
+      parsedGroups,
+      tabs.map((tab) => tab.groupId)
+    );
 
     const rawActive = requirePlainObject(root["activeTabByPane"], "Session active tabs");
     const activeTabByPane: Record<BrowserPaneId, string | null> = {
@@ -170,7 +218,8 @@ export function parsePersistedSession(raw: unknown): PersistedSession {
       tabs,
       activeTabByPane,
       activePaneId: requireOneOf(root["activePaneId"], PANE_IDS, "Session active pane"),
-      splitEnabled: requireBoolean(root["splitEnabled"], "Session split state")
+      splitEnabled: requireBoolean(root["splitEnabled"], "Session split state"),
+      groups
     };
   } catch {
     return emptySession();

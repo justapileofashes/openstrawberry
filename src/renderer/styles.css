@@ -3083,3 +3083,50 @@ input[type="range"]:disabled {
   font-size: 12.5px;
   color: var(--ink-muted);
 }
+
+/* -------------------------------------------------------------------------- */
+/* Tab groups                                                                  */
+/* -------------------------------------------------------------------------- */
+
+/*
+ * The palette lives here, keyed by token. Stored state carries the token name
+ * only, so no colour value ever crosses the trust boundary or reaches a style
+ * attribute.
+ */
+.rail-tab[data-group-colour="slate"] {
+  --group-tone: #8ea3bf;
+}
+.rail-tab[data-group-colour="amber"] {
+  --group-tone: #d8a657;
+}
+.rail-tab[data-group-colour="rose"] {
+  --group-tone: #d98098;
+}
+.rail-tab[data-group-colour="violet"] {
+  --group-tone: #a992d6;
+}
+.rail-tab[data-group-colour="teal"] {
+  --group-tone: #6fc0b4;
+}
+.rail-tab[data-group-colour="lime"] {
+  --group-tone: #a8c877;
+}
+
+/*
+ * Membership is marked by a rule down the inline-start edge. Shape as well as
+ * tone: the group's name is also in the button's accessible label, so nothing
+ * about membership rests on colour perception alone.
+ */
+.rail-tab.is-grouped {
+  position: relative;
+}
+
+.rail-tab.is-grouped::before {
+  content: "";
+  position: absolute;
+  inset-block: 4px;
+  inset-inline-start: -3px;
+  inline-size: 2px;
+  border-radius: 1px;
+  background: var(--group-tone, var(--ink-muted));
+}

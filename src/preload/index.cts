@@ -34,6 +34,7 @@ import type { TrackingSnapshot } from "../shared/tracking.js";
 import type { ReaderState } from "../shared/reader.js";
 import type { WorkspaceSnapshot } from "../shared/workspaces.js";
 import type { MediaAction, MediaState } from "../shared/media.js";
+import type { GroupColour } from "../shared/tab-groups.js";
 import type { BrowserPaneId, BrowserSnapshot, BrowserViewport } from "../shared/browser.js";
 import type {
   AgentConfigStatus,
@@ -113,7 +114,11 @@ const CHANNEL: Channels = {
   workspaceOpen: "workspace:open",
   workspaceRemove: "workspace:remove",
   mediaState: "media:state",
-  mediaCommand: "media:command"
+  mediaCommand: "media:command",
+  groupCreate: "group:create",
+  groupUpdate: "group:update",
+  groupAssign: "group:assign",
+  groupRemove: "group:remove"
 };
 
 const STATE_EVENT: typeof BrowserStateEvent = "browser:state";
@@ -190,6 +195,19 @@ const api: OpenStrawberryBridge = {
       snapshotCall(CHANNEL.browserSetSplit, { enabled }),
     setActivePane: async (paneId: BrowserPaneId) =>
       snapshotCall(CHANNEL.browserSetActivePane, { paneId }),
+    createGroup: async (tabId: string, name: string) =>
+      snapshotCall(CHANNEL.groupCreate, { tabId, name }),
+    // The colour is a palette token, not a CSS value; the trusted process
+    // refuses anything outside the shipped set.
+    updateGroup: async (
+      groupId: string,
+      name: string,
+      colour: GroupColour,
+      collapsed: boolean
+    ) => snapshotCall(CHANNEL.groupUpdate, { groupId, name, colour, collapsed }),
+    assignTabToGroup: async (tabId: string, groupId: string | null) =>
+      snapshotCall(CHANNEL.groupAssign, { tabId, groupId }),
+    removeGroup: async (groupId: string) => snapshotCall(CHANNEL.groupRemove, { groupId }),
     onState: (listener: (snapshot: BrowserSnapshot) => void): (() => void) => {
       // The raw IpcRendererEvent is deliberately not passed through; the
       // renderer receives only the snapshot payload.

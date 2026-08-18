@@ -29,7 +29,8 @@ function snapshot(): BrowserSnapshot {
         canGoForward: false,
         faviconUrl: "https://example.com/favicon.ico",
         isAudible: false,
-        paneId: "primary"
+        paneId: "primary",
+        groupId: null
       },
       {
         id: "tab-2",
@@ -40,7 +41,8 @@ function snapshot(): BrowserSnapshot {
         canGoForward: false,
         faviconUrl: null,
         isAudible: false,
-        paneId: "secondary"
+        paneId: "secondary",
+        groupId: null
       }
     ],
     panes: [
@@ -48,7 +50,8 @@ function snapshot(): BrowserSnapshot {
       { id: "secondary", activeTabId: "tab-2" }
     ],
     activePaneId: "primary",
-    splitEnabled: true
+    splitEnabled: true,
+    groups: []
   };
 }
 
@@ -57,8 +60,8 @@ describe("toPersistedSession", () => {
     const session = toPersistedSession(snapshot());
 
     expect(session.tabs).toEqual([
-      { id: "tab-1", url: "https://example.com/", paneId: "primary" },
-      { id: "tab-2", url: BLANK_PAGE, paneId: "secondary" }
+      { id: "tab-1", url: "https://example.com/", paneId: "primary", groupId: null },
+      { id: "tab-2", url: BLANK_PAGE, paneId: "secondary", groupId: null }
     ]);
     expect(session.activeTabByPane).toEqual({ primary: "tab-1", secondary: "tab-2" });
     expect(session.splitEnabled).toBe(true);
@@ -98,7 +101,8 @@ describe("parsePersistedSession", () => {
       ],
       activeTabByPane: { primary: "safe", secondary: null },
       activePaneId: "primary",
-      splitEnabled: false
+      splitEnabled: false,
+      groups: []
     });
 
     expect(restored.tabs.map((tab) => tab.id)).toEqual(["safe"]);
@@ -110,7 +114,8 @@ describe("parsePersistedSession", () => {
       tabs: [{ id: "local", url: "file:///etc/passwd", paneId: "primary" }],
       activeTabByPane: { primary: "local", secondary: null },
       activePaneId: "primary",
-      splitEnabled: false
+      splitEnabled: false,
+      groups: []
     });
 
     expect(restored.tabs).toHaveLength(0);
@@ -126,7 +131,8 @@ describe("parsePersistedSession", () => {
       ],
       activeTabByPane: { primary: "dupe", secondary: null },
       activePaneId: "primary",
-      splitEnabled: false
+      splitEnabled: false,
+      groups: []
     });
 
     expect(restored.tabs).toHaveLength(1);
@@ -146,7 +152,8 @@ describe("parsePersistedSession", () => {
         tabs,
         activeTabByPane: { primary: null, secondary: null },
         activePaneId: "primary",
-        splitEnabled: false
+        splitEnabled: false,
+        groups: []
       })
     ).toEqual(emptySession());
   });

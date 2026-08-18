@@ -43,11 +43,14 @@ import {
   activeTabId,
   faviconFallbackLabel,
   focusedTab,
+  groupForTab,
+  railTabsForPane,
   sameViewport,
   tabAccessibleName,
   viewportFromRect,
   visiblePanes
 } from "./browser-chrome.js";
+import { displayHostname as displayName } from "../shared/navigation.js";
 
 const EMPTY_SNAPSHOT: BrowserSnapshot = {
   tabs: [],
@@ -56,7 +59,8 @@ const EMPTY_SNAPSHOT: BrowserSnapshot = {
     { id: "secondary", activeTabId: null }
   ],
   activePaneId: "primary",
-  splitEnabled: false
+  splitEnabled: false,
+  groups: []
 };
 
 /** Icon-only control with a hover and keyboard-focus text bubble. */
@@ -348,6 +352,25 @@ export function App(): React.JSX.Element {
         case "workspace.split":
           void bridge.setSplitEnabled(!snapshot.splitEnabled);
           return;
+        case "group.new": {
+          if (tabId === undefined || current === null) return;
+          // Named after the site by default. A group that arrives already
+          // labelled is one the user can rename rather than one they must.
+          void bridge.createGroup(tabId, displayName(current.url)).then(setSnapshot);
+          return;
+        }
+        case "group.toggle": {
+          const group = current === null ? null : groupForTab(snapshot, current);
+          if (group === null) return;
+          void bridge
+            .updateGroup(group.id, group.name, group.colour, !group.collapsed)
+            .then(setSnapshot);
+          return;
+        }
+        case "group.ungroup":
+          if (tabId === undefined) return;
+          void bridge.assignTabToGroup(tabId, null).then(setSnapshot);
+          return;
         case "workspace.snapshots":
           // Re-read on open so the list reflects saves made in another window.
           void window.openstrawberry.workspaces
@@ -464,14 +487,31 @@ export function App(): React.JSX.Element {
 
       <nav className="tab-rail glass" aria-label="Tabs">
         <div className="rail-tabs">
-          {snapshot.tabs.map((tab) => {
+          {/*
+            The rail draws what `railTabsForPane` allows: a collapsed group
+            hides its members, except the active tab, which is always shown.
+          */}
+          {panes
+            .flatMap((paneId) => railTabsForPane(snapshot, paneId))
+            .map((tab) => {
             const isActive = activeTabId(snapshot, tab.paneId) === tab.id;
-            const name = tabAccessibleName(tab);
+            const group = groupForTab(snapshot, tab);
+            // The group's name goes into the accessible label, so membership is
+            // never carried by colour alone.
+            const name =
+              group === null
+                ? tabAccessibleName(tab)
+                : `${tabAccessibleName(tab)}, in group ${group.name}${
+                    group.collapsed ? ", collapsed" : ""
+                  }`;
             return (
               <span className="bubble-host rail-slot" key={tab.id}>
                 <button
                   type="button"
-                  className={`rail-tab${isActive ? " is-active" : ""}${tab.isLoading ? " is-loading" : ""}`}
+                  data-group-colour={group?.colour}
+                  className={`rail-tab${isActive ? " is-active" : ""}${tab.isLoading ? " is-loading" : ""}${
+                    group === null ? "" : " is-grouped"
+                  }`}
                   onClick={() => void bridge.activateTab(tab.id)}
                   aria-label={name}
                   aria-current={isActive}

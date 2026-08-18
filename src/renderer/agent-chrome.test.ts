@@ -78,7 +78,8 @@ function browserSnapshot(): BrowserSnapshot {
         canGoForward: false,
         faviconUrl: null,
         isAudible: false,
-        paneId: "primary"
+        paneId: "primary",
+        groupId: null
       },
       {
         id: "tab-2",
@@ -89,7 +90,8 @@ function browserSnapshot(): BrowserSnapshot {
         canGoForward: false,
         faviconUrl: null,
         isAudible: false,
-        paneId: "primary"
+        paneId: "primary",
+        groupId: null
       },
       {
         id: "tab-3",
@@ -100,7 +102,8 @@ function browserSnapshot(): BrowserSnapshot {
         canGoForward: false,
         faviconUrl: null,
         isAudible: false,
-        paneId: "secondary"
+        paneId: "secondary",
+        groupId: null
       }
     ],
     panes: [
@@ -108,7 +111,8 @@ function browserSnapshot(): BrowserSnapshot {
       { id: "secondary", activeTabId: "tab-3" }
     ],
     activePaneId: "secondary",
-    splitEnabled: true
+    splitEnabled: true,
+    groups: []
   };
 }
 

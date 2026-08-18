@@ -7,6 +7,9 @@ import {
   faviconFallbackLabel,
   focusedTab,
   sameViewport,
+  groupForTab,
+  hiddenCountForGroup,
+  railTabsForPane,
   tabAccessibleName,
   tabsForPane,
   viewportFromRect,
@@ -24,9 +27,65 @@ function tab(overrides: Partial<BrowserTabState> = {}): BrowserTabState {
     faviconUrl: null,
     isAudible: false,
     paneId: "primary",
+    groupId: null,
     ...overrides
   };
 }
+
+describe("tab groups in the rail", () => {
+  const grouped = (): BrowserSnapshot =>
+    snapshot({
+      tabs: [
+        tab({ id: "tab-1", groupId: "group-1" }),
+        tab({ id: "tab-2", groupId: "group-1" }),
+        tab({ id: "tab-3", groupId: null })
+      ],
+      panes: [
+        { id: "primary", activeTabId: "tab-1" },
+        { id: "secondary", activeTabId: null }
+      ],
+      groups: [{ id: "group-1", name: "Research", colour: "amber", collapsed: false }]
+    });
+
+  it("resolves a tab's group, and null for an ungrouped one", () => {
+    const state = grouped();
+    expect(groupForTab(state, state.tabs[0] as BrowserTabState)?.name).toBe("Research");
+    expect(groupForTab(state, state.tabs[2] as BrowserTabState)).toBeNull();
+  });
+
+  it("resolves to null when the group no longer exists", () => {
+    const state = snapshot({ tabs: [tab({ groupId: "group-gone" })], groups: [] });
+    expect(groupForTab(state, state.tabs[0] as BrowserTabState)).toBeNull();
+  });
+
+  it("draws every tab while the group is expanded", () => {
+    expect(railTabsForPane(grouped(), "primary").map((t) => t.id)).toEqual([
+      "tab-1",
+      "tab-2",
+      "tab-3"
+    ]);
+  });
+
+  it("hides collapsed members but never the active tab", () => {
+    // Hiding what the user is looking at would leave the rail describing a
+    // different window than the one in front of them.
+    const state = snapshot({
+      ...grouped(),
+      groups: [{ id: "group-1", name: "Research", colour: "amber", collapsed: true }]
+    });
+
+    expect(railTabsForPane(state, "primary").map((t) => t.id)).toEqual(["tab-1", "tab-3"]);
+  });
+
+  it("counts what a collapsed group is hiding", () => {
+    const state = snapshot({
+      ...grouped(),
+      groups: [{ id: "group-1", name: "Research", colour: "amber", collapsed: true }]
+    });
+
+    expect(hiddenCountForGroup(state, "primary", "group-1")).toBe(1);
+  });
+});
 
 function snapshot(overrides: Partial<BrowserSnapshot> = {}): BrowserSnapshot {
   return {
@@ -37,6 +96,7 @@ function snapshot(overrides: Partial<BrowserSnapshot> = {}): BrowserSnapshot {
     ],
     activePaneId: "primary",
     splitEnabled: false,
+    groups: [],
     ...overrides
   };
 }

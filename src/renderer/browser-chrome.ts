@@ -11,6 +11,7 @@ import type {
   BrowserTabState,
   BrowserViewport
 } from "../shared/browser.js";
+import type { TabGroup } from "../shared/tab-groups.js";
 
 /**
  * Converts a measured DOM rect into view bounds.
@@ -43,6 +44,52 @@ export function tabsForPane(
   paneId: BrowserPaneId
 ): readonly BrowserTabState[] {
   return snapshot.tabs.filter((tab) => tab.paneId === paneId);
+}
+
+/** The group a tab belongs to, or null. */
+export function groupForTab(
+  snapshot: BrowserSnapshot,
+  tab: BrowserTabState
+): TabGroup | null {
+  if (tab.groupId === null) return null;
+  return snapshot.groups.find((group) => group.id === tab.groupId) ?? null;
+}
+
+/**
+ * The tabs a pane's rail actually draws.
+ *
+ * A collapsed group hides its members - except the active one, which stays
+ * visible however its group is set. Hiding the tab a user is looking at would
+ * leave the rail describing a window that is not the one in front of them, and
+ * no amount of tidiness is worth that.
+ *
+ * Collapsing never closes or unloads anything; the tabs are still there, still
+ * loaded, and still reachable by expanding.
+ */
+export function railTabsForPane(
+  snapshot: BrowserSnapshot,
+  paneId: BrowserPaneId
+): readonly BrowserTabState[] {
+  const active = activeTabId(snapshot, paneId);
+
+  return tabsForPane(snapshot, paneId).filter((tab) => {
+    if (tab.id === active) return true;
+    const group = groupForTab(snapshot, tab);
+    return group === null || !group.collapsed;
+  });
+}
+
+/** How many members a collapsed group is hiding, for the rail's count badge. */
+export function hiddenCountForGroup(
+  snapshot: BrowserSnapshot,
+  paneId: BrowserPaneId,
+  groupId: string
+): number {
+  const active = activeTabId(snapshot, paneId);
+
+  return tabsForPane(snapshot, paneId).filter(
+    (tab) => tab.groupId === groupId && tab.id !== active
+  ).length;
 }
 
 export function activeTabId(snapshot: BrowserSnapshot, paneId: BrowserPaneId): string | null {

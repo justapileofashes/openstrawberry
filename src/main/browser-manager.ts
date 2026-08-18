@@ -35,6 +35,13 @@ import {
   normalizeAddressInput
 } from "../shared/navigation.js";
 import { conventionalFaviconUrl, FaviconResolver } from "./favicon.js";
+import {
+  MAX_TAB_GROUPS,
+  nextColour,
+  pruneEmptyGroups,
+  type GroupColour,
+  type TabGroup
+} from "../shared/tab-groups.js";
 
 interface TabRuntime {
   readonly view: WebContentsView;
@@ -81,6 +88,8 @@ export class BrowserManager {
   private activePaneId: BrowserPaneId = "primary";
   private splitEnabled = false;
   private nextTabSequence = 1;
+  private nextGroupSequence = 1;
+  private groups: readonly TabGroup[] = [];
   private destroyed = false;
 
   public constructor(options: BrowserManagerOptions) {
@@ -106,9 +115,23 @@ export class BrowserManager {
 
     // Persisted ids are reused so active-tab references stay meaningful. The
     // sequence counter is advanced past them so newly minted ids cannot collide.
+    // Groups first, so a restored tab's membership resolves to a real group.
+    this.groups = session.groups;
+    for (const group of this.groups) {
+      const suffix = Number.parseInt(group.id.replace(/^group-/u, ""), 10);
+      if (Number.isInteger(suffix) && suffix >= this.nextGroupSequence) {
+        this.nextGroupSequence = suffix + 1;
+      }
+    }
+
     for (const tab of session.tabs) {
       if (this.tabs.size >= MAX_TABS) break;
       this.createTabWithId(tab.id, tab.paneId, tab.url, false);
+
+      const restored = this.tabs.get(tab.id);
+      if (restored !== undefined && tab.groupId !== null) {
+        restored.state = { ...restored.state, groupId: tab.groupId };
+      }
 
       const suffix = Number.parseInt(tab.id.replace(/^tab-/u, ""), 10);
       if (Number.isInteger(suffix) && suffix >= this.nextTabSequence) {
@@ -210,7 +233,8 @@ export class BrowserManager {
         canGoForward: false,
         faviconUrl: null,
         isAudible: false,
-        paneId
+        paneId,
+        groupId: null
       }
     };
 
@@ -236,6 +260,8 @@ export class BrowserManager {
     const paneId = tab.state.paneId;
     this.destroyTabRuntime(tabId, tab);
     this.tabs.delete(tabId);
+    // Closing the last member leaves a group nothing can reach again.
+    this.pruneGroups();
 
     if (this.panes[paneId].activeTabId === tabId) {
       const next = [...this.tabs.values()].find((candidate) => candidate.state.paneId === paneId);
@@ -354,8 +380,98 @@ export class BrowserManager {
       tabs: [...this.tabs.values()].map((tab) => tab.state),
       panes: PANE_IDS.map((id) => ({ id, activeTabId: this.panes[id].activeTabId })),
       activePaneId: this.activePaneId,
-      splitEnabled: this.splitEnabled
+      splitEnabled: this.splitEnabled,
+      groups: this.groups
     };
+  }
+
+  /* --------------------------------------------------------------------- */
+  /* Groups                                                                */
+  /* --------------------------------------------------------------------- */
+
+  /**
+   * Creates a group holding one tab.
+   *
+   * A group is always born with a member, because an empty one has no rail
+   * presence and would be immediately pruned. The colour cycles through the
+   * palette so two groups made in a row look different without the user being
+   * asked to choose.
+   */
+  public createGroup(tabId: string, name: string): BrowserSnapshot {
+    const tab = this.tabs.get(tabId);
+    if (tab === undefined || this.groups.length >= MAX_TAB_GROUPS) return this.snapshot();
+
+    const group: TabGroup = {
+      id: `group-${this.nextGroupSequence++}`,
+      name,
+      colour: nextColour(this.groups.length),
+      collapsed: false
+    };
+
+    this.groups = [...this.groups, group];
+    tab.state = { ...tab.state, groupId: group.id };
+
+    return this.emit();
+  }
+
+  /** Renames, recolours, or collapses a group. Membership is untouched. */
+  public updateGroup(
+    groupId: string,
+    name: string,
+    colour: GroupColour,
+    collapsed: boolean
+  ): BrowserSnapshot {
+    if (!this.groups.some((group) => group.id === groupId)) return this.snapshot();
+
+    this.groups = this.groups.map((group) =>
+      group.id === groupId ? { ...group, name, colour, collapsed } : group
+    );
+
+    return this.emit();
+  }
+
+  /**
+   * Moves a tab into a group, or out of whichever one it was in.
+   *
+   * A group id that names nothing leaves the tab ungrouped rather than pointing
+   * at something absent.
+   */
+  public assignTabToGroup(tabId: string, groupId: string | null): BrowserSnapshot {
+    const tab = this.tabs.get(tabId);
+    if (tab === undefined) return this.snapshot();
+
+    const target =
+      groupId !== null && this.groups.some((group) => group.id === groupId) ? groupId : null;
+
+    tab.state = { ...tab.state, groupId: target };
+    this.pruneGroups();
+
+    return this.emit();
+  }
+
+  /**
+   * Dissolves a group.
+   *
+   * Its tabs are released rather than closed. "Ungroup" is a statement about
+   * organisation, and reading it as "close these" would destroy work.
+   */
+  public removeGroup(groupId: string): BrowserSnapshot {
+    if (!this.groups.some((group) => group.id === groupId)) return this.snapshot();
+
+    for (const tab of this.tabs.values()) {
+      if (tab.state.groupId === groupId) tab.state = { ...tab.state, groupId: null };
+    }
+
+    this.groups = this.groups.filter((group) => group.id !== groupId);
+    return this.emit();
+  }
+
+  /** Drops groups nothing belongs to, after a tab moved out or closed. */
+  private pruneGroups(): void {
+    this.groups = pruneEmptyGroups(
+      this.groups,
+      [...this.tabs.values()].map((tab) => tab.state.groupId)
+    );
   }
 
   /* --------------------------------------------------------------------- */

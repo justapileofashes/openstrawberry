@@ -66,6 +66,12 @@ import {
   parseMediaTabPayload
 } from "../shared/media.js";
 import {
+  parseAssignTabPayload,
+  parseCreateGroupPayload,
+  parseGroupIdPayload,
+  parseUpdateGroupPayload
+} from "../shared/tab-groups.js";
+import {
   parseSaveWorkspacePayload,
   parseWorkspaceIdPayload
 } from "../shared/workspaces.js";
@@ -654,6 +660,32 @@ function registerIpcHandlers(): void {
     const contents = requireBrowserManager().contentsFor(payload.tabId);
     return contents === null ? emptyMediaState() : runMediaAction(contents, payload.action);
   });
+
+  /*
+   * Tab groups. Ids are minted in the manager, and a colour is validated
+   * against the shipped palette rather than defaulted, so a payload carrying
+   * anything else is refused rather than quietly accepted.
+   */
+  registerTrustedHandler(IPC_CHANNELS.groupCreate, parseCreateGroupPayload, (payload) =>
+    requireBrowserManager().createGroup(payload.tabId, payload.name)
+  );
+
+  registerTrustedHandler(IPC_CHANNELS.groupUpdate, parseUpdateGroupPayload, (payload) =>
+    requireBrowserManager().updateGroup(
+      payload.groupId,
+      payload.name,
+      payload.colour,
+      payload.collapsed
+    )
+  );
+
+  registerTrustedHandler(IPC_CHANNELS.groupAssign, parseAssignTabPayload, (payload) =>
+    requireBrowserManager().assignTabToGroup(payload.tabId, payload.groupId)
+  );
+
+  registerTrustedHandler(IPC_CHANNELS.groupRemove, parseGroupIdPayload, (payload) =>
+    requireBrowserManager().removeGroup(payload.groupId)
+  );
 
   registerTrustedQuery(IPC_CHANNELS.agentSnapshot, () => requireAgentManager().snapshot());
 

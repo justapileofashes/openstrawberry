@@ -31,6 +31,7 @@ import type { TrackingSnapshot } from "./tracking.js";
 import type { ReaderState } from "./reader.js";
 import type { WorkspaceSnapshot } from "./workspaces.js";
 import type { MediaAction, MediaState } from "./media.js";
+import type { GroupColour } from "./tab-groups.js";
 
 /** Channel names, shared so both sides of the boundary cannot drift apart. */
 export const IPC_CHANNELS = {
@@ -98,7 +99,11 @@ export const IPC_CHANNELS = {
   workspaceOpen: "workspace:open",
   workspaceRemove: "workspace:remove",
   mediaState: "media:state",
-  mediaCommand: "media:command"
+  mediaCommand: "media:command",
+  groupCreate: "group:create",
+  groupUpdate: "group:update",
+  groupAssign: "group:assign",
+  groupRemove: "group:remove"
 } as const;
 
 /** Push channel the main process uses to broadcast browser state changes. */
@@ -183,6 +188,27 @@ export interface BrowserBridge {
   ) => Promise<BrowserSnapshot>;
   readonly setSplitEnabled: (enabled: boolean) => Promise<BrowserSnapshot>;
   readonly setActivePane: (paneId: BrowserPaneId) => Promise<BrowserSnapshot>;
+  /**
+   * Tab groups.
+   *
+   * A group is born holding a tab, because an empty one has no rail presence.
+   * `colour` is a token from a shipped palette, never a CSS value, so stored
+   * state can never reach a style attribute. Removing a group releases its tabs
+   * rather than closing them.
+   */
+  readonly createGroup: (tabId: string, name: string) => Promise<BrowserSnapshot>;
+  readonly updateGroup: (
+    groupId: string,
+    name: string,
+    colour: GroupColour,
+    collapsed: boolean
+  ) => Promise<BrowserSnapshot>;
+  /** Null takes the tab out of whatever group it was in. */
+  readonly assignTabToGroup: (
+    tabId: string,
+    groupId: string | null
+  ) => Promise<BrowserSnapshot>;
+  readonly removeGroup: (groupId: string) => Promise<BrowserSnapshot>;
   /** Subscribes to pushed state. Returns an unsubscribe function. */
   readonly onState: (listener: (snapshot: BrowserSnapshot) => void) => () => void;
 }
