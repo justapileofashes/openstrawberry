@@ -149,6 +149,12 @@ export const COMMANDS: readonly Command[] = [
     keywords: ["companion", "assistant"]
   },
   {
+    id: "tools.updates",
+    title: "Updates",
+    group: "Tools",
+    keywords: ["version", "upgrade", "release"]
+  },
+  {
     id: "tools.settings",
     title: "Settings",
     group: "Tools",

@@ -24,6 +24,7 @@ import type {
   DOWNLOAD_STATE_EVENT as DownloadStateEvent,
   IPC_CHANNELS,
   PLAN_STATE_EVENT as PlanStateEvent,
+  UPDATE_STATE_EVENT as UpdateStateEvent,
   TRACKING_STATE_EVENT as TrackingStateEvent,
   OpenStrawberryBridge,
   ShellInfo,
@@ -38,6 +39,7 @@ import type { MediaAction, MediaState } from "../shared/media.js";
 import type { GroupColour } from "../shared/tab-groups.js";
 import type { BookmarkPage } from "../shared/bookmarks.js";
 import type { Plan, PlanDraftPayload } from "../shared/orchestration.js";
+import type { UpdateState } from "../shared/updates.js";
 import type { BrowserPaneId, BrowserSnapshot, BrowserViewport } from "../shared/browser.js";
 import type {
   AgentConfigStatus,
@@ -127,7 +129,11 @@ const CHANNEL: Channels = {
   planPropose: "plan:propose",
   planApprove: "plan:approve",
   planResolveStep: "plan:resolve-step",
-  planCancel: "plan:cancel"
+  planCancel: "plan:cancel",
+  updateState: "update:state",
+  updateCheck: "update:check",
+  updateDownload: "update:download",
+  updateInstall: "update:install"
 };
 
 const STATE_EVENT: typeof BrowserStateEvent = "browser:state";
@@ -136,6 +142,7 @@ const AGENT_EVENT: typeof AgentStateEvent = "agent:state";
 const DOWNLOAD_EVENT: typeof DownloadStateEvent = "download:state";
 const TRACKING_EVENT: typeof TrackingStateEvent = "tracking:state";
 const PLAN_EVENT: typeof PlanStateEvent = "plan:state";
+const UPDATE_EVENT: typeof UpdateStateEvent = "update:state-changed";
 
 async function snapshotCall(channel: string, payload?: unknown): Promise<BrowserSnapshot> {
   return (await electron.ipcRenderer.invoke(channel, payload)) as BrowserSnapshot;
@@ -363,6 +370,21 @@ const api: OpenStrawberryBridge = {
       (await electron.ipcRenderer.invoke(CHANNEL.workspaceRemove, {
         workspaceId
       })) as WorkspaceSnapshot
+  },
+  updates: {
+    getState: async (): Promise<UpdateState> =>
+      (await electron.ipcRenderer.invoke(CHANNEL.updateState)) as UpdateState,
+    check: async (): Promise<UpdateState> =>
+      (await electron.ipcRenderer.invoke(CHANNEL.updateCheck)) as UpdateState,
+    download: async (): Promise<UpdateState> =>
+      (await electron.ipcRenderer.invoke(CHANNEL.updateDownload)) as UpdateState,
+    install: async (): Promise<UpdateState> =>
+      (await electron.ipcRenderer.invoke(CHANNEL.updateInstall)) as UpdateState,
+    onState: (listener: (state: UpdateState) => void): (() => void) => {
+      const handler = (_event: unknown, state: UpdateState): void => listener(state);
+      electron.ipcRenderer.on(UPDATE_EVENT, handler);
+      return () => electron.ipcRenderer.removeListener(UPDATE_EVENT, handler);
+    }
   },
   plans: {
     getPlans: async (): Promise<readonly Plan[]> =>

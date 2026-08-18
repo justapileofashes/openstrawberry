@@ -8,6 +8,7 @@ import {
   DOWNLOAD_STATE_EVENT,
   IPC_CHANNELS,
   PLAN_STATE_EVENT,
+  UPDATE_STATE_EVENT,
   TRACKING_STATE_EVENT,
   WINDOW_STATE_EVENT,
   type ShellInfo,
@@ -46,6 +47,7 @@ import {
   APP_ID,
   PROFILE_PARTITION,
   RELEASE_READY,
+  UPDATE_CHANNEL_ENABLED,
   usesCustomWindowControls
 } from "../shared/desktop-shell.js";
 import {
@@ -62,6 +64,7 @@ import { extractReaderDocument } from "./reader.js";
 import { callProvider } from "./http-provider.js";
 import { callCli, type SpawnedProcess } from "./cli-provider.js";
 import { PlanRunner } from "./plan-runner.js";
+import { UpdateManager } from "./update-manager.js";
 import {
   parsePlanDecisionPayload,
   parsePlanDraftPayload,
@@ -131,6 +134,7 @@ let trackerBlocker: TrackerBlocker | null = null;
 let workspaceStore: WorkspaceStore | null = null;
 let agentManager: AgentManager | null = null;
 let planRunner: PlanRunner | null = null;
+let updateManager: UpdateManager | null = null;
 let migrationManager: MigrationManager | null = null;
 /** A link that arrived before the browser core existed. */
 let pendingLaunchUrl: string | null = urlFromCommandLine(process.argv);
@@ -170,6 +174,26 @@ function requireWorkspaceStore(): WorkspaceStore {
     statePath: join(app.getPath("userData"), "workspaces.json")
   });
   return workspaceStore;
+}
+
+/**
+ * The update runtime, created on first use.
+ *
+ * Its environment is three independent facts, assembled here where all three are
+ * actually known: whether this build is packaged, whether the product considers
+ * itself release ready, and whether the channel is switched on.
+ */
+function requireUpdateManager(): UpdateManager {
+  updateManager ??= new UpdateManager({
+    environment: {
+      packaged: app.isPackaged,
+      releaseReady: RELEASE_READY,
+      channelEnabled: UPDATE_CHANNEL_ENABLED
+    },
+    currentVersion: app.getVersion(),
+    publish: (state) => sendToRenderer(UPDATE_STATE_EVENT, state)
+  });
+  return updateManager;
 }
 
 /** Returns the live plan runner, or throws so the router can redact. */
@@ -812,6 +836,16 @@ function registerIpcHandlers(): void {
     runner.cancel(payload.planId);
     return runner.snapshot();
   });
+
+  /*
+   * Updates. Every verb re-asks the gate; a refusal returns `disabled` carrying
+   * its reasons rather than throwing, because "this build will never update
+   * itself" is a state to render rather than an error.
+   */
+  registerTrustedQuery(IPC_CHANNELS.updateState, () => requireUpdateManager().snapshot());
+  registerTrustedQuery(IPC_CHANNELS.updateCheck, () => requireUpdateManager().check());
+  registerTrustedQuery(IPC_CHANNELS.updateDownload, () => requireUpdateManager().download());
+  registerTrustedQuery(IPC_CHANNELS.updateInstall, () => requireUpdateManager().install());
 
   registerTrustedQuery(IPC_CHANNELS.agentSnapshot, () => requireAgentManager().snapshot());
 

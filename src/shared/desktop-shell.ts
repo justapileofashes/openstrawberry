@@ -54,6 +54,18 @@ export const PLANNED_RELEASE_ARTIFACTS: Readonly<Record<ReleasePlatform, string>
  */
 export const RELEASE_READY = false;
 
+/**
+ * The update channel's own switch, mirroring `openstrawberryUpdateChannel` in
+ * `package.json`.
+ *
+ * Held here as well as there because the gate is a conjunction of three
+ * independent facts, and a conjunction is only worth something if its parts are
+ * genuinely separate. This one is the maintainer's intent to publish updates at
+ * all; `RELEASE_READY` is whether the artifacts justify it; `app.isPackaged` is
+ * whether this build could sensibly replace itself.
+ */
+export const UPDATE_CHANNEL_ENABLED = false;
+
 export function plannedArtifactName(platform: ReleasePlatform): string {
   return PLANNED_RELEASE_ARTIFACTS[platform];
 }

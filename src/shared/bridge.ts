@@ -34,6 +34,7 @@ import type { MediaAction, MediaState } from "./media.js";
 import type { GroupColour } from "./tab-groups.js";
 import type { BookmarkPage } from "./bookmarks.js";
 import type { Plan, PlanDraftPayload } from "./orchestration.js";
+import type { UpdateState } from "./updates.js";
 
 /** Channel names, shared so both sides of the boundary cannot drift apart. */
 export const IPC_CHANNELS = {
@@ -111,7 +112,11 @@ export const IPC_CHANNELS = {
   planPropose: "plan:propose",
   planApprove: "plan:approve",
   planResolveStep: "plan:resolve-step",
-  planCancel: "plan:cancel"
+  planCancel: "plan:cancel",
+  updateState: "update:state",
+  updateCheck: "update:check",
+  updateDownload: "update:download",
+  updateInstall: "update:install"
 } as const;
 
 /** Push channel the main process uses to broadcast browser state changes. */
@@ -140,6 +145,9 @@ export const TRACKING_STATE_EVENT = "tracking:state";
 
 /** Push channel for orchestration plans, which advance without being asked. */
 export const PLAN_STATE_EVENT = "plan:state";
+
+/** Push channel for the update channel's own state. */
+export const UPDATE_STATE_EVENT = "update:state-changed";
 
 /** Non-secret facts about the running application. */
 export interface ShellInfo {
@@ -475,6 +483,22 @@ export interface PlanBridge {
   readonly onState: (listener: (plans: readonly Plan[]) => void) => () => void;
 }
 
+/**
+ * The update channel.
+ *
+ * Every verb can refuse, and a refusal returns `disabled` carrying its reasons
+ * rather than throwing: "this build will never update itself, and here is why"
+ * is a state to render, not an error to report.
+ */
+export interface UpdateBridge {
+  readonly getState: () => Promise<UpdateState>;
+  readonly check: () => Promise<UpdateState>;
+  readonly download: () => Promise<UpdateState>;
+  /** Restarts into a downloaded update. Separate from downloading on purpose. */
+  readonly install: () => Promise<UpdateState>;
+  readonly onState: (listener: (state: UpdateState) => void) => () => void;
+}
+
 export interface OpenStrawberryBridge {
   readonly shell: {
     /** Available synchronously so first paint does not wait on IPC. */
@@ -491,4 +515,5 @@ export interface OpenStrawberryBridge {
   readonly workspaces: WorkspaceBridge;
   readonly media: MediaBridge;
   readonly plans: PlanBridge;
+  readonly updates: UpdateBridge;
 }

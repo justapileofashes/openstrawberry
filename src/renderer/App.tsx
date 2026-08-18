@@ -36,6 +36,8 @@ import { WorkspacesPanel } from "./WorkspacesPanel.js";
 import { GroupsPanel } from "./GroupsPanel.js";
 import { BookmarksPanel } from "./BookmarksPanel.js";
 import { PlansPanel } from "./PlansPanel.js";
+import { UpdatesPanel } from "./UpdatesPanel.js";
+import type { UpdateState } from "../shared/updates.js";
 import type { Plan } from "../shared/orchestration.js";
 import { emptyBookmarkPage, type BookmarkPage } from "../shared/bookmarks.js";
 import { emptyWorkspaceSnapshot, type WorkspaceSnapshot } from "../shared/workspaces.js";
@@ -167,6 +169,11 @@ export function App(): React.JSX.Element {
   const [groupsOpen, setGroupsOpen] = useState(false);
   const [bookmarksOpen, setBookmarksOpen] = useState(false);
   const [plansOpen, setPlansOpen] = useState(false);
+  const [updatesOpen, setUpdatesOpen] = useState(false);
+  const [updates, setUpdates] = useState<UpdateState>({
+    status: "disabled",
+    blockers: []
+  });
   const [plans, setPlans] = useState<readonly Plan[]>([]);
   const [bookmarkQuery, setBookmarkQuery] = useState("");
   const [bookmarks, setBookmarks] = useState<BookmarkPage>(emptyBookmarkPage);
@@ -238,6 +245,13 @@ export function App(): React.JSX.Element {
    * Plans advance without being asked - a step finishing makes others ready -
    * so the panel renders from pushed state rather than polling.
    */
+  useEffect(() => {
+    const updateBridge = window.openstrawberry.updates;
+    const unsubscribe = updateBridge.onState(setUpdates);
+    void updateBridge.getState().then(setUpdates).catch(() => undefined);
+    return unsubscribe;
+  }, []);
+
   useEffect(() => {
     const planBridge = window.openstrawberry.plans;
     const unsubscribe = planBridge.onState(setPlans);
@@ -410,6 +424,9 @@ export function App(): React.JSX.Element {
           return;
         case "tools.plans":
           setPlansOpen((open) => !open);
+          return;
+        case "tools.updates":
+          setUpdatesOpen((open) => !open);
           return;
         case "group.toggle": {
           const group = current === null ? null : groupForTab(snapshot, current);
@@ -910,6 +927,16 @@ export function App(): React.JSX.Element {
 
           {reader.status !== "closed" && (
             <ReaderView state={reader} onClose={() => setReader(closedReaderState())} />
+          )}
+
+          {updatesOpen && (
+            <UpdatesPanel
+              state={updates}
+              onCheck={() => void window.openstrawberry.updates.check().then(setUpdates)}
+              onDownload={() => void window.openstrawberry.updates.download().then(setUpdates)}
+              onInstall={() => void window.openstrawberry.updates.install().then(setUpdates)}
+              onClose={() => setUpdatesOpen(false)}
+            />
           )}
 
           {plansOpen && (

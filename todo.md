@@ -59,7 +59,7 @@ passes. Planned work is never marked done.
 - [x] Light the chrome from a single ambient field behind the whole workspace rather than per-panel highlights, so the glass reveals what is behind it instead of owning its own shine.
 - [x] Hold back the static tint and edge sweep so the travelling light is the dominant highlight rather than being swamped by fixed lighting.
 - [x] Add an appearance settings panel on the top bar controlling shine on/off, intensity, colour, speed, and non-essential motion, persisted in renderer-owned storage.
-- [ ] Icon-only Updates trigger; the Agent, Downloads, and Settings triggers are present but inert until their milestones land.
+- [x] Icon-only Updates trigger, reachable from the command palette. The Agent, Downloads, and Settings triggers are all live now that their milestones have landed.
 - [x] Keyboard traversal pass. Every panel is a dialog that now holds the keyboard: Tab and Shift+Tab cycle within it and wrap at both ends, focus moves in when it opens, and returns to whatever had it when it closes — without which a user who opened a panel from the keyboard is dropped at the top of the document. A modified Tab is left to the window rather than swallowed. The selection arithmetic is pure and tested; only the hook touches the DOM.
 - [ ] Responsive behaviour below the minimum desktop width. The window enforces a 1024px minimum today, so nothing can currently render narrower than the layout assumes; lowering that bound is the change this item describes.
 - [ ] Bundle Inter and JetBrains Mono as local woff2 rather than relying on installed fonts. The renderer must not fetch webfonts from a remote host.
@@ -109,8 +109,8 @@ passes. Planned work is never marked done.
 
 ## M7 — Updater
 
-- [ ] Update panel states: disabled, checking, available, downloading, downloaded, error, install and restart.
-- [ ] Gate activation on both a packaged build and verified release metadata; never download or install silently.
+- [x] Update panel states: disabled, checking, available, downloading, downloaded, error, install and restart. Every action is derived from the state rather than tracked beside it, so a button and its handler cannot disagree about what is possible. The disabled state names each blocker separately, because a development build and an unsigned release are different problems with different fixes.
+- [x] Gate activation on a packaged build, a release-ready product, and an enabled channel; never download or install silently. The gate is a conjunction of three independent facts re-asked on every command, so no single edit turns downloading-and-running-code on, and a refusal restates the whole gate rather than leaving a stale state. Downloading and installing stay separate acts. `electron-updater` is deliberately still not imported: wiring a transport is the step that comes after signed artifacts exist.
 
 ## M8 — Icons, packaging, CI
 
