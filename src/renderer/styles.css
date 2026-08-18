@@ -1,5 +1,5 @@
 /* =========================================================
-   Obsidian Relay â€” OpenStrawberry design system
+   Obsidian Relay — OpenStrawberry design system
 
    A warm-monochrome near-black workspace. Colour is reserved for meaning, not
    decoration. Liquid Glass is deliberately cooler than the base so chrome reads
@@ -13,7 +13,7 @@
    webfonts from a remote host; bundled woff2 files are a later refinement.
    ========================================================= */
 :root {
-  /* grounds and surfaces â€” warm monochrome */
+  /* grounds and surfaces — warm monochrome */
   --bg-deep: #08080a;
   --bg: #0e0d0c;
   --surface: #1a1816;
@@ -39,7 +39,7 @@
      Four stacked effects make a surface read as real glass:
        1. a cool tint film, brighter at the top edge
        2. a heavy backdrop blur with saturation and a slight lift
-       3. a specular rim â€” bright top inner edge, dark bottom inner edge
+       3. a specular rim — bright top inner edge, dark bottom inner edge
        4. an outer drop shadow that separates it from the ground
      -------------------------------------------------------------------- */
   /*
@@ -104,7 +104,7 @@
   --d-base: 200ms;
   --d-slow: 360ms;
 
-  /* frame gutter â€” the gap that lets the ground show behind the glass */
+  /* frame gutter — the gap that lets the ground show behind the glass */
   --frame: 14px;
   --agent-width: 380px;
 
@@ -406,7 +406,7 @@ body {
 }
 
 /* =========================================================
-   Shell â€” floating chrome over an ambient ground
+   Shell — floating chrome over an ambient ground
    ========================================================= */
 .shell {
   position: relative;
@@ -452,7 +452,7 @@ body {
 }
 
 /* =========================================================
-   Tab rail â€” favicons only, floating glass slab
+   Tab rail — favicons only, floating glass slab
    ========================================================= */
 .tab-rail {
   display: flex;
@@ -741,7 +741,7 @@ body {
 }
 
 /* =========================================================
-   Window controls â€” drawn by the app, not the system
+   Window controls — drawn by the app, not the system
    ========================================================= */
 .window-controls {
   display: flex;
@@ -936,7 +936,7 @@ body {
   transform: translate(0, -50%) scale(1);
 }
 
-/* Address well â€” inset rather than raised, so it reads as carved into glass. */
+/* Address well — inset rather than raised, so it reads as carved into glass. */
 .address {
   flex: 1;
   min-width: 0;
@@ -976,7 +976,7 @@ body {
 }
 
 /* =========================================================
-   Panes â€” empty regions the native views are composited into
+   Panes — empty regions the native views are composited into
    ========================================================= */
 .panes {
   position: relative;
@@ -1388,7 +1388,7 @@ input[type="range"]:disabled {
 }
 
 /* The liquid tab morph is an affordance, so it keeps a short transition even
-   with motion off â€” it just stops overshooting. */
+   with motion off — it just stops overshooting. */
 :root.motion-off *,
 :root.motion-off *::before,
 :root.motion-off *::after {
