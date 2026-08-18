@@ -41,6 +41,14 @@ OpenStrawberry surface to reach for.
 | Bounded, defensive parsers for every foreign file migration reads | `src/main/bookmark-parsers.ts`, `src/main/password-csv.ts` |
 | Staged credentials encrypted with `safeStorage`, with no read path | `src/main/migration-store.ts` |
 | Every store written whole or not at all, owner-only on each write | `src/main/atomic-write.ts` |
+| Provider requests refuse redirects, so a 302 cannot be handed the key | `src/main/http-provider.ts` |
+| A credential is added to a request and nowhere else; the module that shapes requests never receives one | `src/shared/provider-request.ts`, `src/main/http-provider.ts` |
+| Credential-shaped tokens scrubbed from task text before it is stored or sent | `src/shared/agents.ts` |
+| Local commands allowlisted by executable name, spawned with no shell, prompt on stdin | `src/main/cli-provider.ts` |
+| Child processes given a rebuilt environment, so a key in the parent's does not travel | `src/main/cli-provider.ts` |
+| Plans do not run until approved, and a step reads only the tabs it was granted | `src/shared/orchestration.ts` |
+| Updates gated on a conjunction of packaged, release-ready, and channel-enabled | `src/shared/updates.ts`, `src/main/update-manager.ts` |
+| A canary suite asserting no stored credential reaches any snapshot, file, or error | `src/main/agent-redaction.test.ts` |
 
 The renderer's Content-Security-Policy is relaxed only while the Vite dev server
 is serving, never in the built output.
@@ -71,10 +79,32 @@ read, and what remains a risk are recorded in
   installer carries no provenance. Do not distribute one.
 - **Tracker blocking is conservative.** It is a bounded, transparent policy with
   per-site exceptions, not a comprehensive ad blocker, and is not claimed to be.
-- **Agent surfaces are incomplete.** The registry, provider adapters, CLI
-  adapters, and orchestrator are not yet implemented. Each will land with a
-  threat model, typed IPC contract, redaction tests, bounded execution policy,
-  and user-visible approval state.
+- **Agents now reach the network and the process table.** This is the largest
+  change to the threat model since the browser core, and it is stated plainly
+  because the previous version of this document said these surfaces did not
+  exist:
+  - A configured agent sends a prompt, with a stored credential, to an HTTPS
+    endpoint the user chose. Redirects are refused rather than followed, so a
+    302 cannot hand the key to another host; the request is bounded in time and
+    the reply bounded in size; and a provider's own error text is never shown or
+    logged, because it can echo the request back.
+  - A configured agent starts a program on this machine. It is spawned with an
+    argv array and never a shell, the executable's base name must be one this
+    app ships support for, the prompt goes in on stdin rather than argv where a
+    process listing would show it, and the environment is rebuilt from a fixed
+    list rather than inherited — so a key in the parent's environment does not
+    travel to the child.
+  - Neither happens until a user configures a provider or a command. A default
+    install has no credential, and an agent with no route reports that rather
+    than doing anything.
+- **A prompt leaves the machine.** When an HTTP provider is configured, the task
+  text and the names of granted tabs are sent to that provider. Credential-shaped
+  tokens are scrubbed from task text first, but that is a mitigation and not a
+  guarantee: anything else a user types is sent as typed.
+- **Orchestration is review-first, and that is the control.** A plan does not
+  run until a person approves it, a step reads only the tabs it was granted, and
+  a gated step waits for a decision. The safety of the feature rests on people
+  reading plans before approving them.
 - **Third-party search.** Non-URL address input becomes a query to an external
   search engine. This happens only on explicit user input, never implicitly.
 - **Dependency surface.** Direct dependencies are pinned to exact versions with
@@ -83,5 +113,13 @@ read, and what remains a risk are recorded in
 ## Non-goals
 
 OpenStrawberry will not implement DRM or CAPTCHA bypass, hidden cross-site
-automation, cookie or session copying, arbitrary shell execution, arbitrary
-executable paths, or renderer-supplied subprocess arguments.
+automation, cookie or session copying, shell execution, or renderer-supplied
+subprocess arguments.
+
+It will not run an arbitrary executable. A user may point a CLI route at a
+program anywhere on disk, because a tool installed under a version manager is
+not on a predictable path — but the file's base name must be one of the tools
+this app ships support for. Configuring a path is authorisation for that
+program, not for whatever happens to sit at that path. No argument is ever
+passed, and the prompt is written to stdin, so there is no command line for
+anything to be smuggled into.

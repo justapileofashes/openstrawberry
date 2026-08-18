@@ -19,12 +19,13 @@ production software.
 |---|---|
 | Desktop shell (Electron, hardened main/preload/renderer split) | Built |
 | Real Chromium browsing, tabs, split panes | Built |
-| Obsidian Relay chrome | Built; responsive and full keyboard traversal outstanding |
+| Obsidian Relay chrome | Built; responsive behaviour below the minimum width outstanding |
 | Migration and encrypted password staging | Built; not yet exercised end to end against real exports on every platform |
 | Agent panel and encrypted per-agent credential store | Built |
-| Providers, local CLI adapters, orchestration | Not implemented. The run loop is a scripted stand-in that calls no provider and starts no process |
-| Browser fundamentals (downloads, tracker blocking, reader mode, tab groups) | Not implemented |
-| Updater | Not implemented, disabled by design |
+| HTTP providers and local CLI adapters | Built. A configured agent sends prompts to a provider and can start an allowlisted local program — see [`docs/SECURITY.md`](docs/SECURITY.md) for what each is permitted |
+| Review-first orchestration | Built. A plan is reviewed and approved before any step runs |
+| Browser fundamentals (downloads, tracker blocking, reader mode, media controls, tab groups, workspaces, command palette) | Built |
+| Updater | Gate and panel built; the channel is off and no transport is wired, both by design until releases are signed |
 | Signed releases | Pipeline complete and enforced by tooling; blocked on signing credentials |
 
 See [`todo.md`](todo.md) for the working checklist.
