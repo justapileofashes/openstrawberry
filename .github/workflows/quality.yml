@@ -28,6 +28,12 @@ jobs:
       - name: Install (frozen lockfile)
         run: pnpm install --frozen-lockfile
 
+      # Runs here rather than only before a release, because a break in the mac
+      # or linux block is invisible on the machine that introduced it and would
+      # otherwise surface on a release runner, at the most expensive moment.
+      - name: Validate packaging configuration
+        run: pnpm verify:config
+
       - name: Type check
         run: pnpm check
 

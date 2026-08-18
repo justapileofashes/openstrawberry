@@ -28,9 +28,10 @@
     "package": "pnpm build && electron-builder --publish never",
     "package:dir": "pnpm build && electron-builder --dir",
     "checksums": "node scripts/checksums.mjs",
+    "verify:config": "node scripts/verify-config.mjs",
     "verify:artifacts": "node scripts/verify-artifacts.mjs",
     "release:preflight": "node scripts/release-preflight.mjs",
-    "release": "pnpm release:preflight && pnpm check && pnpm test && pnpm build && electron-builder --publish never --config.mac.notarize=true && pnpm checksums && pnpm verify:artifacts"
+    "release": "pnpm verify:config && pnpm release:preflight && pnpm check && pnpm test && pnpm build && electron-builder --publish never --config.mac.notarize=true && pnpm checksums && pnpm verify:artifacts"
   },
   "dependencies": {
     "electron-updater": "6.8.9",
