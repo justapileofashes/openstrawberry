@@ -91,6 +91,12 @@ export const COMMANDS: readonly Command[] = [
     shortcut: { key: "g", mod: true, shift: true }
   },
   {
+    id: "group.manage",
+    title: "Tab groups",
+    group: "Workspace",
+    keywords: ["rename", "colour", "manage groups"]
+  },
+  {
     id: "group.toggle",
     title: "Collapse or expand this group",
     group: "Workspace",

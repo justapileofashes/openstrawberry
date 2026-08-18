@@ -3130,3 +3130,114 @@ input[type="range"]:disabled {
   border-radius: 1px;
   background: var(--group-tone, var(--ink-muted));
 }
+
+/* -------------------------------------------------------------------------- */
+/* Tab groups panel                                                            */
+/* -------------------------------------------------------------------------- */
+
+.gr-list {
+  margin: var(--s-2) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.gr-item {
+  padding: var(--s-3) 0;
+  border-bottom: 1px solid rgba(222, 232, 246, 0.05);
+}
+
+.gr-item:last-child {
+  border-bottom: 0;
+}
+
+.gr-head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.gr-name {
+  min-inline-size: 0;
+  padding: var(--s-1) var(--s-2);
+  border: 1px solid transparent;
+  border-radius: var(--r-2);
+  background: transparent;
+  color: var(--ink-strong);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  outline: none;
+}
+
+/* The field only looks like a field once it is being used, so the list reads as
+   a list rather than as a form. */
+.gr-name:hover {
+  border-color: rgba(222, 232, 246, 0.1);
+}
+
+.gr-name:focus {
+  border-color: rgba(222, 232, 246, 0.28);
+  background: rgba(8, 8, 10, 0.35);
+}
+
+.gr-count {
+  font-size: 11.5px;
+  color: var(--ink-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.gr-swatches {
+  display: flex;
+  gap: var(--s-2);
+  margin: var(--s-2) 0 0 28px;
+}
+
+.gr-swatch {
+  inline-size: 14px;
+  block-size: 14px;
+  padding: 0;
+  border: 1px solid rgba(8, 8, 10, 0.4);
+  border-radius: 50%;
+  background: var(--group-tone, var(--ink-muted));
+  cursor: pointer;
+}
+
+/*
+ * The selected swatch carries a ring as well as being the only filled one at
+ * that position, so the choice is not signalled by colour alone.
+ */
+.gr-swatch.is-selected {
+  box-shadow: 0 0 0 2px var(--ground), 0 0 0 3px var(--ink-strong);
+}
+
+.gr-swatch:focus-visible {
+  outline: 2px solid var(--ink-strong);
+  outline-offset: 2px;
+}
+
+/* The swatch palette, keyed by the same tokens the rail uses. */
+.gr-swatch[data-group-colour="slate"] {
+  --group-tone: #8ea3bf;
+}
+.gr-swatch[data-group-colour="amber"] {
+  --group-tone: #d8a657;
+}
+.gr-swatch[data-group-colour="rose"] {
+  --group-tone: #d98098;
+}
+.gr-swatch[data-group-colour="violet"] {
+  --group-tone: #a992d6;
+}
+.gr-swatch[data-group-colour="teal"] {
+  --group-tone: #6fc0b4;
+}
+.gr-swatch[data-group-colour="lime"] {
+  --group-tone: #a8c877;
+}
+
+.gr-empty {
+  margin: var(--s-4) 0 0;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--ink-muted);
+}

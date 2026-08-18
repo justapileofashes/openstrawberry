@@ -33,6 +33,7 @@ import { MigrationWizard } from "./MigrationWizard.js";
 import { ReaderView } from "./ReaderView.js";
 import { CommandPalette } from "./CommandPalette.js";
 import { WorkspacesPanel } from "./WorkspacesPanel.js";
+import { GroupsPanel } from "./GroupsPanel.js";
 import { emptyWorkspaceSnapshot, type WorkspaceSnapshot } from "../shared/workspaces.js";
 import { emptyMediaState, type MediaAction, type MediaState } from "../shared/media.js";
 import { commandForChord, isPaletteChord } from "./command-palette.js";
@@ -159,6 +160,7 @@ export function App(): React.JSX.Element {
   const [reader, setReader] = useState<ReaderState>(closedReaderState);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [workspacesOpen, setWorkspacesOpen] = useState(false);
+  const [groupsOpen, setGroupsOpen] = useState(false);
   const [workspaces, setWorkspaces] = useState<WorkspaceSnapshot>(emptyWorkspaceSnapshot);
   const [media, setMedia] = useState<MediaState>(emptyMediaState);
   const addressRef = useRef<HTMLInputElement>(null);
@@ -359,6 +361,9 @@ export function App(): React.JSX.Element {
           void bridge.createGroup(tabId, displayName(current.url)).then(setSnapshot);
           return;
         }
+        case "group.manage":
+          setGroupsOpen((open) => !open);
+          return;
         case "group.toggle": {
           const group = current === null ? null : groupForTab(snapshot, current);
           if (group === null) return;
@@ -857,6 +862,23 @@ export function App(): React.JSX.Element {
           )}
 
           <ReaderView state={reader} onClose={() => setReader(closedReaderState())} />
+
+          {groupsOpen && (
+            <GroupsPanel
+              groups={snapshot.groups}
+              // Counted here rather than stored on the group, so the number can
+              // never disagree with what the rail is actually drawing.
+              memberCounts={snapshot.tabs.reduce<Record<string, number>>((counts, tab) => {
+                if (tab.groupId !== null) counts[tab.groupId] = (counts[tab.groupId] ?? 0) + 1;
+                return counts;
+              }, {})}
+              onUpdate={(groupId, name, colour, collapsed) => {
+                void bridge.updateGroup(groupId, name, colour, collapsed).then(setSnapshot);
+              }}
+              onRemove={(groupId) => void bridge.removeGroup(groupId).then(setSnapshot)}
+              onClose={() => setGroupsOpen(false)}
+            />
+          )}
 
           {workspacesOpen && (
             <WorkspacesPanel
