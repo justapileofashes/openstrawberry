@@ -453,6 +453,15 @@ body {
   position: relative;
   display: grid;
   grid-template-columns: 56px minmax(0, 1fr);
+  /*
+   * The row is named for the same reason the pane row is: `height: 100%` bounds
+   * this element, but an implicit `auto` row inside it is still free to size to
+   * its content and overflow that bound. Nothing in the chrome had content tall
+   * enough to expose it until a new tab began drawing a full panel inside a pane.
+   * Pinning the row here is what makes every `minmax(0, 1fr)` below it resolve
+   * against the window instead of against the tallest thing in the tree.
+   */
+  grid-template-rows: minmax(0, 1fr);
   gap: var(--frame);
   padding: var(--frame);
   height: 100%;
@@ -1023,6 +1032,16 @@ body {
   position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
+  /*
+   * Named rather than left implicit. An implicit row is `auto`, which sizes to
+   * its content, and for as long as a pane was an empty measured region there
+   * was no content to size to. A new tab put the command center in that region,
+   * and the row grew to it — pushing the shell past the bottom of the window and
+   * giving the whole document a scrollbar, with the last of the panel unreachable
+   * below the edge. `minmax(0, 1fr)` pins the row to the height the workspace
+   * actually granted, which is what lets the panel's own body scroll inside it.
+   */
+  grid-template-rows: minmax(0, 1fr);
   min-height: 0;
 }
 
