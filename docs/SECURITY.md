@@ -33,7 +33,8 @@ OpenStrawberry surface to reach for.
 | Scheme allowlist enforced at the address bar, on the guest, and on restore | `src/shared/navigation.ts` |
 | Embedded-credential URLs refused | `src/shared/navigation.ts` |
 | HTTPS-only favicons, fetched uncredentialed and read under a hard byte cap | `src/shared/navigation.ts`, `src/main/favicon.ts` |
-| Permission requests denied by default on every session | `src/main/index.ts` |
+| Permission requests denied on every session, including the guest partition, which is also left with no display-media handler and so refuses capture outright | `src/main/index.ts` |
+| The one narrowing of that denial: on Windows, from the trusted chrome WebContents alone, a `media` request naming no media type is answered with loopback system audio. Video is never granted — the handler has no branch that returns a video source, and a microphone or camera request names a type and is refused | `src/main/loopback-audio.ts` |
 | Chrome cannot navigate away or open native windows | `src/main/index.ts` |
 | Strict Content-Security-Policy in the packaged renderer | `vite.config.ts` |
 | Session file restricted to bounded metadata | `src/shared/browser.ts` |
