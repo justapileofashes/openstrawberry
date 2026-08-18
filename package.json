@@ -25,8 +25,12 @@
     "check": "tsc --noEmit -p tsconfig.main.json && tsc --noEmit -p tsconfig.renderer.json",
     "test": "vitest run --config vitest.config.ts",
     "build": "vite build && tsc -p tsconfig.main.json",
-    "package": "pnpm build && electron-builder",
-    "package:dir": "pnpm build && electron-builder --dir"
+    "package": "pnpm build && electron-builder --publish never",
+    "package:dir": "pnpm build && electron-builder --dir",
+    "checksums": "node scripts/checksums.mjs",
+    "verify:artifacts": "node scripts/verify-artifacts.mjs",
+    "release:preflight": "node scripts/release-preflight.mjs",
+    "release": "pnpm release:preflight && pnpm check && pnpm test && pnpm build && electron-builder --publish never --config.mac.notarize=true && pnpm checksums && pnpm verify:artifacts"
   },
   "dependencies": {
     "electron-updater": "6.8.9",
@@ -80,7 +84,11 @@
         }
       ],
       "artifactName": "OpenStrawberry-mac-universal.${ext}",
-      "category": "public.app-category.productivity"
+      "category": "public.app-category.productivity",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "resources/entitlements.mac.plist",
+      "entitlementsInherit": "resources/entitlements.mac.plist"
     },
     "win": {
       "icon": "resources/icon.png",
@@ -88,7 +96,10 @@
         "nsis"
       ],
       "artifactName": "OpenStrawberry-win-x64.${ext}",
-      "requestedExecutionLevel": "asInvoker"
+      "requestedExecutionLevel": "asInvoker",
+      "signingHashAlgorithms": [
+        "sha256"
+      ]
     },
     "nsis": {
       "oneClick": true,

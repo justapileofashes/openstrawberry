@@ -24,6 +24,8 @@ passes. Planned work is never marked done.
 - [x] Narrow typed preload bridge; no generic `invoke`, no renderer-controlled channel, no Node, filesystem, or shell access.
 - [x] Keep the preload self-contained: a sandboxed preload may only require `electron`, so shared contracts are type-only and channel names are compile-time pinned.
 - [x] Tests for malformed payloads, untrusted senders, subframe senders, remote origins, and error redaction.
+- [x] Bound every read of foreign bytes in the trusted process against the bytes as they arrive, not against a header the sender chose. A favicon body is capped mid-stream, because `content-length` is absent from any chunked response and any visited page can name an icon URL.
+- [x] Write every store whole or not at all through one shared atomic write, so a crash or a full disk cannot leave a truncated credential file that reads as "no key was ever stored".
 - [x] Validate: the renderer reads shell state over the hardened channel in a running app.
 
 ## M2 — Real browsing
@@ -73,11 +75,20 @@ passes. Planned work is never marked done.
 
 ## M5 — Migration and privacy
 
-- [ ] Consent-first source browser, profile, and category selection.
-- [ ] Reviewable Chromium bookmark import and displayed default-search metadata.
-- [ ] Firefox and Safari support through manual HTML bookmark exports only.
-- [ ] Separately reviewed password CSV staging protected by OS encryption; no autofill, no sync, no raw reveal, unreachable by agents.
-- [ ] Never copy cookies, active sessions, account tokens, passkeys, payment data, extension binaries, or browser passwords.
+- [x] Consent-first source browser, profile, and category selection. Detection is a fixed per-platform registry, read-only, and never opens a bookmark file.
+- [x] Reviewable Chromium bookmark import and displayed default-search metadata — the provider's display name only, never its URL template, keyword, keys, or account state.
+- [x] Firefox and Safari support through manual HTML bookmark exports only. `places.sqlite`, Safari's bookmark database, and every other internal browser file stay unopened.
+- [x] Separately reviewed password CSV staging protected by OS encryption; no autofill, no sync, no raw reveal, unreachable by agents. Refuses to stage rather than falling back to plaintext, and the vault has no read path at all.
+- [x] Never copy cookies, active sessions, account tokens, passkeys, payment data, extension binaries, or browser passwords. No migration type has a field one would fit in.
+- [x] Renderer supplies no path, ever: a detected profile is an app-minted identifier, a picked file is an opaque handle, and the native dialog is opened by the trusted process.
+- [x] Defensive parsers with size, depth, count, and length bounds; an http(s)-only scheme gate; skip-and-count for malformed records; warnings as codes with counts rather than free text that could carry user data.
+- [x] Six-step review-first wizard with loading, empty, cancel, malformed-file, permission-denied, encrypted-storage-unavailable, and recoverable-error states, and a "Start fresh instead" escape on every screen.
+- [x] Application-owned migration state, atomic commits, conservative same-address-and-folder deduplication, and Settings re-entry that says re-running can duplicate.
+- [x] Privacy behaviour documented in `docs/MIGRATION_PRIVACY.md`.
+- [x] Validate: `pnpm check`, `pnpm test` (548 tests), and `pnpm build` all pass.
+- [ ] Exercise the wizard end to end in a running app against real Chrome, Firefox, and Safari exports on each platform. Covered by fixtures and unit tests today, not by a manual pass.
+- [ ] Surface imported bookmarks in the chrome. Migration writes `bookmarks.json`; nothing reads it yet, so an import is currently verifiable only through the result screen and Settings.
+- [ ] Apply the imported search provider name to address-bar search. It is stored and displayed; it does not yet change where a non-URL query goes.
 
 ## M6 — Agents and orchestration
 
@@ -101,16 +112,23 @@ passes. Planned work is never marked done.
 - [x] Register the app as its own desktop application: AppUserModelID matching the installed shortcut, `OpenStrawberry.exe` as the executable, a single-instance lock so one taskbar button is shared, and a Linux desktop entry with `StartupWMClass` and search keywords.
 - [x] Handle a URL passed on the command line, handed to a running instance on relaunch, and via `open-url` on macOS.
 - [x] Validate on Windows: built the NSIS artifact, launched the unpacked app, confirmed it stays alive, handed off a second launch, requested a normal close, and got a clean exit with no error dialog. The EXE was not installed.
+- [x] Confirm the packaged renderer ships the production Content-Security-Policy and no source maps, so the built output is checked rather than the config that was meant to produce it.
 - [ ] Register HTTP(S) scheme handlers so the app can be chosen as the default browser. Deferred until the link-handling path has been exercised end to end.
 - [ ] Validate Linux AppImage, DEB, and RPM on a Linux runner.
 - [ ] Validate the macOS DMG on a native macOS runner.
 
 ## M9 — Release readiness
 
-Blocked: requires signing credentials that are not available in this environment.
+The pipeline is complete and the gate is enforced by tooling. What remains is
+signing credentials, which are not available in this environment and cannot be
+produced here.
 
-- [ ] Windows Authenticode signing.
-- [ ] macOS Developer ID signing and notarisation.
-- [ ] Linux artifact verification.
-- [ ] SHA-256 checksums and release provenance.
+- [x] SHA-256 checksums and release provenance: `scripts/checksums.mjs` writes a `sha256sum -c` manifest and a `provenance.json` naming the commit, ref, and runner.
+- [x] Refuse a release build that could only produce an undistributable artifact: `scripts/release-preflight.mjs` stops before the build and names the missing credential.
+- [x] Verify what was actually produced rather than trusting the builder's exit code: `scripts/verify-artifacts.mjs` checks presence, real signature state, and checksum. It correctly fails the current unsigned local build.
+- [x] Hardened-runtime entitlements for macOS notarisation, limited to the three a Chromium browser cannot run without.
+- [x] Tag-driven release workflow building each platform on its own runner, re-verifying checksums after collection, and opening a draft release that never self-publishes.
+- [ ] Windows Authenticode signing. Blocked: needs a certificate. Everything around it is in place — supply `CSC_LINK` and `CSC_KEY_PASSWORD`.
+- [ ] macOS Developer ID signing and notarisation. Blocked: needs a certificate and an App Store Connect key.
+- [ ] Linux artifact verification. Not blocked by credentials; needs a Linux runner, which the release workflow provides.
 - [ ] Only then: enable download affordances and the update channel.
