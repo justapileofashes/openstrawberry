@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import {
   ArrowLeft,
   ArrowRight,
+  BookOpen,
   Bot,
   Columns2,
   Download,
@@ -18,11 +19,13 @@ import { BLANK_PAGE, usesCustomWindowControls } from "../shared/desktop-shell.js
 import { shouldOfferWizard, type MigrationOverview } from "../shared/migration.js";
 import { emptyDownloadSnapshot, type DownloadSnapshot } from "../shared/downloads.js";
 import { emptyTrackingSnapshot, type TrackingSnapshot } from "../shared/tracking.js";
+import { closedReaderState, type ReaderState } from "../shared/reader.js";
 import type { AppearanceSettings } from "../shared/settings.js";
 import { AgentPanel } from "./AgentPanel.js";
 import { AmbientField } from "./AmbientField.js";
 import { DownloadsPanel } from "./DownloadsPanel.js";
 import { MigrationWizard } from "./MigrationWizard.js";
+import { ReaderView } from "./ReaderView.js";
 import { SettingsPanel } from "./SettingsPanel.js";
 import { WindowControls } from "./WindowControls.js";
 import { applyAppearance, loadAppearance, saveAppearance } from "./settings-store.js";
@@ -139,6 +142,7 @@ export function App(): React.JSX.Element {
   const [downloadsOpen, setDownloadsOpen] = useState(false);
   const [downloads, setDownloads] = useState<DownloadSnapshot>(emptyDownloadSnapshot);
   const [tracking, setTracking] = useState<TrackingSnapshot>(emptyTrackingSnapshot);
+  const [reader, setReader] = useState<ReaderState>(closedReaderState);
   const [appearance, setAppearance] = useState<AppearanceSettings>(loadAppearance);
   const [migration, setMigration] = useState<MigrationOverview | null>(null);
   const [migrationOpen, setMigrationOpen] = useState(false);
@@ -220,6 +224,17 @@ export function App(): React.JSX.Element {
   }, [snapshot.activePaneId, snapshot.panes]);
 
   const current = useMemo(() => focusedTab(snapshot), [snapshot]);
+
+  /*
+   * Reader mode closes when the page underneath it changes.
+   *
+   * The extracted text is a snapshot of one page. Leaving it up after a
+   * navigation would show an article that is no longer what the tab holds,
+   * attributed to a site the user is no longer on.
+   */
+  useEffect(() => {
+    setReader(closedReaderState());
+  }, [current?.id, current?.url]);
 
   // The address bar follows the focused tab unless the user is mid-edit.
   useEffect(() => {
@@ -437,6 +452,30 @@ export function App(): React.JSX.Element {
                 </span>
               </IconButton>
             )}
+            {/*
+              Reader mode is offered only for a real page. On about:blank there
+              is nothing to lay out, and a control that always reports failure is
+              worse than no control.
+            */}
+            {current !== null && current.url !== BLANK_PAGE && (
+              <IconButton
+                label={reader.status === "closed" ? "Reader mode" : "Close reader"}
+                onClick={() => {
+                  if (reader.status !== "closed") {
+                    setReader(closedReaderState());
+                    return;
+                  }
+                  void window.openstrawberry.reader
+                    .open(current.id)
+                    .then(setReader)
+                    .catch(() =>
+                      setReader({ status: "unavailable", reason: "extraction-failed" })
+                    );
+                }}
+              >
+                <BookOpen size={16} strokeWidth={1.5} aria-hidden="true" />
+              </IconButton>
+            )}
             <IconButton
               label={snapshot.splitEnabled ? "Close split" : "Split workspace"}
               onClick={() => void bridge.setSplitEnabled(!snapshot.splitEnabled)}
@@ -489,9 +528,15 @@ export function App(): React.JSX.Element {
           drawn behind a live page.
         */}
         <div
+          /*
+            Reader mode collapses the panes for the same reason migration does:
+            a page is a native view the compositor draws above the DOM, so the
+            reader could not be seen over it. Collapsing makes the ResizeObserver
+            report a zero rect, and the main process shrinks the view away.
+          */
           className={`panes${snapshot.splitEnabled ? " is-split" : ""}${
             agentOpen ? " has-agent" : ""
-          }${migrationOpen ? " is-migrating" : ""}`}
+          }${migrationOpen || reader.status !== "closed" ? " is-migrating" : ""}`}
         >
           {panes.map((paneId) => (
             <div className="pane-slot" key={paneId}>
@@ -538,6 +583,8 @@ export function App(): React.JSX.Element {
           {agentOpen && (
             <AgentPanel browser={snapshot} onClose={() => setAgentOpen(false)} />
           )}
+
+          <ReaderView state={reader} onClose={() => setReader(closedReaderState())} />
 
           {/*
             Every handler sends an id. There is no path on this surface, which is

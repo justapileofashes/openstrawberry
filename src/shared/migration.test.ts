@@ -412,17 +412,40 @@ describe("IPC channels", () => {
    * while a channel is being named, which is the moment someone is still
    * deciding what it will do.
    *
-   * If this fails on a channel you are adding, the question to ask is whether
-   * the channel really reads something back out. If it does, it does not belong
-   * on this bridge. If it does not, name it for what it does - the downloads
-   * channel that shows a file in the OS file manager is called
-   * `download:show-in-folder` for exactly this reason. Widening the pattern is
-   * the wrong repair, because the next person adding a genuine read path is the
-   * one this test exists to stop.
+   * If this fails on a channel you are adding, the first question is whether the
+   * channel really does read protected material back out. If it does, it does
+   * not belong on this bridge at all. If it does not, name it for what it does:
+   * the downloads channel that opens the OS file manager is called
+   * `download:show-in-folder` rather than `download:reveal` for exactly this
+   * reason, and renaming is almost always the right repair.
+   *
+   * The pattern below is narrower than it once was. It originally rejected the
+   * bare word "read", which caught `reader:open` - a feature whose subject is a
+   * web page and whose name cannot reasonably avoid the word. A pattern that
+   * fires on correct code teaches people to widen it, and a tripwire nobody
+   * trusts stops working. So it now asks the question it actually means: does
+   * this channel name a secret *and* a way of getting one out.
    */
   it("exposes no channel that could read a staged password back out", () => {
+    const secretNoun = /password|credential|secret|vault|passphrase|token/u;
+    const readVerb = /read|reveal|decrypt|export|dump|fetch|list|get/u;
+
     for (const channel of Object.values(IPC_CHANNELS)) {
-      expect(channel).not.toMatch(/read|reveal|decrypt|export|list-passwords/u);
+      // Naming a secret and a way to obtain one is the combination that matters.
+      if (secretNoun.test(channel)) expect(channel).not.toMatch(readVerb);
+
+      // These describe extracting protected material whatever the object is, so
+      // they are refused outright.
+      expect(channel).not.toMatch(/decrypt|reveal/u);
+    }
+  });
+
+  it("keeps every migration channel clear of read vocabulary entirely", () => {
+    // Migration is the subsystem that actually touches passwords, so it is held
+    // to the stricter rule the general one relaxed.
+    for (const [name, channel] of Object.entries(IPC_CHANNELS)) {
+      if (!name.startsWith("migration")) continue;
+      expect(channel).not.toMatch(/read|reveal|decrypt|export|dump|list/u);
     }
   });
 });

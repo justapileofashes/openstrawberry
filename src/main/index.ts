@@ -56,6 +56,8 @@ import { isAllowedUrl, urlFromCommandLine } from "../shared/navigation.js";
 import { BrowserManager } from "./browser-manager.js";
 import { DownloadManager } from "./download-manager.js";
 import { TrackerBlocker } from "./tracker-blocker.js";
+import { extractReaderDocument } from "./reader.js";
+import { parseReaderTabPayload, type ReaderState } from "../shared/reader.js";
 import { MigrationManager, type MigrationDialogPort } from "./migration-manager.js";
 import { AgentManager, type BrowserPort } from "./agent-manager.js";
 import { SecretStore } from "./secret-store.js";
@@ -565,6 +567,18 @@ function registerIpcHandlers(): void {
     parseTrackingExceptionPayload,
     (payload) => requireTrackerBlocker().removeException(payload.site)
   );
+
+  /*
+   * Reader mode. Reads the DOM the guest already loaded and returns text; no
+   * network call is made and no provider is involved. A tab with no live
+   * contents reports unavailable rather than throwing, because "this page has no
+   * reader view" is an ordinary answer.
+   */
+  registerTrustedHandler(IPC_CHANNELS.readerOpen, parseReaderTabPayload, async (payload) => {
+    const contents = requireBrowserManager().contentsFor(payload.tabId);
+    if (contents === null) return { status: "unavailable", reason: "no-page" } as ReaderState;
+    return extractReaderDocument(contents);
+  });
 
   registerTrustedQuery(IPC_CHANNELS.agentSnapshot, () => requireAgentManager().snapshot());
 

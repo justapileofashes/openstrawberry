@@ -67,7 +67,7 @@ passes. Planned work is never marked done.
 
 - [x] Downloads with per-item state and main-process-only reveal. The save path is chosen in the trusted process and never crosses IPC; the renderer is told a file name and a folder label, and `download:show-in-folder` takes an id, so a compromised renderer can only ask for one of its own downloads to be shown. Server-suggested names go through one sanitiser that flattens separators, strips control characters and bidi overrides, renames Windows device names, and refuses to create a hidden file.
 - [x] Conservative, transparent tracker blocking with per-site exceptions. A short shipped list, never fetched or updated, so the blocker is not itself a third-party call on every launch. First-party requests are never blocked, which gives up CNAME-cloaked tracking deliberately rather than breaking pages. Counts are the whole interface: no blocked URL is recorded, reported, or persisted, because that list would be a browsing history.
-- [ ] Local text-only reader mode with no network or provider handoff.
+- [x] Local text-only reader mode with no network or provider handoff. Reads the DOM the guest already loaded; nothing is fetched and nothing is summarised. This is the one place page content crosses into the trusted renderer, so a block carries a kind from a closed set and a plain string — no markup, URL, attribute, or style field exists for it to travel in — and the view renders every string as a React text node.
 - [ ] Media controls for compatible HTML video with browser-native picture-in-picture fallback.
 - [ ] Persistent tab groups with names, colours, and collapse state.
 - [ ] Named workspace snapshots.

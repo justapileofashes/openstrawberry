@@ -28,6 +28,7 @@ import type {
 } from "./migration.js";
 import type { DownloadSnapshot } from "./downloads.js";
 import type { TrackingSnapshot } from "./tracking.js";
+import type { ReaderState } from "./reader.js";
 
 /** Channel names, shared so both sides of the boundary cannot drift apart. */
 export const IPC_CHANNELS = {
@@ -88,7 +89,8 @@ export const IPC_CHANNELS = {
   trackingSetEnabled: "tracking:set-enabled",
   trackingExceptSite: "tracking:except-site",
   trackingResumeSite: "tracking:resume-site",
-  trackingRemoveException: "tracking:remove-exception"
+  trackingRemoveException: "tracking:remove-exception",
+  readerOpen: "reader:open"
 } as const;
 
 /** Push channel the main process uses to broadcast browser state changes. */
@@ -343,6 +345,21 @@ export interface TrackingBridge {
   readonly onState: (listener: (snapshot: TrackingSnapshot) => void) => () => void;
 }
 
+/**
+ * Reader mode.
+ *
+ * One verb, and it is a read: the chrome asks for a tab's article and receives
+ * text. Nothing is fetched, nothing is sent to a provider, and closing the view
+ * is renderer-local state that needs no channel at all.
+ *
+ * A `ReaderDocument` is the one place page content crosses into the trusted
+ * renderer, and it is plain strings in a closed set of block kinds - no markup,
+ * no URL, no attribute. The component renders them as React text nodes.
+ */
+export interface ReaderBridge {
+  readonly open: (tabId: string) => Promise<ReaderState>;
+}
+
 export interface OpenStrawberryBridge {
   readonly shell: {
     /** Available synchronously so first paint does not wait on IPC. */
@@ -355,4 +372,5 @@ export interface OpenStrawberryBridge {
   readonly migration: MigrationBridge;
   readonly downloads: DownloadBridge;
   readonly tracking: TrackingBridge;
+  readonly reader: ReaderBridge;
 }

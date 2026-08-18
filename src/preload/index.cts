@@ -31,6 +31,7 @@ import type {
 } from "../shared/bridge.js";
 import type { DownloadSnapshot } from "../shared/downloads.js";
 import type { TrackingSnapshot } from "../shared/tracking.js";
+import type { ReaderState } from "../shared/reader.js";
 import type { BrowserPaneId, BrowserSnapshot, BrowserViewport } from "../shared/browser.js";
 import type {
   AgentConfigStatus,
@@ -103,7 +104,8 @@ const CHANNEL: Channels = {
   trackingSetEnabled: "tracking:set-enabled",
   trackingExceptSite: "tracking:except-site",
   trackingResumeSite: "tracking:resume-site",
-  trackingRemoveException: "tracking:remove-exception"
+  trackingRemoveException: "tracking:remove-exception",
+  readerOpen: "reader:open"
 };
 
 const STATE_EVENT: typeof BrowserStateEvent = "browser:state";
@@ -300,6 +302,12 @@ const api: OpenStrawberryBridge = {
       electron.ipcRenderer.on(TRACKING_EVENT, handler);
       return () => electron.ipcRenderer.removeListener(TRACKING_EVENT, handler);
     }
+  },
+  reader: {
+    // One verb, and it is a read. Closing the view is renderer-local state and
+    // needs no channel.
+    open: async (tabId: string): Promise<ReaderState> =>
+      (await electron.ipcRenderer.invoke(CHANNEL.readerOpen, { tabId })) as ReaderState
   }
 };
 
