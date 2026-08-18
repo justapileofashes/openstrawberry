@@ -18,17 +18,40 @@
  */
 import electron = require("electron");
 import type {
+  AGENT_STATE_EVENT as AgentStateEvent,
   BROWSER_STATE_EVENT as BrowserStateEvent,
+  CompanionDraft,
   IPC_CHANNELS,
   OpenStrawberryBridge,
-  ShellInfo
+  ShellInfo,
+  WINDOW_STATE_EVENT as WindowStateEvent,
+  WindowState
 } from "../shared/bridge.js";
 import type { BrowserPaneId, BrowserSnapshot, BrowserViewport } from "../shared/browser.js";
+import type {
+  AgentConfigStatus,
+  AgentSkillSummary,
+  AgentSnapshot,
+  ApprovalDecision
+} from "../shared/agents.js";
+import type {
+  BookmarkPreviewResponse,
+  HtmlSourceKind,
+  MigrationCommitPayload,
+  MigrationOverview,
+  MigrationResult,
+  PickedBookmarkFile,
+  PickedPasswordFile
+} from "../shared/migration.js";
 
 type Channels = typeof IPC_CHANNELS;
 
 const CHANNEL: Channels = {
   shellInfo: "shell:info",
+  windowState: "window:state",
+  windowMinimize: "window:minimize",
+  windowToggleMaximize: "window:toggle-maximize",
+  windowClose: "window:close",
   browserSnapshot: "browser:snapshot",
   browserCreateTab: "browser:create-tab",
   browserCloseTab: "browser:close-tab",
@@ -41,13 +64,51 @@ const CHANNEL: Channels = {
   browserStop: "browser:stop",
   browserSetViewport: "browser:set-viewport",
   browserSetSplit: "browser:set-split",
-  browserSetActivePane: "browser:set-active-pane"
+  browserSetActivePane: "browser:set-active-pane",
+  agentSnapshot: "agent:snapshot",
+  agentStartRun: "agent:start-run",
+  agentCancelRun: "agent:cancel-run",
+  agentResolveApproval: "agent:resolve-approval",
+  agentListSkills: "agent:list-skills",
+  agentConfig: "agent:config",
+  agentSetCredential: "agent:set-credential",
+  agentClearCredential: "agent:clear-credential",
+  agentCreateCompanion: "agent:create-companion",
+  agentUpdateCompanion: "agent:update-companion",
+  agentDeleteCompanion: "agent:delete-companion",
+  agentSelectCompanion: "agent:select-companion",
+  agentSetOrchestrator: "agent:set-orchestrator",
+  migrationOverview: "migration:overview",
+  migrationPreviewProfile: "migration:preview-profile",
+  migrationPickBookmarks: "migration:pick-bookmarks",
+  migrationPickPasswords: "migration:pick-passwords",
+  migrationCommit: "migration:commit",
+  migrationRelease: "migration:release",
+  migrationStartFresh: "migration:start-fresh",
+  migrationFinish: "migration:finish",
+  migrationCancel: "migration:cancel",
+  migrationReopen: "migration:reopen",
+  migrationDeleteStaged: "migration:delete-staged"
 };
 
 const STATE_EVENT: typeof BrowserStateEvent = "browser:state";
+const WINDOW_EVENT: typeof WindowStateEvent = "window:state-changed";
+const AGENT_EVENT: typeof AgentStateEvent = "agent:state";
 
 async function snapshotCall(channel: string, payload?: unknown): Promise<BrowserSnapshot> {
   return (await electron.ipcRenderer.invoke(channel, payload)) as BrowserSnapshot;
+}
+
+async function agentCall(channel: string, payload?: unknown): Promise<AgentSnapshot> {
+  return (await electron.ipcRenderer.invoke(channel, payload)) as AgentSnapshot;
+}
+
+async function configCall(channel: string, payload?: unknown): Promise<AgentConfigStatus> {
+  return (await electron.ipcRenderer.invoke(channel, payload)) as AgentConfigStatus;
+}
+
+async function migrationCall(channel: string, payload?: unknown): Promise<MigrationOverview> {
+  return (await electron.ipcRenderer.invoke(channel, payload)) as MigrationOverview;
 }
 
 const api: OpenStrawberryBridge = {
@@ -55,6 +116,24 @@ const api: OpenStrawberryBridge = {
     platform: process.platform,
     getInfo: async (): Promise<ShellInfo> =>
       (await electron.ipcRenderer.invoke(CHANNEL.shellInfo)) as ShellInfo
+  },
+  window: {
+    getState: async (): Promise<WindowState> =>
+      (await electron.ipcRenderer.invoke(CHANNEL.windowState)) as WindowState,
+    minimize: async (): Promise<void> => {
+      await electron.ipcRenderer.invoke(CHANNEL.windowMinimize);
+    },
+    toggleMaximize: async (): Promise<void> => {
+      await electron.ipcRenderer.invoke(CHANNEL.windowToggleMaximize);
+    },
+    close: async (): Promise<void> => {
+      await electron.ipcRenderer.invoke(CHANNEL.windowClose);
+    },
+    onState: (listener: (state: WindowState) => void): (() => void) => {
+      const handler = (_event: unknown, state: WindowState): void => listener(state);
+      electron.ipcRenderer.on(WINDOW_EVENT, handler);
+      return () => electron.ipcRenderer.removeListener(WINDOW_EVENT, handler);
+    }
   },
   browser: {
     getSnapshot: async () => snapshotCall(CHANNEL.browserSnapshot),
@@ -83,6 +162,87 @@ const api: OpenStrawberryBridge = {
       electron.ipcRenderer.on(STATE_EVENT, handler);
       return () => electron.ipcRenderer.removeListener(STATE_EVENT, handler);
     }
+  },
+  agents: {
+    getSnapshot: async () => agentCall(CHANNEL.agentSnapshot),
+    startRun: async (companionId: string, task: string, tabIds: readonly string[]) =>
+      agentCall(CHANNEL.agentStartRun, { companionId, task, tabIds }),
+    cancelRun: async (runId: string) => agentCall(CHANNEL.agentCancelRun, { runId }),
+    resolveApproval: async (approvalId: string, decision: ApprovalDecision) =>
+      agentCall(CHANNEL.agentResolveApproval, { approvalId, decision }),
+    listSkills: async (): Promise<readonly AgentSkillSummary[]> =>
+      (await electron.ipcRenderer.invoke(
+        CHANNEL.agentListSkills
+      )) as readonly AgentSkillSummary[],
+    getConfig: async () => configCall(CHANNEL.agentConfig),
+    // One direction only. The key is handed to the trusted process and what
+    // comes back is status, so no path exists for reading a stored key out.
+    setCredential: async (provider: string, key: string, companionId?: string | null) =>
+      configCall(CHANNEL.agentSetCredential, {
+        provider,
+        key,
+        companionId: companionId ?? null
+      }),
+    clearCredential: async (provider: string, companionId?: string | null) =>
+      configCall(CHANNEL.agentClearCredential, {
+        provider,
+        companionId: companionId ?? null
+      }),
+    createCompanion: async (draft: CompanionDraft) =>
+      agentCall(CHANNEL.agentCreateCompanion, draft),
+    updateCompanion: async (companionId: string, draft: CompanionDraft) =>
+      agentCall(CHANNEL.agentUpdateCompanion, { companionId, ...draft }),
+    deleteCompanion: async (companionId: string) =>
+      agentCall(CHANNEL.agentDeleteCompanion, { companionId }),
+    selectCompanion: async (companionId: string) =>
+      agentCall(CHANNEL.agentSelectCompanion, { companionId }),
+    setOrchestrator: async (
+      provider: string,
+      model: string,
+      baseUrl?: string | null,
+      command?: string | null
+    ) =>
+      configCall(CHANNEL.agentSetOrchestrator, {
+        provider,
+        model,
+        baseUrl: baseUrl ?? null,
+        command: command ?? null
+      }),
+    onState: (listener: (snapshot: AgentSnapshot) => void): (() => void) => {
+      const handler = (_event: unknown, snapshot: AgentSnapshot): void => listener(snapshot);
+      electron.ipcRenderer.on(AGENT_EVENT, handler);
+      return () => electron.ipcRenderer.removeListener(AGENT_EVENT, handler);
+    }
+  },
+  migration: {
+    getOverview: async () => migrationCall(CHANNEL.migrationOverview),
+    // Names a detected profile by identifier. Note what this cannot express: a
+    // path. There is no method on this object that accepts one.
+    previewProfile: async (sourceId: string, profileId: string): Promise<BookmarkPreviewResponse> =>
+      (await electron.ipcRenderer.invoke(CHANNEL.migrationPreviewProfile, {
+        sourceId,
+        profileId
+      })) as BookmarkPreviewResponse,
+    // The dialog is opened by the trusted process. The renderer asks for one and
+    // receives a handle, never the location the user chose.
+    pickBookmarksFile: async (kind: HtmlSourceKind): Promise<PickedBookmarkFile> =>
+      (await electron.ipcRenderer.invoke(CHANNEL.migrationPickBookmarks, {
+        kind
+      })) as PickedBookmarkFile,
+    pickPasswordFile: async (): Promise<PickedPasswordFile> =>
+      (await electron.ipcRenderer.invoke(CHANNEL.migrationPickPasswords)) as PickedPasswordFile,
+    // Write-only for credentials: the request carries a handle and the reply
+    // carries a count, so no path exists for reading a staged password out.
+    commit: async (request: MigrationCommitPayload): Promise<MigrationResult> =>
+      (await electron.ipcRenderer.invoke(CHANNEL.migrationCommit, request)) as MigrationResult,
+    releaseSelection: async (handle: string): Promise<void> => {
+      await electron.ipcRenderer.invoke(CHANNEL.migrationRelease, { handle });
+    },
+    startFresh: async () => migrationCall(CHANNEL.migrationStartFresh),
+    finish: async () => migrationCall(CHANNEL.migrationFinish),
+    cancel: async () => migrationCall(CHANNEL.migrationCancel),
+    reopen: async () => migrationCall(CHANNEL.migrationReopen),
+    deleteStagedPasswords: async () => migrationCall(CHANNEL.migrationDeleteStaged)
   }
 };
 

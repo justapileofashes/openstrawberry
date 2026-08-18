@@ -108,7 +108,7 @@ describe("normalizeAddressInput", () => {
     expect(decision.kind).toBe("navigate");
     if (decision.kind === "navigate") {
       expect(decision.url).toBe(
-        "https://duckduckgo.com/?q=how%20to%20build%20an%20electron%20browser"
+        "https://www.google.com/search?q=how%20to%20build%20an%20electron%20browser"
       );
     }
   });
@@ -117,7 +117,7 @@ describe("normalizeAddressInput", () => {
     for (const value of ["chocolate", "3.5", "hello world"]) {
       const decision = normalizeAddressInput(value);
       expect(decision.kind).toBe("navigate");
-      if (decision.kind === "navigate") expect(decision.url).toContain("duckduckgo.com");
+      if (decision.kind === "navigate") expect(decision.url).toContain("www.google.com/search");
     }
   });
 
@@ -137,7 +137,7 @@ describe("normalizeAddressInput", () => {
 
 describe("buildSearchUrl", () => {
   it("encodes the query", () => {
-    expect(buildSearchUrl("a&b=c d")).toBe("https://duckduckgo.com/?q=a%26b%3Dc%20d");
+    expect(buildSearchUrl("a&b=c d")).toBe("https://www.google.com/search?q=a%26b%3Dc%20d");
   });
 });
 

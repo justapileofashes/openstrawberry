@@ -18,7 +18,7 @@ export const ALLOWED_SCHEMES = ["http:", "https:"] as const;
  * Where non-URL address input goes. This is a real network request to a third
  * party, so it happens only on explicit user input, never implicitly.
  */
-export const DEFAULT_SEARCH_TEMPLATE = "https://duckduckgo.com/?q=%s";
+export const DEFAULT_SEARCH_TEMPLATE = "https://www.google.com/search?q=%s";
 
 /** Bounds address input before it reaches the URL parser. */
 export const MAX_ADDRESS_LENGTH = 4096;

@@ -11,10 +11,29 @@ import type {
   BrowserSnapshot,
   BrowserViewport
 } from "./browser.js";
+import type {
+  AgentConfigStatus,
+  AgentSkillSummary,
+  AgentSnapshot,
+  ApprovalDecision
+} from "./agents.js";
+import type {
+  BookmarkPreviewResponse,
+  HtmlSourceKind,
+  MigrationCommitPayload,
+  MigrationOverview,
+  MigrationResult,
+  PickedBookmarkFile,
+  PickedPasswordFile
+} from "./migration.js";
 
 /** Channel names, shared so both sides of the boundary cannot drift apart. */
 export const IPC_CHANNELS = {
   shellInfo: "shell:info",
+  windowState: "window:state",
+  windowMinimize: "window:minimize",
+  windowToggleMaximize: "window:toggle-maximize",
+  windowClose: "window:close",
   browserSnapshot: "browser:snapshot",
   browserCreateTab: "browser:create-tab",
   browserCloseTab: "browser:close-tab",
@@ -27,11 +46,44 @@ export const IPC_CHANNELS = {
   browserStop: "browser:stop",
   browserSetViewport: "browser:set-viewport",
   browserSetSplit: "browser:set-split",
-  browserSetActivePane: "browser:set-active-pane"
+  browserSetActivePane: "browser:set-active-pane",
+  agentSnapshot: "agent:snapshot",
+  agentStartRun: "agent:start-run",
+  agentCancelRun: "agent:cancel-run",
+  agentResolveApproval: "agent:resolve-approval",
+  agentListSkills: "agent:list-skills",
+  agentConfig: "agent:config",
+  agentSetCredential: "agent:set-credential",
+  agentClearCredential: "agent:clear-credential",
+  agentCreateCompanion: "agent:create-companion",
+  agentUpdateCompanion: "agent:update-companion",
+  agentDeleteCompanion: "agent:delete-companion",
+  agentSelectCompanion: "agent:select-companion",
+  agentSetOrchestrator: "agent:set-orchestrator",
+  migrationOverview: "migration:overview",
+  migrationPreviewProfile: "migration:preview-profile",
+  migrationPickBookmarks: "migration:pick-bookmarks",
+  migrationPickPasswords: "migration:pick-passwords",
+  migrationCommit: "migration:commit",
+  migrationRelease: "migration:release",
+  migrationStartFresh: "migration:start-fresh",
+  migrationFinish: "migration:finish",
+  migrationCancel: "migration:cancel",
+  migrationReopen: "migration:reopen",
+  migrationDeleteStaged: "migration:delete-staged"
 } as const;
 
 /** Push channel the main process uses to broadcast browser state changes. */
 export const BROWSER_STATE_EVENT = "browser:state";
+
+/** Push channel for window frame state, which the OS can change on its own. */
+export const WINDOW_STATE_EVENT = "window:state-changed";
+
+/**
+ * Push channel for agent state. An agent run advances on its own schedule, so
+ * the chrome renders from pushed snapshots rather than polling.
+ */
+export const AGENT_STATE_EVENT = "agent:state";
 
 /** Non-secret facts about the running application. */
 export interface ShellInfo {
@@ -43,6 +95,29 @@ export interface ShellInfo {
    */
   readonly releaseReady: boolean;
   readonly updatesEnabled: boolean;
+}
+
+/** Frame state the custom window controls render from. */
+export interface WindowState {
+  readonly isMaximized: boolean;
+  readonly isFullScreen: boolean;
+}
+
+/**
+ * Window frame controls, for the platforms where the chrome draws its own.
+ *
+ * These are commands rather than queries: the frame can also change from a
+ * double-click, a snap gesture, or a keyboard shortcut the app never sees, so
+ * the current state always arrives on the push channel rather than as a return
+ * value that could already be stale.
+ */
+export interface WindowBridge {
+  readonly getState: () => Promise<WindowState>;
+  readonly minimize: () => Promise<void>;
+  readonly toggleMaximize: () => Promise<void>;
+  readonly close: () => Promise<void>;
+  /** Subscribes to pushed frame state. Returns an unsubscribe function. */
+  readonly onState: (listener: (state: WindowState) => void) => () => void;
 }
 
 /**
@@ -72,11 +147,133 @@ export interface BrowserBridge {
   readonly onState: (listener: (snapshot: BrowserSnapshot) => void) => () => void;
 }
 
+/**
+ * The agent capability surface.
+ *
+ * Two asymmetries are deliberate. First, `setCredential` is write-only: a key
+ * goes in and only a status comes back, and there is no channel that reads one
+ * out, so the trusted process is the only place a credential exists. Second,
+ * `resolveApproval` is the *only* way a gated action proceeds — the renderer
+ * cannot start a side effect, it can only permit one the agent has already
+ * described and suspended on.
+ */
+export interface AgentBridge {
+  readonly getSnapshot: () => Promise<AgentSnapshot>;
+  readonly startRun: (
+    companionId: string,
+    task: string,
+    tabIds: readonly string[]
+  ) => Promise<AgentSnapshot>;
+  readonly cancelRun: (runId: string) => Promise<AgentSnapshot>;
+  readonly resolveApproval: (
+    approvalId: string,
+    decision: ApprovalDecision
+  ) => Promise<AgentSnapshot>;
+  readonly listSkills: () => Promise<readonly AgentSkillSummary[]>;
+  readonly getConfig: () => Promise<AgentConfigStatus>;
+  /**
+   * Write-only. Returns status, never the stored value.
+   *
+   * `companionId` scopes the key to one agent; null stores the shared key that
+   * any agent without its own falls back to.
+   */
+  readonly setCredential: (
+    provider: string,
+    key: string,
+    companionId?: string | null
+  ) => Promise<AgentConfigStatus>;
+  /** Forgets one scope's key. Every other key survives. */
+  readonly clearCredential: (
+    provider: string,
+    companionId?: string | null
+  ) => Promise<AgentConfigStatus>;
+  /**
+   * Roster management. Creation mints the id in the trusted process, so the
+   * renderer names an agent but never chooses its handle.
+   */
+  readonly createCompanion: (draft: CompanionDraft) => Promise<AgentSnapshot>;
+  readonly updateCompanion: (
+    companionId: string,
+    draft: CompanionDraft
+  ) => Promise<AgentSnapshot>;
+  readonly deleteCompanion: (companionId: string) => Promise<AgentSnapshot>;
+  readonly selectCompanion: (companionId: string) => Promise<AgentSnapshot>;
+  /** Repoints the orchestrator, and with it every agent that follows it. */
+  readonly setOrchestrator: (
+    provider: string,
+    model: string,
+    baseUrl?: string | null,
+    command?: string | null
+  ) => Promise<AgentConfigStatus>;
+  /** Subscribes to pushed state. Returns an unsubscribe function. */
+  readonly onState: (listener: (snapshot: AgentSnapshot) => void) => () => void;
+}
+
+/** The editable half of an agent, as the chrome sends it across the boundary. */
+export interface CompanionDraft {
+  readonly name: string;
+  readonly role: string;
+  /** Null follows the orchestrator. */
+  readonly provider: string | null;
+  /** Null takes the provider's default model. */
+  readonly model: string | null;
+  /** Set only for a provider whose endpoint the user names. */
+  readonly baseUrl: string | null;
+  /** Set only for a CLI provider whose program is somewhere unusual. */
+  readonly command: string | null;
+}
+
+/**
+ * The migration capability surface.
+ *
+ * Three asymmetries carry the privacy promise across this boundary.
+ *
+ * First, the renderer never names a location. It names a detected source by an
+ * identifier the trusted process minted, or it asks for a *dialog* and gets back
+ * an opaque handle — there is no method here that takes a path, so a compromised
+ * renderer has nothing to point at a file.
+ *
+ * Second, previews are the only thing that flows back. A bookmark preview is
+ * counts, a bounded sample, and warning codes; a password preview is counts and
+ * recognised column names. Neither type has a field a credential fits in.
+ *
+ * Third, staging is write-only, exactly like `setCredential`. Passwords go in
+ * through a confirmed commit and only a count comes back. `deleteStagedPasswords`
+ * is the sole other verb, because being able to delete a secret you cannot read
+ * is the correct pair of powers to hold.
+ */
+export interface MigrationBridge {
+  readonly getOverview: () => Promise<MigrationOverview>;
+  /** Reads one detected profile for review. The first time any data is touched. */
+  readonly previewProfile: (
+    sourceId: string,
+    profileId: string
+  ) => Promise<BookmarkPreviewResponse>;
+  /** Opens a native picker for a Firefox or Safari HTML export. */
+  readonly pickBookmarksFile: (kind: HtmlSourceKind) => Promise<PickedBookmarkFile>;
+  /** Opens a native picker for a password CSV and parses it for review. */
+  readonly pickPasswordFile: () => Promise<PickedPasswordFile>;
+  /** Performs exactly the confirmed categories. Returns counts and warnings. */
+  readonly commit: (request: MigrationCommitPayload) => Promise<MigrationResult>;
+  /** Drops one reviewed selection, for a wizard stepping back a screen. */
+  readonly releaseSelection: (handle: string) => Promise<void>;
+  readonly startFresh: () => Promise<MigrationOverview>;
+  readonly finish: () => Promise<MigrationOverview>;
+  /** Abandons the wizard and drops every reviewed selection from memory. */
+  readonly cancel: () => Promise<MigrationOverview>;
+  /** Offers the wizard again from Settings. */
+  readonly reopen: () => Promise<MigrationOverview>;
+  readonly deleteStagedPasswords: () => Promise<MigrationOverview>;
+}
+
 export interface OpenStrawberryBridge {
   readonly shell: {
     /** Available synchronously so first paint does not wait on IPC. */
     readonly platform: string;
     readonly getInfo: () => Promise<ShellInfo>;
   };
+  readonly window: WindowBridge;
   readonly browser: BrowserBridge;
+  readonly agents: AgentBridge;
+  readonly migration: MigrationBridge;
 }

@@ -1,7 +1,26 @@
-import { app, BrowserWindow, Menu, session, shell } from "electron";
+import { app, BrowserWindow, dialog, Menu, safeStorage, session, shell } from "electron";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { BROWSER_STATE_EVENT, IPC_CHANNELS, type ShellInfo } from "../shared/bridge.js";
+import {
+  AGENT_STATE_EVENT,
+  BROWSER_STATE_EVENT,
+  IPC_CHANNELS,
+  WINDOW_STATE_EVENT,
+  type ShellInfo,
+  type WindowState
+} from "../shared/bridge.js";
+import {
+  parseCompanionIdPayload,
+  parseCreateCompanionPayload,
+  parseCredentialScopePayload,
+  parseResolveApprovalPayload,
+  parseRunIdPayload,
+  parseSetCredentialPayload,
+  parseSetOrchestratorPayload,
+  parseStartRunPayload,
+  parseUpdateCompanionPayload,
+  type AgentSnapshot
+} from "../shared/agents.js";
 import {
   parseActivePanePayload,
   parseCreateTabPayload,
@@ -12,9 +31,24 @@ import {
   parseViewportPayload,
   type BrowserSnapshot
 } from "../shared/browser.js";
-import { APP_ID, PROFILE_PARTITION, RELEASE_READY } from "../shared/desktop-shell.js";
+import {
+  APP_ID,
+  PROFILE_PARTITION,
+  RELEASE_READY,
+  usesCustomWindowControls
+} from "../shared/desktop-shell.js";
+import {
+  parseHtmlPickPayload,
+  parseMigrationCommitPayload,
+  parseMigrationHandlePayload,
+  parseMigrationPreviewPayload
+} from "../shared/migration.js";
 import { isAllowedUrl, urlFromCommandLine } from "../shared/navigation.js";
 import { BrowserManager } from "./browser-manager.js";
+import { MigrationManager, type MigrationDialogPort } from "./migration-manager.js";
+import { AgentManager, type BrowserPort } from "./agent-manager.js";
+import { SecretStore } from "./secret-store.js";
+import { createOsCipher } from "./os-cipher.js";
 import { buildAllowedUrlPrefixes } from "./ipc-security.js";
 import {
   registerTrustedHandler,
@@ -46,6 +80,8 @@ const DEV_SERVER_URL = process.env["VITE_DEV_SERVER_URL"];
 
 let mainWindow: BrowserWindow | null = null;
 let browserManager: BrowserManager | null = null;
+let agentManager: AgentManager | null = null;
+let migrationManager: MigrationManager | null = null;
 /** A link that arrived before the browser core existed. */
 let pendingLaunchUrl: string | null = urlFromCommandLine(process.argv);
 
@@ -64,6 +100,71 @@ function sendToRenderer(channel: string, payload: unknown): void {
 function requireBrowserManager(): BrowserManager {
   if (browserManager === null) throw new Error("Browser manager is unavailable.");
   return browserManager;
+}
+
+/** Returns the live agent runtime, or throws so the router can redact and report. */
+function requireAgentManager(): AgentManager {
+  if (agentManager === null) throw new Error("Agent runtime is unavailable.");
+  return agentManager;
+}
+
+/** Returns the live migration runtime, or throws so the router can redact. */
+function requireMigrationManager(): MigrationManager {
+  if (migrationManager === null) throw new Error("Migration is unavailable.");
+  return migrationManager;
+}
+
+/**
+ * The native file picker, as migration needs it.
+ *
+ * The dialog is opened by the trusted process and parented to the chrome window,
+ * so the user picks a file in an OS dialog rather than the renderer naming one.
+ * Only the chosen path comes back, and it never leaves this process.
+ *
+ * `dontAddToRecent` matters here: a password export should not be left in the
+ * operating system's recent-documents list because it was migrated once.
+ */
+function migrationDialogFor(window: BrowserWindow): MigrationDialogPort {
+  return {
+    openFile: async (request) => {
+      const chosen = await dialog.showOpenDialog(window, {
+        title: request.title,
+        buttonLabel: request.buttonLabel,
+        properties: ["openFile", "dontAddToRecent"],
+        filters: [{ name: request.filterName, extensions: [...request.extensions] }]
+      });
+
+      if (chosen.canceled) return null;
+      return chosen.filePaths[0] ?? null;
+    }
+  };
+}
+
+/**
+ * The narrow slice of the tab engine the agent runtime may use.
+ *
+ * Built here rather than handing over the manager itself, so the agent's reach
+ * into the browser is one readable list instead of the whole class.
+ */
+function browserPortFor(manager: BrowserManager): BrowserPort {
+  return {
+    snapshot: () => manager.snapshot(),
+    createTab: (paneId, url) => manager.createTab(paneId, url),
+    closeTab: (tabId) => manager.closeTab(tabId),
+    navigate: (tabId, address) => manager.navigate(tabId, address),
+    contentsFor: (tabId) => manager.contentsFor(tabId)
+  };
+}
+
+/** Returns the live chrome window, or throws so the router can redact and report. */
+function requireWindow(): BrowserWindow {
+  const target = mainWindow;
+  if (target === null || target.isDestroyed()) throw new Error("Window is unavailable.");
+  return target;
+}
+
+function windowStateOf(target: BrowserWindow): WindowState {
+  return { isMaximized: target.isMaximized(), isFullScreen: target.isFullScreen() };
 }
 
 /**
@@ -90,9 +191,13 @@ function createWindow(): void {
     minHeight: 700,
     backgroundColor: "#08080a",
     show: false,
-    // macOS keeps its native inset controls; Windows and Linux keep the standard
-    // system title bar, so only the application menu is removed below.
-    titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
+    /*
+     * macOS keeps its native inset traffic lights. Everywhere else the system
+     * title bar is hidden and the chrome draws its own controls into the top
+     * bar, which is already marked as the window's drag region. The frame itself
+     * is kept, so the resize borders and the window shadow stay native.
+     */
+    titleBarStyle: usesCustomWindowControls(process.platform) ? "hidden" : "hiddenInset",
     webPreferences: {
       preload: join(import.meta.dirname, "../preload/index.cjs"),
       contextIsolation: true,
@@ -113,14 +218,79 @@ function createWindow(): void {
     allowedUrlPrefixes: buildAllowedUrlPrefixes(DEV_SERVER_URL)
   });
 
-  browserManager = new BrowserManager({
+  const browser = new BrowserManager({
     window,
     profile: session.fromPartition(PROFILE_PARTITION),
     sessionFilePath: join(app.getPath("userData"), "session.json"),
     publish: (snapshot: BrowserSnapshot) => sendToRenderer(BROWSER_STATE_EVENT, snapshot)
   });
 
+  browserManager = browser;
+
+  /*
+   * The OS keychain, as the credential store needs it. `createOsCipher` owns the
+   * judgement of when the platform's encryption is worth trusting — notably that
+   * a keyringless Linux session does not count, however cheerfully
+   * `safeStorage.isEncryptionAvailable()` answers.
+   */
+  const cipher = createOsCipher({ safeStorage, platform: process.platform });
+
+  const secrets = new SecretStore({
+    credentialPath: join(app.getPath("userData"), "agent-credentials.enc"),
+    profilePath: join(app.getPath("userData"), "agent-profile.json"),
+    cipher
+  });
+
+  // A key an earlier build wrote through the keyringless fallback is protected by
+  // nothing, so it does not get to sit on disk. Narrow by construction: a key a
+  // real keyring wrote is left alone, because that keyring may simply be locked.
+  secrets.discardExposedCredential();
+
+  agentManager = new AgentManager({
+    statePath: join(app.getPath("userData"), "agents.json"),
+    browser: browserPortFor(browser),
+    secrets,
+    publish: (snapshot: AgentSnapshot) => sendToRenderer(AGENT_STATE_EVENT, snapshot)
+  });
+
+  /*
+   * Migration shares the credential store's cipher, so the same judgement about
+   * when this platform's encryption is worth trusting governs staged passwords
+   * and provider keys alike. It is given the environment to resolve profile
+   * roots against rather than reading `process.env` itself, which keeps the
+   * whole registry testable.
+   *
+   * Nothing here runs at startup. The manager detects browsers the first time
+   * the wizard asks, so a launch that never opens migration never looks at
+   * another application's directories.
+   */
+  migrationManager = new MigrationManager({
+    userDataDir: app.getPath("userData"),
+    cipher,
+    environment: {
+      platform: process.platform,
+      homeDir: app.getPath("home"),
+      localAppData: process.env["LOCALAPPDATA"] ?? "",
+      roamingAppData: process.env["APPDATA"] ?? ""
+    },
+    dialog: migrationDialogFor(window)
+  });
+
   window.once("ready-to-show", () => window.show());
+
+  /*
+   * The frame can change without the chrome asking: a double-click on the drag
+   * region, a snap gesture, Win+Up, or the OS restoring a session. The controls
+   * therefore render from pushed state rather than from what they last
+   * requested, so the maximise glyph cannot go stale.
+   */
+  const publishWindowState = (): void =>
+    sendToRenderer(WINDOW_STATE_EVENT, windowStateOf(window));
+
+  window.on("maximize", publishWindowState);
+  window.on("unmaximize", publishWindowState);
+  window.on("enter-full-screen", publishWindowState);
+  window.on("leave-full-screen", publishWindowState);
 
   // The chrome itself must never navigate away or spawn native windows. Any
   // external link is handed to the operating system browser instead.
@@ -139,6 +309,19 @@ function createWindow(): void {
   const releaseBrowserViews = (): void => {
     if (released) return;
     released = true;
+
+    // Migration goes first and unconditionally: its handles hold parsed
+    // bookmarks and parsed credentials, and a window closing mid-wizard must
+    // drop those rather than leave them alive behind a closed surface.
+    const migration = migrationManager;
+    migrationManager = null;
+    migration?.destroy();
+
+    // The agent runtime is torn down next: it holds tab handles through its
+    // port, and persisting its state must happen while those are still valid.
+    const agents = agentManager;
+    agentManager = null;
+    agents?.destroy();
 
     const manager = browserManager;
     browserManager = null;
@@ -161,6 +344,7 @@ function createWindow(): void {
     if (manager === null) return;
 
     manager.restore();
+    agentManager?.restore();
 
     // A link that launched the app opens alongside the restored session rather
     // than replacing it.
@@ -182,6 +366,27 @@ function registerIpcHandlers(): void {
       updatesEnabled: false
     })
   );
+
+  registerTrustedQuery(IPC_CHANNELS.windowState, () => windowStateOf(requireWindow()));
+
+  registerTrustedQuery(IPC_CHANNELS.windowMinimize, () => {
+    requireWindow().minimize();
+  });
+
+  registerTrustedQuery(IPC_CHANNELS.windowToggleMaximize, () => {
+    const target = requireWindow();
+    // Full screen is entered by other means and has its own exit; the maximise
+    // control must not half-leave it and strand the window without a title bar.
+    if (target.isFullScreen()) return;
+    if (target.isMaximized()) target.unmaximize();
+    else target.maximize();
+  });
+
+  registerTrustedQuery(IPC_CHANNELS.windowClose, () => {
+    // `close` rather than `destroy`, so the teardown that releases the native
+    // views still runs.
+    requireWindow().close();
+  });
 
   registerTrustedQuery(IPC_CHANNELS.browserSnapshot, () => requireBrowserManager().snapshot());
 
@@ -231,6 +436,123 @@ function registerIpcHandlers(): void {
 
   registerTrustedHandler(IPC_CHANNELS.browserSetActivePane, parseActivePanePayload, (paneId) =>
     requireBrowserManager().setActivePane(paneId)
+  );
+
+  registerTrustedQuery(IPC_CHANNELS.agentSnapshot, () => requireAgentManager().snapshot());
+
+  registerTrustedHandler(IPC_CHANNELS.agentStartRun, parseStartRunPayload, (payload) =>
+    requireAgentManager().startRun(payload)
+  );
+
+  registerTrustedHandler(IPC_CHANNELS.agentCancelRun, parseRunIdPayload, (payload) =>
+    requireAgentManager().cancelRun(payload.runId)
+  );
+
+  registerTrustedHandler(
+    IPC_CHANNELS.agentResolveApproval,
+    parseResolveApprovalPayload,
+    (payload) => requireAgentManager().resolveApproval(payload)
+  );
+
+  registerTrustedQuery(IPC_CHANNELS.agentListSkills, () => requireAgentManager().listSkills());
+
+  registerTrustedQuery(IPC_CHANNELS.agentConfig, () => requireAgentManager().getConfig());
+
+  /*
+   * Write-only. The key goes in and a status comes back; there is no channel
+   * that reads one out, so the trusted process is the only place it exists.
+   * A refusal to store — no OS encryption available — throws, and the chrome
+   * avoids that path by reading `config.encryption` before offering the form.
+   */
+  registerTrustedHandler(
+    IPC_CHANNELS.agentSetCredential,
+    parseSetCredentialPayload,
+    (payload) => requireAgentManager().setCredential(payload)
+  );
+
+  registerTrustedHandler(
+    IPC_CHANNELS.agentClearCredential,
+    parseCredentialScopePayload,
+    (payload) => requireAgentManager().clearCredential(payload)
+  );
+
+  registerTrustedHandler(
+    IPC_CHANNELS.agentCreateCompanion,
+    parseCreateCompanionPayload,
+    (payload) => requireAgentManager().createCompanion(payload)
+  );
+
+  registerTrustedHandler(
+    IPC_CHANNELS.agentUpdateCompanion,
+    parseUpdateCompanionPayload,
+    (payload) => requireAgentManager().updateCompanion(payload)
+  );
+
+  registerTrustedHandler(
+    IPC_CHANNELS.agentDeleteCompanion,
+    parseCompanionIdPayload,
+    (payload) => requireAgentManager().deleteCompanion(payload)
+  );
+
+  registerTrustedHandler(
+    IPC_CHANNELS.agentSelectCompanion,
+    parseCompanionIdPayload,
+    (payload) => requireAgentManager().selectCompanion(payload)
+  );
+
+  registerTrustedHandler(
+    IPC_CHANNELS.agentSetOrchestrator,
+    parseSetOrchestratorPayload,
+    (payload) => requireAgentManager().setOrchestrator(payload)
+  );
+
+  /*
+   * Migration. Every channel below goes through the same router as everything
+   * else, so each one verifies the sender is the chrome, validates the payload
+   * with no coercion, and redacts any failure — which matters more here than
+   * anywhere else, because a failure in this subsystem is the one most likely to
+   * be carrying a local path.
+   */
+  registerTrustedQuery(IPC_CHANNELS.migrationOverview, () =>
+    requireMigrationManager().overview()
+  );
+
+  // Identifiers only. The registry resolves them to a location; a source id the
+  // registry did not mint resolves to nothing and is refused.
+  registerTrustedHandler(
+    IPC_CHANNELS.migrationPreviewProfile,
+    parseMigrationPreviewPayload,
+    (payload) => requireMigrationManager().previewChromiumProfile(payload)
+  );
+
+  registerTrustedHandler(IPC_CHANNELS.migrationPickBookmarks, parseHtmlPickPayload, (payload) =>
+    requireMigrationManager().pickHtmlBookmarks(payload.kind)
+  );
+
+  registerTrustedQuery(IPC_CHANNELS.migrationPickPasswords, () =>
+    requireMigrationManager().pickPasswordCsv()
+  );
+
+  registerTrustedHandler(IPC_CHANNELS.migrationCommit, parseMigrationCommitPayload, (payload) =>
+    requireMigrationManager().commit(payload)
+  );
+
+  registerTrustedHandler(IPC_CHANNELS.migrationRelease, parseMigrationHandlePayload, (payload) => {
+    requireMigrationManager().releaseHandle(payload.handle);
+  });
+
+  registerTrustedQuery(IPC_CHANNELS.migrationStartFresh, () =>
+    requireMigrationManager().startFresh()
+  );
+
+  registerTrustedQuery(IPC_CHANNELS.migrationFinish, () => requireMigrationManager().finish());
+
+  registerTrustedQuery(IPC_CHANNELS.migrationCancel, () => requireMigrationManager().cancel());
+
+  registerTrustedQuery(IPC_CHANNELS.migrationReopen, () => requireMigrationManager().reopen());
+
+  registerTrustedQuery(IPC_CHANNELS.migrationDeleteStaged, () =>
+    requireMigrationManager().deleteStagedPasswords()
   );
 }
 

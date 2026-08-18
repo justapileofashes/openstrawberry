@@ -3,6 +3,7 @@ import {
   conventionalFaviconUrl,
   isAllowedFaviconMime,
   MAX_FAVICON_BYTES,
+  readBoundedStream,
   toDataUrl
 } from "./favicon.js";
 
@@ -73,5 +74,70 @@ describe("toDataUrl", () => {
 describe("size bound", () => {
   it("keeps the favicon cap small enough to inline safely", () => {
     expect(MAX_FAVICON_BYTES).toBeLessThanOrEqual(256 * 1024);
+  });
+});
+
+describe("readBoundedStream", () => {
+  /** A body that yields the given chunks, recording whether it was cancelled. */
+  function streamOf(chunks: readonly Uint8Array[]): {
+    readonly body: ReadableStream<Uint8Array>;
+    readonly wasCancelled: () => boolean;
+  } {
+    let cancelled = false;
+    let index = 0;
+
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        const chunk = chunks[index++];
+        if (chunk === undefined) controller.close();
+        else controller.enqueue(chunk);
+      },
+      cancel() {
+        cancelled = true;
+      }
+    });
+
+    return { body, wasCancelled: () => cancelled };
+  }
+
+  it("joins the chunks of a body that fits", async () => {
+    const { body } = streamOf([new Uint8Array([1, 2]), new Uint8Array([3])]);
+    await expect(readBoundedStream(body, 16)).resolves.toEqual(new Uint8Array([1, 2, 3]));
+  });
+
+  it("returns null for a missing body", async () => {
+    await expect(readBoundedStream(null, 16)).resolves.toBeNull();
+  });
+
+  it("returns an empty array for an empty body, which the caller treats as absent", async () => {
+    const { body } = streamOf([]);
+    await expect(readBoundedStream(body, 16)).resolves.toEqual(new Uint8Array(0));
+  });
+
+  it("gives up once the running total passes the cap", async () => {
+    const { body } = streamOf([new Uint8Array(4), new Uint8Array(4), new Uint8Array(4)]);
+    await expect(readBoundedStream(body, 8)).resolves.toBeNull();
+  });
+
+  it("stops reading an endless body rather than buffering it", async () => {
+    // The case `content-length` cannot catch: a chunked response that never
+    // ends. Reaching the assertion at all is the proof — an unbounded read
+    // would not return.
+    let served = 0;
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        served += 1;
+        controller.enqueue(new Uint8Array(1024));
+      }
+    });
+
+    await expect(readBoundedStream(body, 4096)).resolves.toBeNull();
+    expect(served).toBeLessThan(16);
+  });
+
+  it("cancels the body it abandoned, so the connection is not left open", async () => {
+    const { body, wasCancelled } = streamOf([new Uint8Array(32)]);
+    await expect(readBoundedStream(body, 8)).resolves.toBeNull();
+    expect(wasCancelled()).toBe(true);
   });
 });

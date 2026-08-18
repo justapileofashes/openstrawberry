@@ -32,11 +32,15 @@ OpenStrawberry surface to reach for.
 | Error redaction before anything crosses to the renderer | `src/main/ipc-security.ts` |
 | Scheme allowlist enforced at the address bar, on the guest, and on restore | `src/shared/navigation.ts` |
 | Embedded-credential URLs refused | `src/shared/navigation.ts` |
-| HTTPS-only favicons | `src/shared/navigation.ts` |
+| HTTPS-only favicons, fetched uncredentialed and read under a hard byte cap | `src/shared/navigation.ts`, `src/main/favicon.ts` |
 | Permission requests denied by default on every session | `src/main/index.ts` |
 | Chrome cannot navigate away or open native windows | `src/main/index.ts` |
 | Strict Content-Security-Policy in the packaged renderer | `vite.config.ts` |
 | Session file restricted to bounded metadata | `src/shared/browser.ts` |
+| Migration reads nothing until a source is chosen; no renderer-supplied path | `src/main/migration-manager.ts`, `src/main/migration-sources.ts` |
+| Bounded, defensive parsers for every foreign file migration reads | `src/main/bookmark-parsers.ts`, `src/main/password-csv.ts` |
+| Staged credentials encrypted with `safeStorage`, with no read path | `src/main/migration-store.ts` |
+| Every store written whole or not at all, owner-only on each write | `src/main/atomic-write.ts` |
 
 The renderer's Content-Security-Policy is relaxed only while the Vite dev server
 is serving, never in the built output.
@@ -53,7 +57,12 @@ any other time.
 
 Per-agent credentials will be encrypted with Electron `safeStorage`. If OS
 encryption is unavailable, OpenStrawberry refuses to store the credential rather
-than falling back to plaintext.
+than falling back to plaintext. Credentials staged through migration follow the
+same rule and the same cipher.
+
+Migration is consent-first and local-only. What it reads, what it refuses to
+read, and what remains a risk are recorded in
+[`MIGRATION_PRIVACY.md`](MIGRATION_PRIVACY.md).
 
 ## Residual risks
 

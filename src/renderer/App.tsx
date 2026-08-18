@@ -13,10 +13,14 @@ import {
   X
 } from "lucide-react";
 import type { BrowserPaneId, BrowserSnapshot } from "../shared/browser.js";
-import { BLANK_PAGE } from "../shared/desktop-shell.js";
+import { BLANK_PAGE, usesCustomWindowControls } from "../shared/desktop-shell.js";
+import { shouldOfferWizard, type MigrationOverview } from "../shared/migration.js";
 import type { AppearanceSettings } from "../shared/settings.js";
+import { AgentPanel } from "./AgentPanel.js";
 import { AmbientField } from "./AmbientField.js";
+import { MigrationWizard } from "./MigrationWizard.js";
 import { SettingsPanel } from "./SettingsPanel.js";
+import { WindowControls } from "./WindowControls.js";
 import { applyAppearance, loadAppearance, saveAppearance } from "./settings-store.js";
 import {
   activeTabId,
@@ -127,7 +131,29 @@ export function App(): React.JSX.Element {
   const [addressEdited, setAddressEdited] = useState(false);
   const [draggingTabId, setDraggingTabId] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [agentOpen, setAgentOpen] = useState(false);
   const [appearance, setAppearance] = useState<AppearanceSettings>(loadAppearance);
+  const [migration, setMigration] = useState<MigrationOverview | null>(null);
+  const [migrationOpen, setMigrationOpen] = useState(false);
+
+  /*
+   * The wizard offers itself once, on a launch where migration has neither run
+   * nor been dismissed. Reading the overview is also what detects browsers, so a
+   * profile that has already migrated never causes another application's
+   * directories to be looked at again.
+   */
+  useEffect(() => {
+    void window.openstrawberry.migration
+      .getOverview()
+      .then((overview) => {
+        setMigration(overview);
+        setMigrationOpen(shouldOfferWizard(overview.state));
+      })
+      .catch(() => {
+        // Migration being unavailable must never block the browser from opening.
+        setMigration(null);
+      });
+  }, []);
 
   // Appearance drives CSS custom properties rather than component state, so the
   // whole chrome responds without re-rendering on every slider tick.
@@ -136,6 +162,8 @@ export function App(): React.JSX.Element {
     saveAppearance(appearance);
   }, [appearance]);
   const lastViewports = useRef(new Map<BrowserPaneId, ReturnType<typeof viewportFromRect>>());
+  /** Set while a click is in the middle of focusing the address field. */
+  const selectAllOnMouseUp = useRef(false);
 
   useEffect(() => {
     const unsubscribe = bridge.onState(setSnapshot);
@@ -294,9 +322,37 @@ export function App(): React.JSX.Element {
                 setAddress(event.target.value);
                 setAddressEdited(true);
               }}
-              onBlur={() => setAddressEdited(false)}
+              /*
+               * Clicking the address selects the whole URL, as every browser
+               * does, so typing replaces it. The click that gave focus would
+               * otherwise land a caret and collapse that selection, so the
+               * mouse-up following a focusing click is suppressed. A click made
+               * while the field already had focus still positions the caret
+               * normally.
+               */
+              onFocus={(event) => {
+                selectAllOnMouseUp.current = true;
+                event.currentTarget.select();
+              }}
+              onMouseUp={(event) => {
+                if (!selectAllOnMouseUp.current) return;
+                selectAllOnMouseUp.current = false;
+                event.preventDefault();
+              }}
+              onBlur={() => {
+                selectAllOnMouseUp.current = false;
+                setAddressEdited(false);
+              }}
             />
           </form>
+
+          {/*
+            With the system title bar hidden, the top bar is the only surface
+            that can move the window. The clusters and the address well are all
+            no-drag, so this keeps a strip that is always grabbable — it yields
+            width on a narrow window but never disappears.
+          */}
+          <span className="drag-handle" aria-hidden="true" />
 
           <div className="tool-cluster">
             <IconButton
@@ -308,7 +364,10 @@ export function App(): React.JSX.Element {
             <IconButton label="Downloads" onClick={() => undefined} disabled>
               <Download size={16} strokeWidth={1.5} aria-hidden="true" />
             </IconButton>
-            <IconButton label="Agents" onClick={() => undefined} disabled>
+            <IconButton
+              label={agentOpen ? "Close agents" : "Agents"}
+              onClick={() => setAgentOpen((open) => !open)}
+            >
               <Bot size={16} strokeWidth={1.5} aria-hidden="true" />
             </IconButton>
             <IconButton
@@ -318,9 +377,26 @@ export function App(): React.JSX.Element {
               <Settings2 size={16} strokeWidth={1.5} aria-hidden="true" />
             </IconButton>
           </div>
+
+          {usesCustomWindowControls(window.openstrawberry.shell.platform) && <WindowControls />}
         </header>
 
-        <div className={`panes${snapshot.splitEnabled ? " is-split" : ""}`}>
+        {/*
+          The agent panel is a grid column, not an overlay. Adding the column
+          shrinks the pane, and the Pane ResizeObserver below reports the smaller
+          rect to the main process so the native view follows.
+        */}
+        {/*
+          `is-migrating` collapses the pane slots to nothing. That is not a
+          cosmetic hide: the ResizeObserver in each Pane reports the zero rect to
+          the main process, so the native views shrink away and the wizard is not
+          drawn behind a live page.
+        */}
+        <div
+          className={`panes${snapshot.splitEnabled ? " is-split" : ""}${
+            agentOpen ? " has-agent" : ""
+          }${migrationOpen ? " is-migrating" : ""}`}
+        >
           {panes.map((paneId) => (
             <div className="pane-slot" key={paneId}>
               {snapshot.splitEnabled && (
@@ -363,11 +439,34 @@ export function App(): React.JSX.Element {
             </div>
           )}
 
+          {agentOpen && (
+            <AgentPanel browser={snapshot} onClose={() => setAgentOpen(false)} />
+          )}
+
           {settingsOpen && (
             <SettingsPanel
               settings={appearance}
               onChange={setAppearance}
               onClose={() => setSettingsOpen(false)}
+              migration={migration}
+              onRunMigration={() => {
+                void window.openstrawberry.migration.reopen().then((next) => {
+                  setMigration(next);
+                  setSettingsOpen(false);
+                  setMigrationOpen(true);
+                });
+              }}
+              onDeleteStagedPasswords={() => {
+                void window.openstrawberry.migration.deleteStagedPasswords().then(setMigration);
+              }}
+            />
+          )}
+
+          {migrationOpen && migration !== null && (
+            <MigrationWizard
+              overview={migration}
+              onOverview={setMigration}
+              onClose={() => setMigrationOpen(false)}
             />
           )}
         </div>

@@ -4,6 +4,7 @@ import {
   shineDurationSeconds,
   type AppearanceSettings
 } from "../shared/settings.js";
+import type { MigrationOverview } from "../shared/migration.js";
 
 function Row({
   label,
@@ -35,11 +36,18 @@ function Row({
 export function SettingsPanel({
   settings,
   onChange,
-  onClose
+  onClose,
+  migration,
+  onRunMigration,
+  onDeleteStagedPasswords
 }: {
   readonly settings: AppearanceSettings;
   readonly onChange: (next: AppearanceSettings) => void;
   readonly onClose: () => void;
+  /** Null while the overview is loading, or if migration is unavailable. */
+  readonly migration: MigrationOverview | null;
+  readonly onRunMigration: () => void;
+  readonly onDeleteStagedPasswords: () => void;
 }): React.JSX.Element {
   const patch = (part: Partial<AppearanceSettings>): void =>
     onChange({ ...settings, ...part });
@@ -139,6 +147,42 @@ export function SettingsPanel({
             </button>
           }
         />
+
+        {migration !== null && (
+          <>
+            {/*
+              Re-entry, and the plain warning that goes with it. Running again is
+              useful — a second browser, a category skipped the first time — but a
+              second bookmark import can duplicate the first, and the wizard says
+              so rather than letting the user discover it afterwards.
+            */}
+            <Row
+              label="Migration"
+              hint={
+                migration.state.status === "completed"
+                  ? `${migration.state.totalBookmarkCount} bookmarks saved. Running again can create duplicates unless the wizard's skip option stays on.`
+                  : "Bring across bookmarks or a search engine name from another browser. Review first, category by category."
+              }
+              control={
+                <button type="button" className="text-btn" onClick={onRunMigration}>
+                  {migration.state.status === "pending" ? "Run migration" : "Run migration again"}
+                </button>
+              }
+            />
+
+            {migration.stagedPasswordCount > 0 && (
+              <Row
+                label="Staged passwords"
+                hint={`${migration.stagedPasswordCount} entries, encrypted by this system. They are never filled in automatically and cannot be shown again.`}
+                control={
+                  <button type="button" className="text-btn" onClick={onDeleteStagedPasswords}>
+                    Delete all
+                  </button>
+                }
+              />
+            )}
+          </>
+        )}
       </div>
 
       <footer className="set-foot">

@@ -106,6 +106,7 @@
 
   /* frame gutter â€” the gap that lets the ground show behind the glass */
   --frame: 14px;
+  --agent-width: 380px;
 
   /* Shine defaults. Overwritten at runtime from user settings. */
   --shine-rgb: 219, 230, 250;
@@ -728,6 +729,75 @@ body {
   gap: 2px;
 }
 
+/*
+ * The window's grab strip. Everything else in the top bar is no-drag, so without
+ * a reserved region a wide address well would leave nowhere to move the window
+ * from. It gives up width before it gives up existence.
+ */
+.drag-handle {
+  flex: 0 1 72px;
+  min-width: 26px;
+  align-self: stretch;
+}
+
+/* =========================================================
+   Window controls â€” drawn by the app, not the system
+   ========================================================= */
+.window-controls {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: calc(-1 * var(--s-1));
+}
+
+/* The same hairline that separates the other clusters. */
+.window-controls::before {
+  content: "";
+  width: 1px;
+  height: 18px;
+  margin-right: var(--s-2);
+  background: linear-gradient(
+    180deg,
+    transparent,
+    rgba(222, 232, 246, 0.13),
+    transparent
+  );
+}
+
+/*
+ * Narrower than a tool chip: these are frame controls, not app actions, and the
+ * hierarchy should say so. Square ends on the glyphs, so the marks stay crisp at
+ * 10px instead of rounding into blobs.
+ */
+.win-btn {
+  width: 26px;
+  height: 26px;
+}
+
+.win-btn svg {
+  shape-rendering: crispEdges;
+  stroke-linecap: square;
+}
+
+/*
+ * Close is the one destructive control in the chrome, so it is the one place a
+ * hover may carry colour. It uses the palette's own muted red rather than a
+ * borrowed system red.
+ */
+.win-btn.is-close:hover:not(:disabled) {
+  background: linear-gradient(
+      180deg,
+      rgba(160, 130, 120, 0.32),
+      rgba(160, 130, 120, 0.14)
+    ),
+    rgba(160, 130, 120, 0.1);
+  border-color: rgba(160, 130, 120, 0.42);
+  color: var(--ink-strong);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 230, 224, 0.16),
+    0 1px 4px rgba(0, 0, 0, 0.4);
+}
+
 /* A hairline divider between control clusters and the address well. */
 .tool-cluster::before {
   content: "";
@@ -783,6 +853,13 @@ body {
 .icon-btn:disabled {
   opacity: 0.28;
   cursor: default;
+}
+
+/* A toggle that is currently holding something open, rather than merely hovered. */
+.icon-btn.is-on {
+  background: rgba(222, 232, 246, 0.1);
+  border-color: rgba(222, 232, 246, 0.2);
+  color: var(--ink-strong);
 }
 
 /* Sheen that crosses the chip on hover. */
@@ -913,10 +990,34 @@ body {
   gap: var(--frame);
 }
 
+/*
+ * The agent panel takes a real column so the pane genuinely gives up width.
+ * It cannot be an overlay: a page is a native view the compositor draws above
+ * the DOM, so a sheet positioned over a pane renders behind the page. Narrowing
+ * the pane instead makes the ResizeObserver report a smaller rect, and the
+ * native view follows.
+ */
+.panes.has-agent {
+  grid-template-columns: minmax(0, 1fr) var(--agent-width);
+  gap: var(--frame);
+}
+
+.panes.has-agent.is-split {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) var(--agent-width);
+}
+
+/*
+ * A column, not a two-row grid. The pane head only exists while the workspace
+ * is split, so a fixed `auto minmax(0, 1fr)` track list put the unsplit pane in
+ * the `auto` row — and since a pane is deliberately empty, that row collapsed to
+ * zero height and the native view was composited into a zero-height rectangle.
+ * Flex lets the head size to its content when present and the pane take the rest
+ * either way.
+ */
 .pane-slot {
   position: relative;
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  display: flex;
+  flex-direction: column;
   min-width: 0;
   background: var(--bg);
   border-radius: var(--r-md);
@@ -957,6 +1058,7 @@ body {
  * carries the rounding.
  */
 .pane {
+  flex: 1 1 auto;
   min-width: 0;
   min-height: 0;
 }
@@ -1294,6 +1396,619 @@ input[type="range"]:disabled {
   transition-duration: 90ms !important;
 }
 
+/* =========================================================
+   Agent panel
+   ========================================================= */
+.agent {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  min-width: 0;
+  border-radius: var(--r-md);
+  animation: panel-in var(--d-slow) var(--ease);
+}
+
+.agent > * {
+  position: relative;
+  z-index: 1;
+}
+
+.agent-head-tools {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+/*
+ * Status is text first. A run that needs a decision must not be distinguishable
+ * from a run that is merely busy by colour alone.
+ */
+.agent-status {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--ink-muted);
+}
+
+.agent-status[data-status="awaiting-approval"] {
+  color: var(--accent-warm);
+}
+
+.agent-status[data-status="failed"] {
+  color: var(--bad);
+}
+
+.agent-log {
+  padding: var(--s-4) var(--s-5);
+}
+
+.agent-empty {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--ink-muted);
+}
+
+.agent-steps {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: var(--s-3);
+}
+
+.agent-step {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: var(--s-2);
+  align-items: baseline;
+}
+
+.agent-step-time {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  color: var(--ink-faint);
+}
+
+.agent-step-body {
+  min-width: 0;
+}
+
+.agent-step-label {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ink-strong);
+}
+
+.agent-step[data-tone="quiet"] .agent-step-label {
+  color: var(--ink-muted);
+}
+
+.agent-step[data-tone="bad"] .agent-step-label {
+  color: var(--bad);
+}
+
+.agent-step-detail {
+  margin: var(--s-2) 0 0;
+  padding: var(--s-2) var(--s-3);
+  max-height: 160px;
+  overflow: auto;
+  border-radius: var(--r-xs);
+  background: rgba(222, 232, 246, 0.04);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: var(--ink-muted);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/*
+ * The approval card. This is the one surface in the app whose whole job is to
+ * stop the user, so it gets a warm rim the rest of the chrome never uses.
+ */
+.agent-approve {
+  padding: var(--s-4) var(--s-5);
+  border-top: 1px solid rgba(222, 232, 246, 0.08);
+  box-shadow: inset 2px 0 0 var(--accent-warm);
+}
+
+.agent-approve-summary {
+  margin: var(--s-2) 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink-strong);
+}
+
+.agent-approve-reason {
+  margin: var(--s-2) 0 var(--s-3);
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--ink-muted);
+}
+
+.agent-approve-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--s-2);
+}
+
+.agent-btn {
+  padding: 5px var(--s-4);
+  border: 1px solid rgba(222, 232, 246, 0.14);
+  border-radius: var(--r-xs);
+  background: rgba(222, 232, 246, 0.05);
+  color: var(--ink-strong);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  cursor: pointer;
+  transition:
+    background var(--d-fast) var(--ease),
+    border-color var(--d-fast) var(--ease);
+}
+
+.agent-btn:hover {
+  background: rgba(222, 232, 246, 0.1);
+  border-color: rgba(222, 232, 246, 0.22);
+}
+
+.agent-btn.is-deny:hover {
+  border-color: var(--bad);
+  color: var(--bad);
+}
+
+.agent-composer {
+  display: grid;
+  gap: var(--s-3);
+}
+
+.agent-notice {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--ink-muted);
+}
+
+.agent-notice.is-bad {
+  color: var(--bad);
+}
+
+/*
+ * Summary on the left, action on the right. Run together on one line the button
+ * reads as the end of the sentence rather than as something you can press.
+ */
+.agent-config-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-3);
+}
+
+.agent-config-row .text-btn {
+  flex: 0 0 auto;
+}
+
+/* The key form. `grid-column: 1 / -1` puts the failure line on its own row. */
+.agent-key {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.agent-key .agent-notice {
+  grid-column: 1 / -1;
+}
+
+/*
+ * A single line, unlike the task composer. A key is pasted, not composed, and a
+ * two-row box would invite someone to type prose into a credential field.
+ */
+.agent-key-input {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+
+.agent-context {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+
+/* A chip is off by default: sharing a tab is a choice the user makes. */
+.agent-chip {
+  padding: 3px var(--s-3);
+  border: 1px solid rgba(222, 232, 246, 0.12);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink-faint);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    color var(--d-fast) var(--ease),
+    border-color var(--d-fast) var(--ease),
+    background var(--d-fast) var(--ease);
+}
+
+.agent-chip:hover {
+  color: var(--ink-muted);
+  border-color: rgba(222, 232, 246, 0.2);
+}
+
+.agent-chip.is-on {
+  background: rgba(222, 232, 246, 0.08);
+  border-color: rgba(222, 232, 246, 0.26);
+  color: var(--ink-strong);
+}
+
+.agent-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: var(--s-2);
+}
+
+.agent-input {
+  width: 100%;
+  padding: var(--s-3);
+  border: 1px solid rgba(222, 232, 246, 0.1);
+  border-radius: var(--r-sm);
+  background: rgba(8, 9, 12, 0.5);
+  color: var(--ink-strong);
+  font-family: var(--font-ui);
+  font-size: 12.5px;
+  line-height: 1.5;
+  resize: none;
+  transition: border-color var(--d-fast) var(--ease);
+}
+
+.agent-input:focus {
+  outline: none;
+  border-color: rgba(222, 232, 246, 0.24);
+}
+
+.agent-input::placeholder {
+  color: var(--ink-faint);
+}
+
+.agent-send {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid rgba(222, 232, 246, 0.14);
+  border-radius: var(--r-xs);
+  background: rgba(222, 232, 246, 0.06);
+  color: var(--ink-strong);
+  cursor: pointer;
+  transition:
+    background var(--d-fast) var(--ease),
+    opacity var(--d-fast) var(--ease);
+}
+
+.agent-send:hover:not(:disabled) {
+  background: rgba(222, 232, 246, 0.12);
+}
+
+.agent-send:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* =========================================================
+   Agent command center
+   ========================================================= */
+
+/*
+ * A sheet over the companion panel, not another column. The panel already took
+ * its width from the page, and taking more to show a settings surface would
+ * slide the page out from under the reader. `.agent > *` makes every direct
+ * child relative, so this selector has to out-specify it to lift back out.
+ */
+.agent > .cc {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  border-radius: var(--r-md);
+  /* Opaque enough that the transcript behind it does not read as content. */
+  background: rgba(10, 11, 14, 0.965);
+  /*
+   * A fade, not the `panel-in` slide the panels use. This sheet is pinned to its
+   * parent's edges, so translating it on the way in pushes it past the window
+   * and gives the whole document a horizontal scrollbar for the length of the
+   * animation.
+   */
+  animation: sheet-in var(--d-base) var(--ease);
+}
+
+@keyframes sheet-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.cc-body {
+  display: grid;
+  align-content: start;
+  gap: var(--s-5);
+  padding: var(--s-4) var(--s-5) var(--s-5);
+}
+
+.cc-section {
+  display: grid;
+  gap: var(--s-3);
+  padding-bottom: var(--s-4);
+  border-bottom: 1px solid rgba(222, 232, 246, 0.06);
+}
+
+.cc-section:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.cc-title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-3);
+  margin: 0;
+  font-weight: 400;
+  font-size: 13px;
+  letter-spacing: -0.01em;
+  color: var(--ink-strong);
+}
+
+.cc-count {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-faint);
+}
+
+.cc-hint {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--ink-muted);
+}
+
+.cc-form {
+  display: grid;
+  gap: var(--s-3);
+}
+
+.cc-pair {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+  gap: var(--s-3);
+}
+
+.cc-field {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.cc-field-label {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.cc-field-hint {
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--ink-faint);
+}
+
+.cc-input,
+.cc-select {
+  width: 100%;
+  padding: 6px var(--s-3);
+  border: 1px solid rgba(222, 232, 246, 0.1);
+  border-radius: var(--r-xs);
+  background: rgba(8, 9, 12, 0.6);
+  color: var(--ink-strong);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  transition: border-color var(--d-fast) var(--ease);
+}
+
+.cc-input:focus,
+.cc-select:focus {
+  outline: none;
+  border-color: rgba(222, 232, 246, 0.24);
+}
+
+.cc-input::placeholder {
+  color: var(--ink-faint);
+}
+
+/* The native menu is drawn by the OS, so it needs a background of its own. */
+.cc-select option {
+  background: #101216;
+  color: var(--ink-strong);
+}
+
+.cc-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--s-3);
+}
+
+/* The summary takes the slack so the buttons stay together on the right. */
+.cc-actions .cc-hint {
+  margin-right: auto;
+}
+
+.cc-delete {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: auto;
+}
+
+.cc-new {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  justify-self: start;
+}
+
+.cc-roster {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: var(--s-2);
+}
+
+.cc-agent {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px var(--s-3);
+  width: 100%;
+  padding: var(--s-3);
+  border: 1px solid rgba(222, 232, 246, 0.08);
+  border-radius: var(--r-sm);
+  background: rgba(222, 232, 246, 0.02);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background var(--d-fast) var(--ease),
+    border-color var(--d-fast) var(--ease);
+}
+
+.cc-agent:hover {
+  background: rgba(222, 232, 246, 0.06);
+  border-color: rgba(222, 232, 246, 0.16);
+}
+
+/* The selected agent is the one the composer talks to, so it carries the rim. */
+.cc-agent.is-selected {
+  border-color: rgba(222, 232, 246, 0.28);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.cc-agent.is-editing {
+  background: rgba(222, 232, 246, 0.07);
+}
+
+.cc-agent-name {
+  font-size: 12.5px;
+  color: var(--ink-strong);
+}
+
+.cc-agent-role {
+  grid-column: 2;
+  grid-row: 1;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.cc-agent-route {
+  grid-column: 1;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
+ * Readiness is a word before it is a colour. A user who cannot tell the hues
+ * apart still reads "Needs a key".
+ */
+.cc-agent-state {
+  grid-column: 2;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  white-space: nowrap;
+  color: var(--ink-muted);
+}
+
+.cc-agent-state[data-readiness="needs-key"] {
+  color: var(--accent-warm);
+}
+
+.cc-agent-state[data-readiness="no-encryption"] {
+  color: var(--bad);
+}
+
+.cc-providers {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: var(--s-3);
+}
+
+.cc-provider {
+  display: grid;
+  gap: var(--s-2);
+}
+
+.cc-provider-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-3);
+}
+
+.cc-provider-name {
+  font-size: 12.5px;
+  color: var(--ink-strong);
+}
+
+.cc-provider-state {
+  flex: 1 1 auto;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-faint);
+}
+
+.cc-provider-state[data-configured="true"] {
+  color: var(--ink-muted);
+}
+
+/* The one-line description of what a provider is. Quieter than the row above. */
+.cc-provider-summary {
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--ink-faint);
+}
+
+/*
+ * The per-agent key sits between the routing fields and the save row, separated
+ * by a rule: it is the one control in the editor that writes a secret, and it
+ * should not read as just another field.
+ */
+.cc-agent-key {
+  display: grid;
+  gap: var(--s-2);
+  padding-top: var(--s-3);
+  border-top: 1px solid rgba(222, 232, 246, 0.06);
+}
+
 /* Focus is always visible and never conveyed by colour alone. */
 :focus-visible {
   outline: 1px solid var(--accent);
@@ -1304,6 +2019,7 @@ input[type="range"]:disabled {
 @media (max-width: 1100px) {
   :root {
     --frame: 6px;
+    --agent-width: 320px;
   }
 
   .shell {
@@ -1313,5 +2029,571 @@ input[type="range"]:disabled {
   .rail-tab {
     width: 32px;
     height: 32px;
+  }
+}
+
+/* =========================================================
+   Migration wizard
+
+   A sheet over the whole workspace, not a floating dialog. Migration is a
+   decision the window is asking for, and a modal that leaves a live page
+   visible behind it reads as an interruption of browsing rather than as the
+   thing the launch is currently about.
+
+   It cannot be an overlay over a live pane either: a page is a native view the
+   compositor draws above the DOM. `.panes.is-migrating` collapses the pane
+   slots so the ResizeObserver reports a zero rect and the native view shrinks
+   away, leaving this sheet as the only thing in the region.
+   ========================================================= */
+.panes.is-migrating .pane-slot {
+  height: 0;
+  min-height: 0;
+  overflow: hidden;
+  box-shadow: none;
+}
+
+.mig {
+  position: absolute;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  border-radius: var(--r-md);
+  /* Opaque enough that nothing behind it reads as content. */
+  background: rgba(10, 11, 14, 0.972);
+  animation: sheet-in var(--d-base) var(--ease);
+}
+
+.mig:focus {
+  outline: none;
+}
+
+.mig > * {
+  position: relative;
+  z-index: 1;
+}
+
+.mig-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s-4);
+  padding: var(--s-5) var(--s-5) var(--s-3);
+}
+
+.mig-head h2 {
+  margin: var(--s-2) 0 0;
+  font-weight: 300;
+  font-size: 22px;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+  color: var(--ink-strong);
+}
+
+/* Progress as a quiet index, not a marketing carousel. */
+.mig-rail {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-4);
+  margin: 0;
+  padding: 0 var(--s-5) var(--s-4);
+  list-style: none;
+  border-bottom: 1px solid rgba(222, 232, 246, 0.08);
+}
+
+.mig-rail-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-quiet);
+}
+
+.mig-rail-step.is-done {
+  color: var(--ink-faint);
+}
+
+/* Marked by tone *and* a filled dot, never by colour alone. */
+.mig-rail-step.is-current {
+  color: var(--ink-strong);
+}
+
+.mig-rail-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+}
+
+.mig-rail-step.is-current .mig-rail-dot,
+.mig-rail-step.is-done .mig-rail-dot {
+  background: currentColor;
+}
+
+.mig-body {
+  display: grid;
+  align-content: start;
+  gap: var(--s-4);
+  overflow-y: auto;
+  padding: var(--s-5);
+}
+
+.mig-lede {
+  margin: 0;
+  max-width: 68ch;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink);
+}
+
+.mig-facts {
+  margin: 0;
+  padding-left: var(--s-4);
+  display: grid;
+  gap: 5px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ink-muted);
+}
+
+/* ---- Path cards -------------------------------------------------------- */
+.mig-paths {
+  display: grid;
+  gap: var(--s-2);
+}
+
+.mig-path {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-3);
+  width: 100%;
+  padding: var(--s-3) var(--s-4);
+  text-align: left;
+  border: 1px solid rgba(222, 232, 246, 0.1);
+  border-radius: var(--r-sm);
+  background: rgba(222, 232, 246, 0.03);
+  color: var(--ink-strong);
+  font-family: var(--font-ui);
+  cursor: pointer;
+  transition:
+    background var(--d-fast) var(--ease),
+    border-color var(--d-fast) var(--ease);
+}
+
+.mig-path:hover {
+  background: rgba(222, 232, 246, 0.08);
+  border-color: rgba(222, 232, 246, 0.22);
+}
+
+.mig-path-icon {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  flex: 0 0 auto;
+  border-radius: var(--r-xs);
+  background: rgba(222, 232, 246, 0.06);
+  color: var(--ink-muted);
+}
+
+.mig-path-text {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.mig-path-title {
+  font-size: 13px;
+}
+
+.mig-path-hint {
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--ink-muted);
+}
+
+/* ---- Detected sources -------------------------------------------------- */
+.mig-sources {
+  display: grid;
+  gap: var(--s-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mig-source-name {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 12.5px;
+  color: var(--ink-strong);
+}
+
+.mig-profiles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+
+.mig-profile {
+  padding: 4px var(--s-3);
+  border: 1px solid rgba(222, 232, 246, 0.12);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink-muted);
+  font-family: var(--font-ui);
+  font-size: 11.5px;
+  cursor: pointer;
+  transition:
+    background var(--d-fast) var(--ease),
+    border-color var(--d-fast) var(--ease),
+    color var(--d-fast) var(--ease);
+}
+
+.mig-profile:hover {
+  color: var(--ink-strong);
+  border-color: rgba(222, 232, 246, 0.24);
+}
+
+.mig-profile.is-chosen {
+  background: rgba(232, 227, 213, 0.16);
+  border-color: rgba(232, 227, 213, 0.42);
+  color: var(--ink-strong);
+}
+
+/* ---- Category checks --------------------------------------------------- */
+.mig-categories {
+  display: grid;
+  gap: var(--s-2);
+}
+
+.mig-check {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-3);
+  width: 100%;
+  padding: var(--s-3);
+  text-align: left;
+  border: 1px solid rgba(222, 232, 246, 0.09);
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--ink-strong);
+  font-family: var(--font-ui);
+  cursor: pointer;
+  transition:
+    background var(--d-fast) var(--ease),
+    border-color var(--d-fast) var(--ease);
+}
+
+.mig-check:hover:not(:disabled) {
+  background: rgba(222, 232, 246, 0.05);
+  border-color: rgba(222, 232, 246, 0.18);
+}
+
+.mig-check:disabled {
+  opacity: 0.44;
+  cursor: default;
+}
+
+.mig-check-box {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  margin-top: 1px;
+  flex: 0 0 auto;
+  border: 1px solid rgba(222, 232, 246, 0.28);
+  border-radius: var(--r-xs);
+  background: rgba(6, 7, 9, 0.5);
+  color: var(--bg-deep);
+}
+
+.mig-check.is-on .mig-check-box {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.mig-check-text {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  font-size: 12.5px;
+}
+
+.mig-check-hint {
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--ink-muted);
+}
+
+/* ---- Prose blocks ------------------------------------------------------ */
+.mig-instructions {
+  margin: 0;
+  padding-left: var(--s-5);
+  display: grid;
+  gap: 6px;
+  max-width: 68ch;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--ink-muted);
+}
+
+.mig-note {
+  margin: 0;
+  max-width: 68ch;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--ink-muted);
+}
+
+.mig-notice {
+  margin: 0;
+  max-width: 68ch;
+  padding: var(--s-3);
+  border: 1px solid rgba(222, 232, 246, 0.1);
+  border-radius: var(--r-sm);
+  background: rgba(222, 232, 246, 0.035);
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--ink-muted);
+}
+
+.mig-notice.is-bad {
+  border-color: rgba(160, 130, 120, 0.45);
+  color: var(--bad);
+}
+
+.mig-empty {
+  margin: 0;
+  max-width: 68ch;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--ink-muted);
+}
+
+/* ---- Preview sections -------------------------------------------------- */
+.mig-section {
+  display: grid;
+  gap: var(--s-3);
+  padding-bottom: var(--s-4);
+  border-bottom: 1px solid rgba(222, 232, 246, 0.06);
+}
+
+.mig-section:last-of-type {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.mig-section h3,
+.mig-never h3,
+.mig-callout h3 {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-3);
+  margin: 0;
+  font-weight: 400;
+  font-size: 13px;
+  letter-spacing: -0.01em;
+  color: var(--ink-strong);
+}
+
+.mig-count {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-faint);
+}
+
+.mig-sample {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mig-sample li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+  gap: var(--s-3);
+  align-items: baseline;
+  padding: 4px var(--s-3);
+  border-radius: var(--r-xs);
+  background: rgba(222, 232, 246, 0.03);
+}
+
+.mig-sample-title {
+  font-size: 12px;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mig-sample-url {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mig-figures {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-5);
+  margin: 0;
+}
+
+.mig-figures dt {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.mig-figures dd {
+  margin: 3px 0 0;
+  font-size: 20px;
+  font-weight: 300;
+  color: var(--ink-strong);
+}
+
+/* ---- Warnings ---------------------------------------------------------- */
+.mig-warnings {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mig-warnings li {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr);
+  gap: var(--s-2);
+  align-items: start;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--ink-muted);
+}
+
+.mig-warnings svg {
+  margin-top: 2px;
+  color: var(--accent-warm);
+}
+
+/* ---- What is never imported ------------------------------------------- */
+.mig-never {
+  display: grid;
+  gap: var(--s-2);
+  padding: var(--s-4);
+  border: 1px solid rgba(222, 232, 246, 0.08);
+  border-radius: var(--r-sm);
+  background: rgba(222, 232, 246, 0.022);
+}
+
+.mig-never ul,
+.mig-callout ul {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding-left: var(--s-4);
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--ink-muted);
+}
+
+.mig-callout {
+  display: grid;
+  gap: var(--s-2);
+  padding: var(--s-4);
+  border: 1px solid rgba(232, 227, 213, 0.24);
+  border-radius: var(--r-sm);
+  background: rgba(232, 227, 213, 0.045);
+}
+
+.mig-confirm {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mig-confirm li {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  gap: var(--s-2);
+  align-items: start;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ink);
+}
+
+.mig-confirm svg {
+  margin-top: 3px;
+  color: var(--accent);
+}
+
+.mig-progress {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin: 0;
+  font-size: 12px;
+  color: var(--ink-muted);
+}
+
+.mig-progress svg {
+  animation: rail-spin 900ms linear infinite;
+}
+
+/* ---- Footer ------------------------------------------------------------ */
+.mig-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  padding: var(--s-3) var(--s-5) var(--s-4);
+  border-top: 1px solid rgba(222, 232, 246, 0.08);
+}
+
+/* "Start fresh instead" takes the left edge on every screen, so no state in
+   this flow is a dead end. */
+.mig-foot > .agent-btn:only-child {
+  margin-left: auto;
+}
+
+.mig-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--s-4);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mig,
+  .mig-progress svg {
+    animation: none;
+  }
+}
+
+:root.motion-off .mig,
+:root.motion-off .mig-progress svg {
+  animation: none;
+}
+
+@media (max-width: 1100px) {
+  .mig-sample li {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+  }
+
+  .mig-rail {
+    gap: var(--s-3);
   }
 }

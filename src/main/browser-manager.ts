@@ -300,24 +300,24 @@ export class BrowserManager {
   }
 
   public goBack(tabId: string): BrowserSnapshot {
-    const contents = this.liveContents(tabId);
+    const contents = this.contentsFor(tabId);
     if (contents?.navigationHistory.canGoBack() === true) contents.navigationHistory.goBack();
     return this.snapshot();
   }
 
   public goForward(tabId: string): BrowserSnapshot {
-    const contents = this.liveContents(tabId);
+    const contents = this.contentsFor(tabId);
     if (contents?.navigationHistory.canGoForward() === true) contents.navigationHistory.goForward();
     return this.snapshot();
   }
 
   public reload(tabId: string): BrowserSnapshot {
-    this.liveContents(tabId)?.reload();
+    this.contentsFor(tabId)?.reload();
     return this.snapshot();
   }
 
   public stop(tabId: string): BrowserSnapshot {
-    this.liveContents(tabId)?.stop();
+    this.contentsFor(tabId)?.stop();
     return this.snapshot();
   }
 
@@ -368,7 +368,14 @@ export class BrowserManager {
     return next;
   }
 
-  private liveContents(tabId: string): Electron.WebContents | null {
+  /**
+   * The live contents behind a tab, or null once it has gone.
+   *
+   * Public so the agent runtime can read and drive a page through its own narrow
+   * port. This is the only handle out of the tab engine, and it stays in the
+   * trusted process: the renderer receives tab ids and never a view.
+   */
+  public contentsFor(tabId: string): Electron.WebContents | null {
     const tab = this.tabs.get(tabId);
     if (tab === undefined) return null;
     if (tab.view.webContents.isDestroyed()) return null;
@@ -376,7 +383,7 @@ export class BrowserManager {
   }
 
   private loadUrl(tabId: string, url: string): void {
-    const contents = this.liveContents(tabId);
+    const contents = this.contentsFor(tabId);
     if (contents === null) return;
 
     try {

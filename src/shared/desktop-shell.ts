@@ -17,6 +17,21 @@ export const PROFILE_PARTITION = "persist:openstrawberry-default";
  */
 export const BLANK_PAGE = "about:blank";
 
+/**
+ * Whether OpenStrawberry draws its own window controls on this platform.
+ *
+ * macOS keeps its native traffic lights, which sit inset over the chrome and are
+ * what users there expect. Everywhere else the system title bar is hidden and
+ * the chrome supplies minimise, maximise, and close itself.
+ *
+ * Both sides read this one function: the main process to decide the title-bar
+ * style, the renderer to decide whether to render the controls. They cannot
+ * disagree and leave a window with two sets of buttons, or none.
+ */
+export function usesCustomWindowControls(platform: string): boolean {
+  return platform !== "darwin";
+}
+
 export type ReleasePlatform =
   | "mac-universal"
   | "win-x64"
