@@ -1034,6 +1034,56 @@ export interface StartRunPayload {
   readonly tabIds: readonly string[];
 }
 
+/**
+ * Credential shapes, for scrubbing text a user typed.
+ *
+ * Deliberately anchored on well-known prefixes rather than on entropy. A general
+ * "looks like a secret" heuristic mangles ordinary text - commit hashes, base64
+ * payloads, long identifiers - and a task that silently loses part of itself is
+ * worse than one that keeps a key the user chose to paste. Every pattern here
+ * names a specific issuer's format.
+ *
+ * Written with escapes so the character classes stay reviewable.
+ */
+const CREDENTIAL_PATTERNS: readonly RegExp[] = [
+  // OpenAI and Anthropic, including project- and org-scoped variants.
+  new RegExp("sk-(?:ant-|proj-|org-)?[A-Za-z0-9_-]{16,}", "gu"),
+  // GitHub personal access tokens, classic and fine-grained.
+  new RegExp("gh[pousr]_[A-Za-z0-9]{16,}", "gu"),
+  new RegExp("github_pat_[A-Za-z0-9_]{20,}", "gu"),
+  // AWS access key ids.
+  new RegExp("AKIA[0-9A-Z]{16}", "gu"),
+  // Slack tokens.
+  new RegExp("xox[baprs]-[A-Za-z0-9-]{10,}", "gu"),
+  // Google API keys.
+  new RegExp("AIza[A-Za-z0-9_-]{30,}", "gu"),
+  // A bearer token in a header the user pasted whole.
+  new RegExp("[Bb]earer\\s+[A-Za-z0-9._~+/-]{20,}={0,2}", "gu")
+];
+
+export const REDACTED_PLACEHOLDER = "[redacted]";
+
+/**
+ * Removes credential-shaped tokens from text before it is stored.
+ *
+ * A user pasting a key into the composer - to ask an agent to use it, or by
+ * accident - would otherwise have it written verbatim into the run log, which is
+ * ordinary JSON on disk that nothing encrypts. The store exists precisely so a
+ * key is never in a file like that.
+ *
+ * This is a mitigation, not a guarantee. A key in a format nothing here
+ * recognises still passes through, which is why the credential store, and not
+ * this function, is the actual answer to "where does a key live".
+ */
+export function scrubCredentials(text: string): string {
+  let scrubbed = text;
+  for (const pattern of CREDENTIAL_PATTERNS) {
+    pattern.lastIndex = 0;
+    scrubbed = scrubbed.replace(pattern, REDACTED_PLACEHOLDER);
+  }
+  return scrubbed;
+}
+
 export function parseStartRunPayload(raw: unknown): StartRunPayload {
   const root = requirePlainObject(raw, "Start run payload");
   const rawTabIds = requireArray(root["tabIds"], "Context tabs", MAX_CONTEXT_TABS);
@@ -1049,7 +1099,9 @@ export function parseStartRunPayload(raw: unknown): StartRunPayload {
 
   return {
     companionId: requireIdentifier(root["companionId"], "Companion ID"),
-    task: requireString(root["task"], "Task", MAX_TASK_LENGTH),
+    // Scrubbed at the boundary, so the manager never holds the raw text and no
+    // later code has to remember to.
+    task: scrubCredentials(requireString(root["task"], "Task", MAX_TASK_LENGTH)),
     tabIds
   };
 }

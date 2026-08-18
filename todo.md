@@ -93,13 +93,15 @@ passes. Planned work is never marked done.
 
 ## M6 — Agents and orchestration
 
-- [ ] Encrypted per-agent registry with profile metadata stored separately from credential values.
-- [ ] Refuse to store a credential when OS encryption is unavailable; never fall back to plaintext.
-- [ ] Agent Control Panel with name, role, executor, provider or CLI, model, optional HTTPS base URL, redacted credential status, and explicit remove/replace.
-- [ ] Provider presets: OpenAI, Anthropic, OpenRouter, Moonshot AI, Qwen, OmniRoute, and generic OpenAI-compatible.
-- [ ] Local CLI adapters: Codex, Claude Code, Qwen Code, Kimi Code, OpenCode — allowlisted executables, restricted environment, bounded execution.
-- [ ] Review-first typed orchestration graph with dependencies, bounded context grants, approval gates, budgets, artifacts, cancellation, and blocked/needs-user states.
-- [ ] Redaction tests proving no raw credential reaches renderer payloads, logs, snapshots, plans, artifacts, or error strings.
+- [x] Encrypted per-agent registry with profile metadata stored separately from credential values. `agent-credentials.enc` holds ciphertext; `agent-profile.json` and `agents.json` hold provider and model metadata and have no field a key would fit in. Per-agent keys are scoped and fall back to a shared one.
+- [x] Refuse to store a credential when OS encryption is unavailable; never fall back to plaintext. A keyringless Linux session counts as unavailable however cheerfully `safeStorage` answers, and a key an earlier build wrote through that fallback is discarded at startup.
+- [x] Agent Control Panel with name, role, executor, provider or CLI, model, optional HTTPS base URL, redacted credential status, and explicit remove/replace.
+- [x] Provider presets: Anthropic, OpenAI, Google, OpenRouter, OmniRoute, Moonshot AI, Qwen, Ollama, and generic OpenAI-compatible.
+- [x] Redaction tests proving no raw credential reaches renderer payloads, logs, snapshots, plans, artifacts, or error strings. A dedicated suite plants a canary key and searches every artefact the system produces: both snapshots, pushed state, both plain state files, the redacted error text, and the run log. Each assertion serialises a whole object, so a field added later that happens to carry a key fails without anyone remembering to extend the suite.
+- [x] Scrub credential-shaped tokens out of task text at the IPC boundary, so a key pasted into the composer is never written to the run log. Anchored on issuer formats rather than entropy, because a task that silently loses part of itself is worse than one that keeps a key the user chose to paste.
+- [ ] Local CLI adapters: Codex, Claude Code, Qwen Code, Kimi Code, OpenCode — allowlisted executables, restricted environment, bounded execution. The presets and the command validator exist; nothing spawns a process yet.
+- [ ] HTTP provider adapters. The presets, endpoint validator, and credential store exist; nothing makes a request yet.
+- [ ] Review-first typed orchestration graph with dependencies, bounded context grants, approval gates, budgets, artifacts, cancellation, and blocked/needs-user states. The run state machine, approval gates, and cancellation exist and are driven by a scripted loop; the graph does not.
 
 ## M7 — Updater
 

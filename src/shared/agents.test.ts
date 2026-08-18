@@ -36,6 +36,8 @@ import {
   requireCommand,
   resolvedProvider,
   restoredStatus,
+  REDACTED_PLACEHOLDER,
+  scrubCredentials,
   toPersistedAgentState,
   type AgentCompanion,
   type AgentRunState,
@@ -1183,5 +1185,68 @@ describe("IPC payload parsers", () => {
       expect(error).toBeInstanceOf(IpcValidationError);
       expect((error as Error).message).not.toContain(secret);
     }
+  });
+});
+
+describe("scrubCredentials", () => {
+  it("removes the issuer formats it knows", () => {
+    const cases = [
+      "sk-ant-api03-AAAABBBBCCCCDDDDEEEEFFFF",
+      "sk-proj-AAAABBBBCCCCDDDDEEEEFFFF",
+      "sk-AAAABBBBCCCCDDDDEEEEFFFFGGGG",
+      "ghp_AAAABBBBCCCCDDDDEEEEFFFF1234",
+      "github_pat_AAAABBBBCCCCDDDDEEEEFFFF1234",
+      "AKIAIOSFODNN7EXAMPLE",
+      "xoxb-1234567890-abcdefghij",
+      "AIzaSyAAAABBBBCCCCDDDDEEEEFFFFGGGGHHH"
+    ];
+
+    for (const secret of cases) {
+      const scrubbed = scrubCredentials(`please use ${secret} now`);
+      expect(scrubbed, secret).not.toContain(secret);
+      expect(scrubbed, secret).toContain(REDACTED_PLACEHOLDER);
+    }
+  });
+
+  it("removes a pasted authorization header", () => {
+    const scrubbed = scrubCredentials("Authorization: Bearer abcdefghijklmnopqrstuvwxyz012345");
+    expect(scrubbed).not.toContain("abcdefghijklmnopqrstuvwxyz012345");
+  });
+
+  it("keeps the rest of the sentence", () => {
+    const scrubbed = scrubCredentials("call the api with sk-AAAABBBBCCCCDDDDEEEEFFFF and stop");
+    expect(scrubbed).toContain("call the api with");
+    expect(scrubbed).toContain("and stop");
+  });
+
+  it("leaves ordinary text alone", () => {
+    // A general entropy heuristic would mangle these; anchoring on issuer
+    // prefixes is what keeps a task from silently losing part of itself.
+    const ordinary = [
+      "Summarise https://example.com/a/very/long/path?q=abcdefghijklmnop",
+      "The commit is 9f8e7d6c5b4a39281706f5e4d3c2b1a09f8e7d6c",
+      "Compare docker sha256:aabbccddeeff00112233445566778899",
+      "Read the file at C:/Users/someone/Documents/notes.md",
+      "sk- is a prefix, and bearer alone is a word"
+    ];
+
+    for (const text of ordinary) expect(scrubCredentials(text)).toBe(text);
+  });
+
+  it("removes every occurrence, not only the first", () => {
+    const scrubbed = scrubCredentials(
+      "sk-AAAABBBBCCCCDDDDEEEEFFFF then sk-GGGGHHHHIIIIJJJJKKKKLLLL"
+    );
+    expect(scrubbed).not.toContain("AAAABBBB");
+    expect(scrubbed).not.toContain("GGGGHHHH");
+  });
+
+  it("is idempotent", () => {
+    const once = scrubCredentials("key sk-AAAABBBBCCCCDDDDEEEEFFFF here");
+    expect(scrubCredentials(once)).toBe(once);
+  });
+
+  it("handles empty text", () => {
+    expect(scrubCredentials("")).toBe("");
   });
 });
