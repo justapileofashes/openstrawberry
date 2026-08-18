@@ -17,13 +17,15 @@ production software.
 
 | Area | State |
 |---|---|
-| Desktop shell (Electron, hardened main/preload/renderer split) | In progress |
-| Real Chromium browsing, tabs, split panes | Planned |
-| Obsidian Relay chrome | Planned |
-| Migration and encrypted password staging | Planned |
-| Agents, providers, local CLIs, orchestration | Planned |
-| Updater | Planned, disabled by design |
-| Signed releases | Not started — blocked on signing credentials |
+| Desktop shell (Electron, hardened main/preload/renderer split) | Built |
+| Real Chromium browsing, tabs, split panes | Built |
+| Obsidian Relay chrome | Built; responsive and full keyboard traversal outstanding |
+| Migration and encrypted password staging | Built; not yet exercised end to end against real exports on every platform |
+| Agent panel and encrypted per-agent credential store | Built |
+| Providers, local CLI adapters, orchestration | Not implemented. The run loop is a scripted stand-in that calls no provider and starts no process |
+| Browser fundamentals (downloads, tracker blocking, reader mode, tab groups) | Not implemented |
+| Updater | Not implemented, disabled by design |
+| Signed releases | Pipeline complete and enforced by tooling; blocked on signing credentials |
 
 See [`todo.md`](todo.md) for the working checklist.
 
