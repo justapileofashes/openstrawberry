@@ -71,7 +71,7 @@ passes. Planned work is never marked done.
 - [ ] Media controls for compatible HTML video with browser-native picture-in-picture fallback.
 - [ ] Persistent tab groups with names, colours, and collapse state.
 - [ ] Named workspace snapshots.
-- [ ] Command palette and keyboard shortcuts.
+- [x] Command palette and keyboard shortcuts. Ctrl/Cmd+K opens it; conventional browser bindings (new tab, close tab, reload, address bar, downloads, settings, back, forward) are bound as users already expect, and anything without a conventional chord is palette-only rather than given an invented one. The palette runs commands by id against capabilities the bridge already exposes, so it adds no IPC surface.
 
 ## M5 — Migration and privacy
 

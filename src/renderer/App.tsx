@@ -26,6 +26,8 @@ import { AmbientField } from "./AmbientField.js";
 import { DownloadsPanel } from "./DownloadsPanel.js";
 import { MigrationWizard } from "./MigrationWizard.js";
 import { ReaderView } from "./ReaderView.js";
+import { CommandPalette } from "./CommandPalette.js";
+import { commandForChord, isPaletteChord } from "./command-palette.js";
 import { SettingsPanel } from "./SettingsPanel.js";
 import { WindowControls } from "./WindowControls.js";
 import { applyAppearance, loadAppearance, saveAppearance } from "./settings-store.js";
@@ -143,6 +145,8 @@ export function App(): React.JSX.Element {
   const [downloads, setDownloads] = useState<DownloadSnapshot>(emptyDownloadSnapshot);
   const [tracking, setTracking] = useState<TrackingSnapshot>(emptyTrackingSnapshot);
   const [reader, setReader] = useState<ReaderState>(closedReaderState);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const addressRef = useRef<HTMLInputElement>(null);
   const [appearance, setAppearance] = useState<AppearanceSettings>(loadAppearance);
   const [migration, setMigration] = useState<MigrationOverview | null>(null);
   const [migrationOpen, setMigrationOpen] = useState(false);
@@ -235,6 +239,125 @@ export function App(): React.JSX.Element {
   useEffect(() => {
     setReader(closedReaderState());
   }, [current?.id, current?.url]);
+
+  /**
+   * Runs one command by id.
+   *
+   * Every branch calls a capability the bridge already exposes, which is what
+   * keeps the palette from widening the trust boundary: it is a second way to
+   * reach existing verbs, not a new set of them.
+   */
+  const runCommand = useCallback(
+    (commandId: string): void => {
+      const tabId = current?.id;
+      const paneId = snapshot.activePaneId;
+
+      switch (commandId) {
+        case "tab.new":
+          void bridge.createTab(paneId, BLANK_PAGE);
+          return;
+        case "tab.close":
+          if (tabId !== undefined) void bridge.closeTab(tabId);
+          return;
+        case "tab.next":
+        case "tab.previous": {
+          const inPane = snapshot.tabs.filter((tab) => tab.paneId === paneId);
+          if (inPane.length < 2 || tabId === undefined) return;
+          const index = inPane.findIndex((tab) => tab.id === tabId);
+          const delta = commandId === "tab.next" ? 1 : -1;
+          const next = inPane[(((index + delta) % inPane.length) + inPane.length) % inPane.length];
+          if (next !== undefined) void bridge.activateTab(next.id);
+          return;
+        }
+        case "nav.back":
+          if (tabId !== undefined) void bridge.back(tabId);
+          return;
+        case "nav.forward":
+          if (tabId !== undefined) void bridge.forward(tabId);
+          return;
+        case "nav.reload":
+          if (tabId !== undefined) void bridge.reload(tabId);
+          return;
+        case "nav.stop":
+          if (tabId !== undefined) void bridge.stop(tabId);
+          return;
+        case "nav.address":
+          addressRef.current?.focus();
+          return;
+        case "workspace.split":
+          void bridge.setSplitEnabled(!snapshot.splitEnabled);
+          return;
+        case "tools.downloads":
+          setDownloadsOpen((open) => !open);
+          return;
+        case "tools.reader":
+          if (tabId === undefined || current?.url === BLANK_PAGE) return;
+          void window.openstrawberry.reader
+            .open(tabId)
+            .then(setReader)
+            .catch(() => setReader({ status: "unavailable", reason: "extraction-failed" }));
+          return;
+        case "tools.agents":
+          setAgentOpen((open) => !open);
+          return;
+        case "tools.settings":
+          setSettingsOpen((open) => !open);
+          return;
+        case "tools.tracking": {
+          if (tabId === undefined || tracking.site.length === 0) return;
+          const call = tracking.siteExcepted
+            ? window.openstrawberry.tracking.resumeSite(tabId)
+            : window.openstrawberry.tracking.exceptSite(tabId);
+          void call.then(setTracking);
+          return;
+        }
+        default:
+          return;
+      }
+    },
+    [bridge, current, snapshot, tracking]
+  );
+
+  /*
+   * Global shortcuts.
+   *
+   * Bound on the window rather than on a container, because a native page view
+   * holds focus most of the time and a listener on the chrome's DOM would never
+   * see the key. Typing into the address bar is exempt from unmodified handling
+   * by construction: every binding here carries a modifier.
+   */
+  useEffect(() => {
+    const platform = window.openstrawberry.shell.platform;
+
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (isPaletteChord(event, platform)) {
+        event.preventDefault();
+        setPaletteOpen((open) => !open);
+        return;
+      }
+
+      // Escape closes whatever is open, in the order a user expects the topmost
+      // surface to go first.
+      if (event.key === "Escape") {
+        if (paletteOpen) setPaletteOpen(false);
+        else if (reader.status !== "closed") setReader(closedReaderState());
+        return;
+      }
+
+      // While the palette is open it owns the keyboard; its own field handles
+      // arrows and Enter, and a chord firing underneath would be a surprise.
+      if (paletteOpen) return;
+
+      const command = commandForChord(event, platform);
+      if (command === null) return;
+
+      event.preventDefault();
+      runCommand(command.id);
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [runCommand, paletteOpen, reader.status]);
 
   // The address bar follows the focused tab unless the user is mid-edit.
   useEffect(() => {
@@ -377,6 +500,7 @@ export function App(): React.JSX.Element {
             <input
               type="text"
               className="address-field"
+              ref={addressRef}
               value={address}
               placeholder="Search or enter address"
               spellCheck={false}
@@ -585,6 +709,14 @@ export function App(): React.JSX.Element {
           )}
 
           <ReaderView state={reader} onClose={() => setReader(closedReaderState())} />
+
+          {paletteOpen && (
+            <CommandPalette
+              platform={window.openstrawberry.shell.platform}
+              onRun={runCommand}
+              onClose={() => setPaletteOpen(false)}
+            />
+          )}
 
           {/*
             Every handler sends an id. There is no path on this surface, which is

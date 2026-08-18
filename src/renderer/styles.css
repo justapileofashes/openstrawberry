@@ -2894,3 +2894,104 @@ input[type="range"]:disabled {
   margin: 0;
   text-align: center;
 }
+
+/* -------------------------------------------------------------------------- */
+/* Command palette                                                             */
+/* -------------------------------------------------------------------------- */
+
+/*
+ * The scrim sits over the chrome only. Pages are native views the compositor
+ * draws above the DOM, so this cannot dim them; it darkens the surround and the
+ * palette itself carries the contrast it needs.
+ */
+.palette-scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding-block-start: 12vh;
+  background: rgba(8, 8, 10, 0.45);
+}
+
+.palette {
+  inline-size: min(34rem, calc(100% - var(--s-6)));
+  max-block-size: 60vh;
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--r-3);
+  overflow: hidden;
+}
+
+.palette-input {
+  flex: 0 0 auto;
+  padding: var(--s-4) var(--s-5);
+  border: 0;
+  border-bottom: 1px solid rgba(222, 232, 246, 0.08);
+  background: transparent;
+  color: var(--ink-strong);
+  font-family: var(--font-ui);
+  font-size: 15px;
+  outline: none;
+}
+
+.palette-input::placeholder {
+  color: var(--ink-faint);
+}
+
+.palette-list {
+  margin: 0;
+  padding: var(--s-2) 0;
+  list-style: none;
+  overflow-y: auto;
+}
+
+.palette-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-2) var(--s-5);
+  cursor: pointer;
+}
+
+/*
+ * The selected row is marked by a filled background and an inline-start rule,
+ * not by tone alone, so the highlight survives a low-contrast display.
+ */
+.palette-row.is-selected {
+  background: rgba(222, 232, 246, 0.07);
+  box-shadow: inset 2px 0 0 var(--ink-strong);
+}
+
+.palette-title {
+  overflow: hidden;
+  font-size: 13.5px;
+  color: var(--ink-strong);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.palette-group {
+  font-size: 11px;
+  color: var(--ink-faint);
+}
+
+.palette-chord {
+  padding: 1px 5px;
+  border: 1px solid rgba(222, 232, 246, 0.12);
+  border-radius: var(--r-1);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--ink-muted);
+  white-space: nowrap;
+}
+
+.palette-empty {
+  margin: 0;
+  padding: var(--s-5);
+  font-size: 12.5px;
+  color: var(--ink-muted);
+  text-align: center;
+}
