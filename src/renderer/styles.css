@@ -3241,3 +3241,99 @@ input[type="range"]:disabled {
   line-height: 1.6;
   color: var(--ink-muted);
 }
+
+/* -------------------------------------------------------------------------- */
+/* Bookmarks                                                                   */
+/* -------------------------------------------------------------------------- */
+
+.bm-search {
+  inline-size: 100%;
+  margin: var(--s-4) 0 var(--s-2);
+  padding: var(--s-2) var(--s-3);
+  border: 1px solid rgba(222, 232, 246, 0.1);
+  border-radius: var(--r-2);
+  background: rgba(8, 8, 10, 0.35);
+  color: var(--ink-strong);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  outline: none;
+}
+
+.bm-search:focus {
+  border-color: rgba(222, 232, 246, 0.28);
+}
+
+.bm-search::placeholder {
+  color: var(--ink-faint);
+}
+
+.bm-count {
+  margin: 0 0 var(--s-2);
+  font-size: 11.5px;
+  color: var(--ink-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.bm-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bm-item {
+  border-bottom: 1px solid rgba(222, 232, 246, 0.05);
+}
+
+.bm-item:last-child {
+  border-bottom: 0;
+}
+
+/* The whole row is the control, so the target is the width of the panel rather
+   than the width of the words. */
+.bm-open {
+  display: block;
+  inline-size: 100%;
+  padding: var(--s-3) var(--s-2);
+  border: 0;
+  border-radius: var(--r-2);
+  background: transparent;
+  text-align: start;
+  cursor: pointer;
+}
+
+.bm-open:hover,
+.bm-open:focus-visible {
+  background: rgba(222, 232, 246, 0.06);
+  outline: none;
+}
+
+.bm-open:focus-visible {
+  box-shadow: inset 2px 0 0 var(--ink-strong);
+}
+
+.bm-title,
+.bm-meta {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bm-title {
+  font-family: var(--font-ui);
+  font-size: 13px;
+  color: var(--ink-strong);
+}
+
+.bm-meta {
+  margin-top: 2px;
+  font-size: 11.5px;
+  color: var(--ink-muted);
+}
+
+.bm-empty {
+  margin: var(--s-4) 0 0;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--ink-muted);
+}

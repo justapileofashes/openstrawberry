@@ -50,6 +50,14 @@ import {
 } from "../shared/migration.js";
 import type { EncryptionState } from "../shared/agents.js";
 import {
+  bookmarkLabel,
+  emptyBookmarkPage,
+  matchesBookmarkQuery,
+  MAX_BOOKMARK_RESULTS,
+  type BookmarkEntry,
+  type BookmarkPage
+} from "../shared/bookmarks.js";
+import {
   parseChromiumBookmarks,
   parseChromiumSearchName,
   parseHtmlBookmarks
@@ -253,6 +261,45 @@ export class MigrationManager {
     } catch {
       return 0;
     }
+  }
+
+  /**
+   * Searches the imported bookmarks.
+   *
+   * The search runs here rather than in the renderer because the store holds up
+   * to fifty thousand entries and none of them needs to cross IPC to be
+   * filtered. What goes back is a bounded page and a total, so the chrome can
+   * say "showing 200 of 4,000" without ever holding the four thousand.
+   *
+   * Labels are re-cleaned on the way out. They were cleaned at import, but the
+   * file is on disk and could have been edited since, and the store's own read
+   * already re-applies the scheme gate for the same reason.
+   */
+  public searchBookmarks(query: string): BookmarkPage {
+    let stored: readonly ImportedBookmark[];
+    try {
+      stored = this.bookmarks.read();
+    } catch {
+      return emptyBookmarkPage();
+    }
+
+    const matched: BookmarkEntry[] = [];
+
+    for (const bookmark of stored) {
+      const entry: BookmarkEntry = {
+        title: bookmarkLabel(bookmark.title),
+        url: bookmark.url,
+        folder: bookmarkLabel(bookmark.folderPath.join(" / "))
+      };
+
+      if (matchesBookmarkQuery(entry, query)) matched.push(entry);
+    }
+
+    return {
+      entries: matched.slice(0, MAX_BOOKMARK_RESULTS),
+      total: matched.length,
+      truncated: matched.length > MAX_BOOKMARK_RESULTS
+    };
   }
 
   private safeBookmarkCount(): number {

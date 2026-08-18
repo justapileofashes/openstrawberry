@@ -32,6 +32,7 @@ import type { ReaderState } from "./reader.js";
 import type { WorkspaceSnapshot } from "./workspaces.js";
 import type { MediaAction, MediaState } from "./media.js";
 import type { GroupColour } from "./tab-groups.js";
+import type { BookmarkPage } from "./bookmarks.js";
 
 /** Channel names, shared so both sides of the boundary cannot drift apart. */
 export const IPC_CHANNELS = {
@@ -103,7 +104,8 @@ export const IPC_CHANNELS = {
   groupCreate: "group:create",
   groupUpdate: "group:update",
   groupAssign: "group:assign",
-  groupRemove: "group:remove"
+  groupRemove: "group:remove",
+  bookmarkSearch: "bookmark:search"
 } as const;
 
 /** Push channel the main process uses to broadcast browser state changes. */
@@ -330,6 +332,14 @@ export interface MigrationBridge {
   /** Offers the wizard again from Settings. */
   readonly reopen: () => Promise<MigrationOverview>;
   readonly deleteStagedPasswords: () => Promise<MigrationOverview>;
+  /**
+   * Searches the imported bookmarks.
+   *
+   * The filtering happens in the trusted process: the store holds far more
+   * entries than should cross IPC, so what comes back is a bounded page and a
+   * total rather than everything.
+   */
+  readonly searchBookmarks: (query: string) => Promise<BookmarkPage>;
 }
 
 /**

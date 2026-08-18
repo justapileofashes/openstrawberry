@@ -88,7 +88,7 @@ passes. Planned work is never marked done.
 - [x] Privacy behaviour documented in `docs/MIGRATION_PRIVACY.md`.
 - [x] Validate: `pnpm check`, `pnpm test` (548 tests), and `pnpm build` all pass.
 - [ ] Exercise the wizard end to end in a running app against real Chrome, Firefox, and Safari exports on each platform. Covered by fixtures and unit tests today, not by a manual pass.
-- [ ] Surface imported bookmarks in the chrome. Migration writes `bookmarks.json`; nothing reads it yet, so an import is currently verifiable only through the result screen and Settings.
+- [x] Surface imported bookmarks in the chrome. A searchable panel, reachable from the command palette. The search runs in the trusted process because the store holds up to fifty thousand entries and none of them needs to cross IPC to be filtered; what comes back is a bounded page and a total. Opening one goes through the ordinary tab path, so a stored address passes the same navigation policy a typed one does.
 - [ ] Apply the imported search provider name to address-bar search. It is stored and displayed; it does not yet change where a non-URL query goes.
 
 ## M6 — Agents and orchestration

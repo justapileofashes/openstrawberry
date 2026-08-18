@@ -117,6 +117,13 @@ export const COMMANDS: readonly Command[] = [
   },
 
   {
+    id: "tools.bookmarks",
+    title: "Bookmarks",
+    group: "Tools",
+    keywords: ["saved", "imported", "favourites", "favorites"],
+    shortcut: { key: "b", mod: true, shift: true }
+  },
+  {
     id: "tools.downloads",
     title: "Downloads",
     group: "Tools",

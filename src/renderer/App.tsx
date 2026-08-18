@@ -34,6 +34,8 @@ import { ReaderView } from "./ReaderView.js";
 import { CommandPalette } from "./CommandPalette.js";
 import { WorkspacesPanel } from "./WorkspacesPanel.js";
 import { GroupsPanel } from "./GroupsPanel.js";
+import { BookmarksPanel } from "./BookmarksPanel.js";
+import { emptyBookmarkPage, type BookmarkPage } from "../shared/bookmarks.js";
 import { emptyWorkspaceSnapshot, type WorkspaceSnapshot } from "../shared/workspaces.js";
 import { emptyMediaState, type MediaAction, type MediaState } from "../shared/media.js";
 import { commandForChord, isPaletteChord } from "./command-palette.js";
@@ -161,6 +163,9 @@ export function App(): React.JSX.Element {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [workspacesOpen, setWorkspacesOpen] = useState(false);
   const [groupsOpen, setGroupsOpen] = useState(false);
+  const [bookmarksOpen, setBookmarksOpen] = useState(false);
+  const [bookmarkQuery, setBookmarkQuery] = useState("");
+  const [bookmarks, setBookmarks] = useState<BookmarkPage>(emptyBookmarkPage);
   const [workspaces, setWorkspaces] = useState<WorkspaceSnapshot>(emptyWorkspaceSnapshot);
   const [media, setMedia] = useState<MediaState>(emptyMediaState);
   const addressRef = useRef<HTMLInputElement>(null);
@@ -295,6 +300,27 @@ export function App(): React.JSX.Element {
     };
   }, [current?.id, current?.url]);
 
+  /*
+   * The search runs in the trusted process, so this re-asks as the query
+   * changes rather than filtering a list held here - the store is far larger
+   * than anything that should cross IPC.
+   */
+  useEffect(() => {
+    if (!bookmarksOpen) return;
+
+    let cancelled = false;
+    void window.openstrawberry.migration
+      .searchBookmarks(bookmarkQuery)
+      .then((page) => {
+        if (!cancelled) setBookmarks(page);
+      })
+      .catch(() => undefined);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [bookmarksOpen, bookmarkQuery]);
+
   const runMedia = useCallback(
     (action: MediaAction): void => {
       const tabId = current?.id;
@@ -363,6 +389,9 @@ export function App(): React.JSX.Element {
         }
         case "group.manage":
           setGroupsOpen((open) => !open);
+          return;
+        case "tools.bookmarks":
+          setBookmarksOpen((open) => !open);
           return;
         case "group.toggle": {
           const group = current === null ? null : groupForTab(snapshot, current);
@@ -862,6 +891,21 @@ export function App(): React.JSX.Element {
           )}
 
           <ReaderView state={reader} onClose={() => setReader(closedReaderState())} />
+
+          {bookmarksOpen && (
+            <BookmarksPanel
+              page={bookmarks}
+              query={bookmarkQuery}
+              onQueryChange={setBookmarkQuery}
+              // Opening goes through the ordinary tab path, so a stored address
+              // passes exactly the navigation policy a typed one does.
+              onOpen={(url) => {
+                void bridge.createTab(snapshot.activePaneId, url).then(setSnapshot);
+                setBookmarksOpen(false);
+              }}
+              onClose={() => setBookmarksOpen(false)}
+            />
+          )}
 
           {groupsOpen && (
             <GroupsPanel

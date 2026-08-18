@@ -35,6 +35,7 @@ import type { ReaderState } from "../shared/reader.js";
 import type { WorkspaceSnapshot } from "../shared/workspaces.js";
 import type { MediaAction, MediaState } from "../shared/media.js";
 import type { GroupColour } from "../shared/tab-groups.js";
+import type { BookmarkPage } from "../shared/bookmarks.js";
 import type { BrowserPaneId, BrowserSnapshot, BrowserViewport } from "../shared/browser.js";
 import type {
   AgentConfigStatus,
@@ -118,7 +119,8 @@ const CHANNEL: Channels = {
   groupCreate: "group:create",
   groupUpdate: "group:update",
   groupAssign: "group:assign",
-  groupRemove: "group:remove"
+  groupRemove: "group:remove",
+  bookmarkSearch: "bookmark:search"
 };
 
 const STATE_EVENT: typeof BrowserStateEvent = "browser:state";
@@ -295,7 +297,10 @@ const api: OpenStrawberryBridge = {
     finish: async () => migrationCall(CHANNEL.migrationFinish),
     cancel: async () => migrationCall(CHANNEL.migrationCancel),
     reopen: async () => migrationCall(CHANNEL.migrationReopen),
-    deleteStagedPasswords: async () => migrationCall(CHANNEL.migrationDeleteStaged)
+    deleteStagedPasswords: async () => migrationCall(CHANNEL.migrationDeleteStaged),
+    // A bounded page comes back, never the whole store.
+    searchBookmarks: async (query: string): Promise<BookmarkPage> =>
+      (await electron.ipcRenderer.invoke(CHANNEL.bookmarkSearch, { query })) as BookmarkPage
   },
   downloads: {
     getSnapshot: async () => downloadCall(CHANNEL.downloadSnapshot),

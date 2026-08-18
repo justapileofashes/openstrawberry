@@ -71,6 +71,7 @@ import {
   parseGroupIdPayload,
   parseUpdateGroupPayload
 } from "../shared/tab-groups.js";
+import { parseBookmarkQueryPayload } from "../shared/bookmarks.js";
 import {
   parseSaveWorkspacePayload,
   parseWorkspaceIdPayload
@@ -802,6 +803,12 @@ function registerIpcHandlers(): void {
 
   registerTrustedQuery(IPC_CHANNELS.migrationDeleteStaged, () =>
     requireMigrationManager().deleteStagedPasswords()
+  );
+
+  // The read path that makes an import visible. Filtering happens here, so the
+  // renderer never holds the whole store.
+  registerTrustedHandler(IPC_CHANNELS.bookmarkSearch, parseBookmarkQueryPayload, (payload) =>
+    requireMigrationManager().searchBookmarks(payload.query)
   );
 }
 
