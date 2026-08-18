@@ -70,7 +70,7 @@ passes. Planned work is never marked done.
 - [x] Local text-only reader mode with no network or provider handoff. Reads the DOM the guest already loaded; nothing is fetched and nothing is summarised. This is the one place page content crosses into the trusted renderer, so a block carries a kind from a closed set and a plain string — no markup, URL, attribute, or style field exists for it to travel in — and the view renders every string as a React text node.
 - [ ] Media controls for compatible HTML video with browser-native picture-in-picture fallback.
 - [ ] Persistent tab groups with names, colours, and collapse state.
-- [ ] Named workspace snapshots.
+- [x] Named workspace snapshots. Addresses and labels only: no cookie, session, storage, or credential, and no type on the contract has a field one would fit in, so opening a workspace loads pages rather than restoring a signed-in state. The http(s) gate is applied on write and again on read, so a hand-edited file cannot introduce a scheme. Saving sends a name; the trusted process reads the open tabs itself.
 - [x] Command palette and keyboard shortcuts. Ctrl/Cmd+K opens it; conventional browser bindings (new tab, close tab, reload, address bar, downloads, settings, back, forward) are bound as users already expect, and anything without a conventional chord is palette-only rather than given an invented one. The palette runs commands by id against capabilities the bridge already exposes, so it adds no IPC surface.
 
 ## M5 — Migration and privacy

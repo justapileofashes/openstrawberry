@@ -32,6 +32,7 @@ import type {
 import type { DownloadSnapshot } from "../shared/downloads.js";
 import type { TrackingSnapshot } from "../shared/tracking.js";
 import type { ReaderState } from "../shared/reader.js";
+import type { WorkspaceSnapshot } from "../shared/workspaces.js";
 import type { BrowserPaneId, BrowserSnapshot, BrowserViewport } from "../shared/browser.js";
 import type {
   AgentConfigStatus,
@@ -105,7 +106,11 @@ const CHANNEL: Channels = {
   trackingExceptSite: "tracking:except-site",
   trackingResumeSite: "tracking:resume-site",
   trackingRemoveException: "tracking:remove-exception",
-  readerOpen: "reader:open"
+  readerOpen: "reader:open",
+  workspaceSnapshot: "workspace:snapshot",
+  workspaceSave: "workspace:save",
+  workspaceOpen: "workspace:open",
+  workspaceRemove: "workspace:remove"
 };
 
 const STATE_EVENT: typeof BrowserStateEvent = "browser:state";
@@ -308,6 +313,22 @@ const api: OpenStrawberryBridge = {
     // needs no channel.
     open: async (tabId: string): Promise<ReaderState> =>
       (await electron.ipcRenderer.invoke(CHANNEL.readerOpen, { tabId })) as ReaderState
+  },
+  workspaces: {
+    getSnapshot: async (): Promise<WorkspaceSnapshot> =>
+      (await electron.ipcRenderer.invoke(CHANNEL.workspaceSnapshot)) as WorkspaceSnapshot,
+    // A name only. What is open is read in the trusted process, so a workspace
+    // records the real tabs rather than a list assembled here.
+    save: async (name: string): Promise<WorkspaceSnapshot> =>
+      (await electron.ipcRenderer.invoke(CHANNEL.workspaceSave, { name })) as WorkspaceSnapshot,
+    open: async (workspaceId: string): Promise<BrowserSnapshot> =>
+      (await electron.ipcRenderer.invoke(CHANNEL.workspaceOpen, {
+        workspaceId
+      })) as BrowserSnapshot,
+    remove: async (workspaceId: string): Promise<WorkspaceSnapshot> =>
+      (await electron.ipcRenderer.invoke(CHANNEL.workspaceRemove, {
+        workspaceId
+      })) as WorkspaceSnapshot
   }
 };
 

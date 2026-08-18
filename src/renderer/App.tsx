@@ -27,6 +27,8 @@ import { DownloadsPanel } from "./DownloadsPanel.js";
 import { MigrationWizard } from "./MigrationWizard.js";
 import { ReaderView } from "./ReaderView.js";
 import { CommandPalette } from "./CommandPalette.js";
+import { WorkspacesPanel } from "./WorkspacesPanel.js";
+import { emptyWorkspaceSnapshot, type WorkspaceSnapshot } from "../shared/workspaces.js";
 import { commandForChord, isPaletteChord } from "./command-palette.js";
 import { SettingsPanel } from "./SettingsPanel.js";
 import { WindowControls } from "./WindowControls.js";
@@ -146,6 +148,8 @@ export function App(): React.JSX.Element {
   const [tracking, setTracking] = useState<TrackingSnapshot>(emptyTrackingSnapshot);
   const [reader, setReader] = useState<ReaderState>(closedReaderState);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [workspacesOpen, setWorkspacesOpen] = useState(false);
+  const [workspaces, setWorkspaces] = useState<WorkspaceSnapshot>(emptyWorkspaceSnapshot);
   const addressRef = useRef<HTMLInputElement>(null);
   const [appearance, setAppearance] = useState<AppearanceSettings>(loadAppearance);
   const [migration, setMigration] = useState<MigrationOverview | null>(null);
@@ -286,6 +290,14 @@ export function App(): React.JSX.Element {
           return;
         case "workspace.split":
           void bridge.setSplitEnabled(!snapshot.splitEnabled);
+          return;
+        case "workspace.snapshots":
+          // Re-read on open so the list reflects saves made in another window.
+          void window.openstrawberry.workspaces
+            .getSnapshot()
+            .then(setWorkspaces)
+            .catch(() => undefined);
+          setWorkspacesOpen((open) => !open);
           return;
         case "tools.downloads":
           setDownloadsOpen((open) => !open);
@@ -709,6 +721,25 @@ export function App(): React.JSX.Element {
           )}
 
           <ReaderView state={reader} onClose={() => setReader(closedReaderState())} />
+
+          {workspacesOpen && (
+            <WorkspacesPanel
+              snapshot={workspaces}
+              onSave={(name) => {
+                void window.openstrawberry.workspaces.save(name).then(setWorkspaces);
+              }}
+              onOpen={(workspaceId) => {
+                void window.openstrawberry.workspaces.open(workspaceId).then((next) => {
+                  setSnapshot(next);
+                  setWorkspacesOpen(false);
+                });
+              }}
+              onRemove={(workspaceId) => {
+                void window.openstrawberry.workspaces.remove(workspaceId).then(setWorkspaces);
+              }}
+              onClose={() => setWorkspacesOpen(false)}
+            />
+          )}
 
           {paletteOpen && (
             <CommandPalette

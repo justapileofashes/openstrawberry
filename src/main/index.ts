@@ -58,6 +58,11 @@ import { DownloadManager } from "./download-manager.js";
 import { TrackerBlocker } from "./tracker-blocker.js";
 import { extractReaderDocument } from "./reader.js";
 import { parseReaderTabPayload, type ReaderState } from "../shared/reader.js";
+import { WorkspaceStore } from "./workspace-store.js";
+import {
+  parseSaveWorkspacePayload,
+  parseWorkspaceIdPayload
+} from "../shared/workspaces.js";
 import { MigrationManager, type MigrationDialogPort } from "./migration-manager.js";
 import { AgentManager, type BrowserPort } from "./agent-manager.js";
 import { SecretStore } from "./secret-store.js";
@@ -95,6 +100,12 @@ let mainWindow: BrowserWindow | null = null;
 let browserManager: BrowserManager | null = null;
 let downloadManager: DownloadManager | null = null;
 let trackerBlocker: TrackerBlocker | null = null;
+/*
+ * Outlives a window, unlike the managers above: saved workspaces are a user's
+ * own list, not per-window runtime state, and they hold nothing that needs
+ * releasing at teardown.
+ */
+let workspaceStore: WorkspaceStore | null = null;
 let agentManager: AgentManager | null = null;
 let migrationManager: MigrationManager | null = null;
 /** A link that arrived before the browser core existed. */
@@ -127,6 +138,14 @@ function requireDownloadManager(): DownloadManager {
 function requireTrackerBlocker(): TrackerBlocker {
   if (trackerBlocker === null) throw new Error("Tracking protection is unavailable.");
   return trackerBlocker;
+}
+
+/** Returns the workspace store, creating it on first use. */
+function requireWorkspaceStore(): WorkspaceStore {
+  workspaceStore ??= new WorkspaceStore({
+    statePath: join(app.getPath("userData"), "workspaces.json")
+  });
+  return workspaceStore;
 }
 
 /** Returns the live agent runtime, or throws so the router can redact and report. */
@@ -579,6 +598,41 @@ function registerIpcHandlers(): void {
     if (contents === null) return { status: "unavailable", reason: "no-page" } as ReaderState;
     return extractReaderDocument(contents);
   });
+
+  /*
+   * Workspaces. A snapshot is addresses and labels; there is no field on the
+   * contract a cookie, session, or credential would fit in.
+   */
+  registerTrustedQuery(IPC_CHANNELS.workspaceSnapshot, () =>
+    requireWorkspaceStore().snapshot()
+  );
+
+  // The renderer sends a name only. The open tabs are read here rather than
+  // taken from a list the renderer assembled, so a workspace records what is
+  // actually open.
+  registerTrustedHandler(IPC_CHANNELS.workspaceSave, parseSaveWorkspacePayload, (payload) => {
+    const tabs = requireBrowserManager()
+      .snapshot()
+      .tabs.map((tab) => ({ url: tab.url, title: tab.title }));
+    return requireWorkspaceStore().save(payload.name, tabs);
+  });
+
+  registerTrustedHandler(IPC_CHANNELS.workspaceOpen, parseWorkspaceIdPayload, (payload) => {
+    const manager = requireBrowserManager();
+    const paneId = manager.snapshot().activePaneId;
+
+    // Opened alongside what is already there rather than replacing it: closing
+    // a user's tabs to honour "open" would be a destructive reading of the word.
+    let snapshot = manager.snapshot();
+    for (const url of requireWorkspaceStore().addressesFor(payload.workspaceId)) {
+      snapshot = manager.createTab(paneId, url, { activate: false });
+    }
+    return snapshot;
+  });
+
+  registerTrustedHandler(IPC_CHANNELS.workspaceRemove, parseWorkspaceIdPayload, (payload) =>
+    requireWorkspaceStore().remove(payload.workspaceId)
+  );
 
   registerTrustedQuery(IPC_CHANNELS.agentSnapshot, () => requireAgentManager().snapshot());
 

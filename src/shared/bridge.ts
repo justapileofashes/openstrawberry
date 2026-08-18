@@ -29,6 +29,7 @@ import type {
 import type { DownloadSnapshot } from "./downloads.js";
 import type { TrackingSnapshot } from "./tracking.js";
 import type { ReaderState } from "./reader.js";
+import type { WorkspaceSnapshot } from "./workspaces.js";
 
 /** Channel names, shared so both sides of the boundary cannot drift apart. */
 export const IPC_CHANNELS = {
@@ -90,7 +91,11 @@ export const IPC_CHANNELS = {
   trackingExceptSite: "tracking:except-site",
   trackingResumeSite: "tracking:resume-site",
   trackingRemoveException: "tracking:remove-exception",
-  readerOpen: "reader:open"
+  readerOpen: "reader:open",
+  workspaceSnapshot: "workspace:snapshot",
+  workspaceSave: "workspace:save",
+  workspaceOpen: "workspace:open",
+  workspaceRemove: "workspace:remove"
 } as const;
 
 /** Push channel the main process uses to broadcast browser state changes. */
@@ -360,6 +365,25 @@ export interface ReaderBridge {
   readonly open: (tabId: string) => Promise<ReaderState>;
 }
 
+/**
+ * Named workspace snapshots.
+ *
+ * A workspace is addresses and labels. It carries no cookie, session, storage,
+ * or credential, and no type on this surface has a field one would fit in, so
+ * opening a saved workspace navigates to pages rather than restoring who you
+ * were signed in as.
+ *
+ * `save` sends only a name; the trusted process reads the open tabs itself
+ * rather than trusting a list the renderer assembled.
+ */
+export interface WorkspaceBridge {
+  readonly getSnapshot: () => Promise<WorkspaceSnapshot>;
+  readonly save: (name: string) => Promise<WorkspaceSnapshot>;
+  /** Opens every address the workspace holds, alongside what is already open. */
+  readonly open: (workspaceId: string) => Promise<BrowserSnapshot>;
+  readonly remove: (workspaceId: string) => Promise<WorkspaceSnapshot>;
+}
+
 export interface OpenStrawberryBridge {
   readonly shell: {
     /** Available synchronously so first paint does not wait on IPC. */
@@ -373,4 +397,5 @@ export interface OpenStrawberryBridge {
   readonly downloads: DownloadBridge;
   readonly tracking: TrackingBridge;
   readonly reader: ReaderBridge;
+  readonly workspaces: WorkspaceBridge;
 }

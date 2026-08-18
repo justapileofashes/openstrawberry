@@ -2995,3 +2995,91 @@ input[type="range"]:disabled {
   color: var(--ink-muted);
   text-align: center;
 }
+
+/* -------------------------------------------------------------------------- */
+/* Saved workspaces                                                            */
+/* -------------------------------------------------------------------------- */
+
+.ws-save {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-4) 0 var(--s-3);
+}
+
+.ws-input {
+  flex: 1;
+  min-inline-size: 0;
+  padding: var(--s-2) var(--s-3);
+  border: 1px solid rgba(222, 232, 246, 0.1);
+  border-radius: var(--r-2);
+  background: rgba(8, 8, 10, 0.35);
+  color: var(--ink-strong);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  outline: none;
+}
+
+.ws-input:focus {
+  border-color: rgba(222, 232, 246, 0.28);
+}
+
+.ws-input::placeholder {
+  color: var(--ink-faint);
+}
+
+.text-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.ws-list {
+  margin: var(--s-4) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ws-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-3) 0;
+  border-bottom: 1px solid rgba(222, 232, 246, 0.05);
+}
+
+.ws-item:last-child {
+  border-bottom: 0;
+}
+
+.ws-main {
+  min-inline-size: 0;
+}
+
+.ws-name {
+  display: block;
+  overflow: hidden;
+  font-size: 13px;
+  color: var(--ink-strong);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ws-meta {
+  display: block;
+  margin-top: 2px;
+  font-size: 11.5px;
+  color: var(--ink-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.ws-actions {
+  display: flex;
+  gap: 2px;
+}
+
+.ws-empty {
+  margin: var(--s-4) 0 0;
+  font-size: 12.5px;
+  color: var(--ink-muted);
+}

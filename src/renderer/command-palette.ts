@@ -83,6 +83,13 @@ export const COMMANDS: readonly Command[] = [
     keywords: ["pane", "side by side"],
     shortcut: { key: "\\", mod: true }
   },
+  {
+    id: "workspace.snapshots",
+    title: "Saved workspaces",
+    group: "Workspace",
+    keywords: ["snapshot", "session", "restore", "save tabs"],
+    shortcut: { key: "s", mod: true, shift: true }
+  },
 
   {
     id: "tools.downloads",
