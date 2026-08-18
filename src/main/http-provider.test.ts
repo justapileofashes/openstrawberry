@@ -202,6 +202,25 @@ describe("callProvider", () => {
     }
   });
 
+  it("keeps the key out of the URL for every provider that has one", async () => {
+    // One assertion over the whole set, so a dialect added later cannot quietly
+    // adopt the query-parameter form.
+    for (const provider of ["anthropic", "openai", "openrouter", "google"] as const) {
+      const captured: Captured[] = [];
+      await callProvider({
+        provider,
+        model: "some-model",
+        baseUrl: null,
+        credential: KEY,
+        prompt: "hi",
+        fetch: fetchReturning({ nothing: true }, 200, captured)
+      });
+
+      expect(captured[0]?.url, provider).not.toContain(KEY);
+      expect(captured[0]?.body, provider).not.toContain(KEY);
+    }
+  });
+
   it("never returns anything derived from the provider's error body", async () => {
     // A gateway echoing the request back must not put the key into a run log.
     const result = await callProvider({
@@ -302,6 +321,86 @@ describe("callProvider", () => {
     });
 
     expect(captured[0]?.url).toBe("https://gateway.example.com/v1/chat/completions");
+  });
+
+  it("calls Google and returns its text", async () => {
+    const captured: Captured[] = [];
+    const result = await callProvider({
+      provider: "google",
+      model: "gemini-2.5-pro",
+      baseUrl: null,
+      credential: KEY,
+      prompt: "hi",
+      fetch: fetchReturning(
+        { candidates: [{ content: { parts: [{ text: "Hello from Gemini." }] } }] },
+        200,
+        captured
+      )
+    });
+
+    expect(result).toEqual({ ok: true, text: "Hello from Gemini." });
+    expect(captured[0]?.url).toBe(
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent"
+    );
+  });
+
+  it("sends Google's key in a header, never in the query string", async () => {
+    // Google's API accepts ?key=, and that form is refused: a credential in a
+    // URL reaches server logs, proxy logs, and every intermediary that records
+    // a request line.
+    const captured: Captured[] = [];
+    await callProvider({
+      provider: "google",
+      model: "gemini-2.5-pro",
+      baseUrl: null,
+      credential: KEY,
+      prompt: "hi",
+      fetch: fetchReturning(
+        { candidates: [{ content: { parts: [{ text: "x" }] } }] },
+        200,
+        captured
+      )
+    });
+
+    expect(captured[0]?.headers["x-goog-api-key"]).toBe(KEY);
+    expect(captured[0]?.url).not.toContain(KEY);
+    expect(captured[0]?.url).not.toContain("key=");
+  });
+
+  it("refuses a Google model name that would walk out of the path", async () => {
+    // The model is user-typed and lands in a URL path, so a separator is
+    // refused outright rather than encoded.
+    for (const model of ["../../v1/other", "a/b", "..", "  "]) {
+      const result = await callProvider({
+        provider: "google",
+        model,
+        baseUrl: null,
+        credential: KEY,
+        prompt: "hi",
+        fetch: fetchReturning({ candidates: [] })
+      });
+
+      expect(result, model).toEqual({ ok: false, code: "bad-endpoint" });
+    }
+  });
+
+  it("percent-encodes a Google model name with awkward characters", async () => {
+    const captured: Captured[] = [];
+    await callProvider({
+      provider: "google",
+      model: "gemini pro?x=1",
+      baseUrl: null,
+      credential: KEY,
+      prompt: "hi",
+      fetch: fetchReturning(
+        { candidates: [{ content: { parts: [{ text: "x" }] } }] },
+        200,
+        captured
+      )
+    });
+
+    // The query separator cannot survive into the URL as syntax.
+    expect(captured[0]?.url).toContain("gemini%20pro%3Fx%3D1");
   });
 
   it("does not double the path when the base already names it", async () => {

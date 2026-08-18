@@ -68,7 +68,24 @@ export type ProviderResult =
  * endpoint, and Anthropic has its own; adding a provider is usually adding a row
  * to the table below rather than a third dialect.
  */
-export type ProviderDialect = "anthropic" | "openai" | "ollama";
+export type ProviderDialect = "anthropic" | "openai" | "ollama" | "google";
+
+/**
+ * Google addresses the model in the URL path rather than in the body.
+ *
+ * That makes the model name part of a URL, and the model name is user-typed. It
+ * is percent-encoded here, and a name carrying a path separator is refused
+ * outright rather than encoded: `../../` would otherwise walk out of the API
+ * version prefix and address a different endpoint entirely. Encoding alone would
+ * defeat that, but refusing is clearer about what is not supported.
+ */
+export function googleModelPath(model: string): string | null {
+  const named = model.trim();
+  if (named.length === 0) return null;
+  if (named.includes("/") || named.includes("\\") || named.includes("..")) return null;
+
+  return `/v1beta/models/${encodeURIComponent(named)}:generateContent`;
+}
 
 interface EndpointSpec {
   readonly dialect: ProviderDialect;
@@ -83,6 +100,7 @@ const ENDPOINTS: Readonly<Partial<Record<ProviderId, EndpointSpec>>> = {
   omniroute: { dialect: "openai", defaultBaseUrl: "https://api.omniroute.ai/v1" },
   moonshot: { dialect: "openai", defaultBaseUrl: "https://api.moonshot.cn/v1" },
   qwen: { dialect: "openai", defaultBaseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1" },
+  google: { dialect: "google", defaultBaseUrl: "https://generativelanguage.googleapis.com" },
   "openai-compatible": { dialect: "openai", defaultBaseUrl: "" },
   ollama: { dialect: "ollama", defaultBaseUrl: "http://127.0.0.1:11434" }
 };
@@ -128,6 +146,10 @@ export function endpointFor(
   }
 
   const root = `${parsed.origin}${parsed.pathname.replace(/\/+$/u, "")}`;
+
+  // Google's path carries the model, so it is composed in `buildChatRequest`
+  // where the model is known. The root is all that can be settled here.
+  if (spec.dialect === "google") return { url: root, dialect: spec.dialect };
 
   const path =
     spec.dialect === "anthropic"
@@ -180,6 +202,18 @@ export function buildChatRequest(
         max_tokens: 2048,
         messages: [{ role: "user", content: bounded }]
       })
+    };
+  }
+
+  if (endpoint.dialect === "google") {
+    const path = googleModelPath(named);
+    if (path === null) return null;
+
+    return {
+      url: `${endpoint.url}${path}`,
+      dialect: endpoint.dialect,
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ contents: [{ parts: [{ text: bounded }] }] })
     };
   }
 
@@ -252,6 +286,26 @@ export function parseChatReply(dialect: ProviderDialect, raw: unknown): Provider
         return entry?.["type"] === "text" ? replyText(entry["text"]) : "";
       })
       .filter((part) => part.length > 0)
+      .join("\n");
+
+    return text.length > 0
+      ? { ok: true, text: text.slice(0, MAX_REPLY_LENGTH) }
+      : { ok: false, code: "malformed-reply" };
+  }
+
+  if (dialect === "google") {
+    const candidates = root["candidates"];
+    if (!Array.isArray(candidates) || candidates.length === 0) {
+      return { ok: false, code: "malformed-reply" };
+    }
+
+    const parts = record(record(candidates[0])?.["content"])?.["parts"];
+    if (!Array.isArray(parts)) return { ok: false, code: "malformed-reply" };
+
+    // Concatenated, because a reply can arrive as several parts.
+    const text = parts
+      .map((part) => replyText(record(part)?.["text"]))
+      .filter((piece) => piece.length > 0)
       .join("\n");
 
     return text.length > 0

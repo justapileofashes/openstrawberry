@@ -76,9 +76,18 @@ function withAuthorisation(
   const sent: Record<string, string> = { ...headers };
   if (credential === null || credential.length === 0) return sent;
 
-  // Anthropic takes its key in its own header; everything else this app speaks
-  // to uses a bearer token.
+  /*
+   * Anthropic and Google each take their key in their own header; everything
+   * else this app speaks to uses a bearer token.
+   *
+   * Google's API also accepts the key as a `?key=` query parameter, and that
+   * form is deliberately not used. A credential in a URL is written to server
+   * logs, proxy logs, and any intermediary that records request lines - none of
+   * which is true of a header. A test asserts the key never appears in the URL
+   * for any provider, so this cannot regress into the more convenient form.
+   */
   if (provider === "anthropic") sent["x-api-key"] = credential;
+  else if (provider === "google") sent["x-goog-api-key"] = credential;
   else sent["authorization"] = `Bearer ${credential}`;
 
   return sent;
