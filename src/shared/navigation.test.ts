@@ -2,11 +2,14 @@ import { describe, expect, it } from "vitest";
 import { BLANK_PAGE } from "./desktop-shell.js";
 import {
   buildSearchUrl,
+  DEFAULT_SEARCH_TEMPLATE,
   displayHostname,
   isAllowedUrl,
   isSafeFaviconUrl,
   MAX_ADDRESS_LENGTH,
   normalizeAddressInput,
+  resolveSearchTemplate,
+  searchTemplateForName,
   urlFromCommandLine
 } from "./navigation.js";
 
@@ -212,5 +215,76 @@ describe("displayHostname", () => {
 
   it("falls back for unparseable input", () => {
     expect(displayHostname("nonsense")).toBe("New tab");
+  });
+});
+
+describe("searchTemplateForName", () => {
+  it("resolves the engines it ships a template for", () => {
+    expect(searchTemplateForName("DuckDuckGo")).toBe("https://duckduckgo.com/?q=%s");
+    expect(searchTemplateForName("Google")).toBe("https://www.google.com/search?q=%s");
+    expect(searchTemplateForName("Brave Search")).toBe("https://search.brave.com/search?q=%s");
+    expect(searchTemplateForName("Startpage")).toBe(
+      "https://www.startpage.com/sp/search?query=%s"
+    );
+  });
+
+  it("ignores case, spacing, and punctuation in the imported name", () => {
+    for (const name of ["duckduckgo", "Duck Duck Go", "DuckDuckGo!", "  DUCKDUCKGO  "]) {
+      expect(searchTemplateForName(name), name).toBe("https://duckduckgo.com/?q=%s");
+    }
+  });
+
+  it("still resolves a name carrying a suffix", () => {
+    // Chromium profiles often store "Google (Default)" or similar.
+    expect(searchTemplateForName("Google (Default)")).toBe(
+      "https://www.google.com/search?q=%s"
+    );
+  });
+
+  it("is null for an engine it has no template for", () => {
+    // Guessing a pattern from the name would be the "copy the template"
+    // behaviour migration exists to refuse.
+    for (const name of ["Some Intranet Search", "", null, undefined, "!!!", "   "]) {
+      expect(searchTemplateForName(name)).toBeNull();
+    }
+  });
+
+  it("only ever returns a template this file ships", () => {
+    // The security property: an imported string selects from these addresses,
+    // it never becomes one.
+    for (const name of [
+      "Google",
+      "https://evil.example/?q=%s",
+      "javascript:alert(1)",
+      "Bing"
+    ]) {
+      const template = searchTemplateForName(name);
+      if (template === null) continue;
+      expect(template.startsWith("https://")).toBe(true);
+      expect(template).toContain("%s");
+      expect(template).not.toContain("evil.example");
+    }
+  });
+});
+
+describe("resolveSearchTemplate", () => {
+  it("falls back to the shipped default", () => {
+    expect(resolveSearchTemplate(null)).toBe(DEFAULT_SEARCH_TEMPLATE);
+    expect(resolveSearchTemplate("Some Intranet Search")).toBe(DEFAULT_SEARCH_TEMPLATE);
+  });
+
+  it("uses the imported engine when it is one we can reach", () => {
+    expect(resolveSearchTemplate("DuckDuckGo")).toBe("https://duckduckgo.com/?q=%s");
+  });
+
+  it("produces a real search URL when combined with a query", () => {
+    const url = buildSearchUrl("rust traits", resolveSearchTemplate("DuckDuckGo"));
+    expect(url).toBe("https://duckduckgo.com/?q=rust%20traits");
+  });
+
+  it("still escapes a query that would otherwise alter the URL", () => {
+    const url = buildSearchUrl("a&b=c#d", resolveSearchTemplate("DuckDuckGo"));
+    expect(url).not.toContain("&b=");
+    expect(url).not.toContain("#d");
   });
 });

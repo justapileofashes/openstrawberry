@@ -29,10 +29,12 @@ import {
 } from "../shared/browser.js";
 import { BLANK_PAGE } from "../shared/desktop-shell.js";
 import {
+  DEFAULT_SEARCH_TEMPLATE,
   displayHostname,
   isAllowedUrl,
   isSafeFaviconUrl,
-  normalizeAddressInput
+  normalizeAddressInput,
+  resolveSearchTemplate
 } from "../shared/navigation.js";
 import { conventionalFaviconUrl, FaviconResolver } from "./favicon.js";
 import {
@@ -91,6 +93,14 @@ export class BrowserManager {
   private nextGroupSequence = 1;
   private groups: readonly TabGroup[] = [];
   private destroyed = false;
+
+  /**
+   * Where a non-URL address goes.
+   *
+   * Always one of the templates shipped in `navigation.ts`. Migration can change
+   * *which* one by name; it can never supply one.
+   */
+  private searchTemplate: string = DEFAULT_SEARCH_TEMPLATE;
 
   public constructor(options: BrowserManagerOptions) {
     this.window = options.window;
@@ -318,7 +328,9 @@ export class BrowserManager {
     const tab = this.tabs.get(tabId);
     if (tab === undefined) return this.snapshot();
 
-    const decision = normalizeAddressInput(address);
+    // The template is whatever the user's imported engine resolved to, or the
+    // shipped default. It is always one of this app's own addresses.
+    const decision = normalizeAddressInput(address, this.searchTemplate);
     if (decision.kind === "rejected") return this.snapshot();
 
     this.loadUrl(tabId, decision.url);
@@ -512,6 +524,17 @@ export class BrowserManager {
       return { tabId, url: tab.state.url };
     }
     return null;
+  }
+
+  /**
+   * Points searches at the engine a migration recorded.
+   *
+   * Takes the engine's *name*, not a URL, and resolves it against the shipped
+   * table. An unrecognised name leaves the default in place, which is the right
+   * outcome for an engine this browser has no template for.
+   */
+  public setSearchEngineName(name: string | null): void {
+    this.searchTemplate = resolveSearchTemplate(name);
   }
 
   /** The tab the user is looking at, which is the one the chrome reports on. */

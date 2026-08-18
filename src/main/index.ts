@@ -451,6 +451,18 @@ function createWindow(): void {
     agentManager?.restore();
     downloadManager?.restore();
 
+    /*
+     * Apply the search engine a migration recorded. Only its name was ever
+     * imported; `setSearchEngineName` resolves that against the templates this
+     * app ships, so the address bar honours the user's choice without any URL
+     * having crossed over from another browser.
+     */
+    try {
+      manager.setSearchEngineName(migrationManager?.overview().state.defaultSearchName ?? null);
+    } catch {
+      // Migration being unavailable leaves the shipped default in place.
+    }
+
     // A link that launched the app opens alongside the restored session rather
     // than replacing it.
     const launchUrl = pendingLaunchUrl;
@@ -783,9 +795,15 @@ function registerIpcHandlers(): void {
     requireMigrationManager().pickPasswordCsv()
   );
 
-  registerTrustedHandler(IPC_CHANNELS.migrationCommit, parseMigrationCommitPayload, (payload) =>
-    requireMigrationManager().commit(payload)
-  );
+  registerTrustedHandler(IPC_CHANNELS.migrationCommit, parseMigrationCommitPayload, (payload) => {
+    const result = requireMigrationManager().commit(payload);
+
+    // A search engine imported in this run takes effect immediately, rather
+    // than on the next launch. Still a name resolved against the shipped table.
+    if (result.importedSearchName) browserManager?.setSearchEngineName(result.searchName);
+
+    return result;
+  });
 
   registerTrustedHandler(IPC_CHANNELS.migrationRelease, parseMigrationHandlePayload, (payload) => {
     requireMigrationManager().releaseHandle(payload.handle);

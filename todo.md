@@ -89,7 +89,7 @@ passes. Planned work is never marked done.
 - [x] Validate: `pnpm check`, `pnpm test` (548 tests), and `pnpm build` all pass.
 - [ ] Exercise the wizard end to end in a running app against real Chrome, Firefox, and Safari exports on each platform. Covered by fixtures and unit tests today, not by a manual pass.
 - [x] Surface imported bookmarks in the chrome. A searchable panel, reachable from the command palette. The search runs in the trusted process because the store holds up to fifty thousand entries and none of them needs to cross IPC to be filtered; what comes back is a bounded page and a total. Opening one goes through the ordinary tab path, so a stored address passes the same navigation policy a typed one does.
-- [ ] Apply the imported search provider name to address-bar search. It is stored and displayed; it does not yet change where a non-URL query goes.
+- [x] Apply the imported search provider name to address-bar search. The name selects from a table of templates OpenStrawberry ships; an imported string is never navigated to, interpolated into a URL, or stored as one. An engine with no shipped template falls back to the default rather than having a pattern guessed from its name, which would be the copy-the-template behaviour migration exists to refuse. Applied at launch and immediately on a commit that imported one.
 
 ## M6 — Agents and orchestration
 

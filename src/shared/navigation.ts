@@ -20,6 +20,77 @@ export const ALLOWED_SCHEMES = ["http:", "https:"] as const;
  */
 export const DEFAULT_SEARCH_TEMPLATE = "https://www.google.com/search?q=%s";
 
+/**
+ * Search engines OpenStrawberry knows how to reach, by display name.
+ *
+ * This table is the whole reason migration can honour a user's search engine
+ * without ever reading one.
+ *
+ * Chromium's preferences file holds the search URL template, the suggestion
+ * endpoint, the keyword, and sync metadata. `parseChromiumSearchName` returns
+ * only the display name, and `MIGRATION_PRIVACY.md` says so. That leaves a
+ * question: how do you honour "this user searches with DuckDuckGo" without
+ * copying the thing that says how?
+ *
+ * You ship the answer. A name is matched against this table and resolved to a
+ * template OpenStrawberry wrote. An imported string is never navigated to, never
+ * interpolated into a URL, and never stored as one - it only ever selects from
+ * addresses already in this file. A name that matches nothing falls back to the
+ * default, which is the correct outcome for an engine this browser has no
+ * template for.
+ */
+const SEARCH_TEMPLATES: readonly (readonly [string, string])[] = [
+  ["google", "https://www.google.com/search?q=%s"],
+  ["duckduckgo", "https://duckduckgo.com/?q=%s"],
+  ["ddg", "https://duckduckgo.com/?q=%s"],
+  ["bing", "https://www.bing.com/search?q=%s"],
+  ["brave", "https://search.brave.com/search?q=%s"],
+  ["bravesearch", "https://search.brave.com/search?q=%s"],
+  ["startpage", "https://www.startpage.com/sp/search?query=%s"],
+  ["ecosia", "https://www.ecosia.org/search?q=%s"],
+  ["qwant", "https://www.qwant.com/?q=%s"],
+  ["mojeek", "https://www.mojeek.com/search?q=%s"],
+  ["kagi", "https://kagi.com/search?q=%s"],
+  ["yahoo", "https://search.yahoo.com/search?p=%s"],
+  ["perplexity", "https://www.perplexity.ai/search?q=%s"],
+  ["wikipedia", "https://en.wikipedia.org/w/index.php?search=%s"]
+];
+
+/** Reduces a display name to the form the table is keyed by. */
+function searchKey(name: string): string {
+  return name.toLowerCase().replace(/[^a-z0-9]/gu, "");
+}
+
+/**
+ * The template for an imported search engine name, or null when unrecognised.
+ *
+ * Null rather than a guess: an engine this browser cannot spell a URL for is one
+ * the caller should fall back on the default for, and inventing a pattern from
+ * the name would be exactly the "copy the template" behaviour migration refuses.
+ */
+export function searchTemplateForName(name: string | null | undefined): string | null {
+  if (typeof name !== "string" || name.length === 0) return null;
+
+  const key = searchKey(name);
+  if (key.length === 0) return null;
+
+  for (const [candidate, template] of SEARCH_TEMPLATES) {
+    if (key === candidate) return template;
+  }
+
+  // A name like "Google (default)" or "DuckDuckGo Lite" still names the engine.
+  for (const [candidate, template] of SEARCH_TEMPLATES) {
+    if (key.startsWith(candidate)) return template;
+  }
+
+  return null;
+}
+
+/** The template to search with, given whatever migration recorded. */
+export function resolveSearchTemplate(name: string | null | undefined): string {
+  return searchTemplateForName(name) ?? DEFAULT_SEARCH_TEMPLATE;
+}
+
 /** Bounds address input before it reaches the URL parser. */
 export const MAX_ADDRESS_LENGTH = 4096;
 
