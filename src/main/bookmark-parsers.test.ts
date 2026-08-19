@@ -326,6 +326,10 @@ describe("parseHtmlBookmarks", () => {
     expect(codes(result.warnings)).toContain("file-malformed");
   });
 
+  // The only test that parses a full 20,000-record export, which is the point:
+  // the limit is not exercised by a smaller one. It takes seconds even on a
+  // fast machine and comfortably exceeds the 5s default on a CI runner, so it
+  // carries its own timeout rather than failing the branch on runner speed.
   it("stops at the record limit", () => {
     const anchors = Array.from(
       { length: MAX_BOOKMARK_RECORDS + 20 },
@@ -336,7 +340,7 @@ describe("parseHtmlBookmarks", () => {
 
     expect(result.bookmarks).toHaveLength(MAX_BOOKMARK_RECORDS);
     expect(codes(result.warnings)).toContain("bookmarks-truncated");
-  });
+  }, 60_000);
 
   it("stops recording below the depth limit", () => {
     const open = "<DT><H3>F</H3><DL><p>".repeat(MAX_BOOKMARK_DEPTH + 3);
