@@ -190,7 +190,10 @@ jobs:
               echo "These installers are **not signed and not notarised**. Windows SmartScreen"
               echo "and macOS Gatekeeper will warn about them, and they carry no provenance"
               echo "beyond the checksums below. This is a development build, not a stable"
-              echo "release - see [docs/RELEASES.md](../blob/main/docs/RELEASES.md)."
+              # Absolute. A relative link in release notes is resolved against
+              # the releases path, not the repository root, and lands on
+              # /blob/blob/main/... which does not exist.
+              echo "release - see [docs/RELEASES.md](https://github.com/${GITHUB_REPOSITORY}/blob/main/docs/RELEASES.md)."
               echo
               echo "Verify what you downloaded against \`SHA256SUMS.txt\` before running it."
               echo
