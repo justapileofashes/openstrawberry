@@ -86,6 +86,11 @@ jobs:
         env:
           # Empty for a stable tag, which leaves the signing gate fully armed.
           OPENSTRAWBERRY_ALLOW_UNSIGNED: ${{ steps.mode.outputs.unsigned }}
+          # An unsigned run must not let electron-builder go looking for an
+          # identity. Left on, it hunts the runner keychain, finds nothing, and
+          # dies mid-package with an error that names no cause. Off, it packages
+          # the app unsigned, which is what an unsigned prerelease asked for.
+          CSC_IDENTITY_AUTO_DISCOVERY: ${{ steps.mode.outputs.unsigned == '1' && 'false' || 'true' }}
           # Absent secrets leave these empty, and release:preflight then refuses
           # the build with a message naming what is missing. That refusal is the
           # intended behaviour of a repository with no certificate configured —
