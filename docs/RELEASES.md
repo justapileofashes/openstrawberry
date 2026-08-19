@@ -200,6 +200,24 @@ not yet earned, and this section will say so until it is.
 Cross-platform packaging is not validated by building on one host. Each target
 is confirmed on its own runner before any claim of readiness.
 
+## The download page
+
+[`site/index.html`](../site/index.html) is a single static page, published to
+GitHub Pages by [`.github/workflows/pages.yml`](../.github/workflows/pages.yml).
+It detects the visitor's platform, lets them pick another, and shows the
+artifacts each one would receive.
+
+It holds no download URL of its own. On load it asks
+`api.github.com/.../releases/latest` what has actually been published and builds
+its links from the assets that come back. Every failure path — no release, a
+draft, a prerelease, a release with no assets, a network error — leaves the
+buttons in their disabled state. That is what keeps the rule below true without
+depending on anyone remembering to edit the page: it cannot link an artifact
+GitHub did not report, and it needs no change when the gate finally opens.
+
+The artifact names in its catalogue mirror `PLANNED_RELEASE_ARTIFACTS`. A name
+that drifts costs a disabled button, never a broken link.
+
 ## Rules
 
 - Never commit a built binary.

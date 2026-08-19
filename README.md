@@ -11,6 +11,10 @@ privacy-aware migration. Real Chromium browsing, not a mockup.
 ## Status
 
 There is **no stable release**, and there are **no public downloads**. The
+[download page](https://justapileofashes.github.io/openstrawberry/) picks the
+right installer for your platform, and its buttons stay disabled — it reads the
+GitHub Releases API on load, so they enable themselves the moment a signed
+release exists, and never link a file that is not there. The
 in-app update channel is disabled and stays disabled until signed artifacts and
 verified update metadata exist. Nothing in this repository should be treated as
 production software.
