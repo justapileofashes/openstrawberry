@@ -1,0 +1,144 @@
+name: Release
+
+# Tag-driven, and manual only as a dry run. There is no path here that publishes
+# on a push to a branch.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Build and verify without creating a release"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  # Each target is built on its own runner. Cross-building one platform from
+  # another is not validation of that platform, which is the rule docs/RELEASES.md
+  # states and the reason this is a matrix rather than a single job.
+  build:
+    name: Build ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      # One platform failing to sign must not cancel the others; a partial
+      # matrix result is far easier to diagnose than a cancelled one.
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            name: Windows
+          - os: macos-latest
+            name: macOS
+          - os: ubuntu-latest
+            name: Linux
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Provenance records the commit, so the checkout must not be shallow
+          # in a way that leaves `git rev-parse` without an answer.
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.8.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install (frozen lockfile)
+        run: pnpm install --frozen-lockfile
+
+      # Runs before any signing credential is placed in the environment, so a
+      # type error or failing test never reaches a step holding a certificate.
+      - name: Type check
+        run: pnpm check
+
+      - name: Test
+        run: pnpm test
+
+      - name: Build and verify release artifacts
+        run: pnpm release
+        env:
+          # Absent secrets leave these empty, and release:preflight then refuses
+          # the build with a message naming what is missing. That refusal is the
+          # intended behaviour of a repository with no certificate configured —
+          # it is not a workflow bug.
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          # Never set. electron-builder would otherwise publish on its own, and
+          # publishing is a decision made on a draft release, not by a build.
+          GH_TOKEN: ""
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: |
+            release/*.exe
+            release/*.dmg
+            release/*.AppImage
+            release/*.deb
+            release/*.rpm
+            release/SHA256SUMS.txt
+            release/provenance.json
+          if-no-files-found: error
+          retention-days: 7
+
+  draft:
+    name: Draft release
+    needs: build
+    # Only for a real tag, and only when every platform built and verified. A
+    # release missing a platform is not a release.
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Collect artifacts and merge checksums
+        run: |
+          mkdir -p dist-release
+          find artifacts -type f \
+            \( -name '*.exe' -o -name '*.dmg' -o -name '*.AppImage' \
+               -o -name '*.deb' -o -name '*.rpm' \) \
+            -exec cp {} dist-release/ \;
+          # Each runner hashed only what it built, so the published manifest is
+          # the concatenation. Sorted for a stable, reviewable file.
+          find artifacts -name 'SHA256SUMS.txt' -exec cat {} + | sort > dist-release/SHA256SUMS.txt
+          find artifacts -name 'provenance.json' -print0 \
+            | while IFS= read -r -d '' file; do
+                platform=$(basename "$(dirname "$file")")
+                cp "$file" "dist-release/provenance-${platform}.json"
+              done
+          ls -la dist-release
+          cat dist-release/SHA256SUMS.txt
+
+      - name: Verify checksums against the collected files
+        working-directory: dist-release
+        # The artifacts crossed an upload and a download since they were hashed.
+        # Re-checking here is what makes the published manifest a claim about
+        # these bytes rather than about bytes on a runner that is now gone.
+        run: sha256sum -c SHA256SUMS.txt
+
+      - name: Create draft release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          # Never marked latest automatically, and never announced by this
+          # workflow. A human opens the draft, checks it, and decides.
+          make_latest: false
+          generate_release_notes: true
+          files: dist-release/*

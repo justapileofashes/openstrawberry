@@ -7,6 +7,10 @@ import {
   faviconFallbackLabel,
   focusedTab,
   sameViewport,
+  groupForTab,
+  hiddenCountForGroup,
+  railTabsForPane,
+  showsCommandCenter,
   tabAccessibleName,
   tabsForPane,
   viewportFromRect,
@@ -24,9 +28,65 @@ function tab(overrides: Partial<BrowserTabState> = {}): BrowserTabState {
     faviconUrl: null,
     isAudible: false,
     paneId: "primary",
+    groupId: null,
     ...overrides
   };
 }
+
+describe("tab groups in the rail", () => {
+  const grouped = (): BrowserSnapshot =>
+    snapshot({
+      tabs: [
+        tab({ id: "tab-1", groupId: "group-1" }),
+        tab({ id: "tab-2", groupId: "group-1" }),
+        tab({ id: "tab-3", groupId: null })
+      ],
+      panes: [
+        { id: "primary", activeTabId: "tab-1" },
+        { id: "secondary", activeTabId: null }
+      ],
+      groups: [{ id: "group-1", name: "Research", colour: "amber", collapsed: false }]
+    });
+
+  it("resolves a tab's group, and null for an ungrouped one", () => {
+    const state = grouped();
+    expect(groupForTab(state, state.tabs[0] as BrowserTabState)?.name).toBe("Research");
+    expect(groupForTab(state, state.tabs[2] as BrowserTabState)).toBeNull();
+  });
+
+  it("resolves to null when the group no longer exists", () => {
+    const state = snapshot({ tabs: [tab({ groupId: "group-gone" })], groups: [] });
+    expect(groupForTab(state, state.tabs[0] as BrowserTabState)).toBeNull();
+  });
+
+  it("draws every tab while the group is expanded", () => {
+    expect(railTabsForPane(grouped(), "primary").map((t) => t.id)).toEqual([
+      "tab-1",
+      "tab-2",
+      "tab-3"
+    ]);
+  });
+
+  it("hides collapsed members but never the active tab", () => {
+    // Hiding what the user is looking at would leave the rail describing a
+    // different window than the one in front of them.
+    const state = snapshot({
+      ...grouped(),
+      groups: [{ id: "group-1", name: "Research", colour: "amber", collapsed: true }]
+    });
+
+    expect(railTabsForPane(state, "primary").map((t) => t.id)).toEqual(["tab-1", "tab-3"]);
+  });
+
+  it("counts what a collapsed group is hiding", () => {
+    const state = snapshot({
+      ...grouped(),
+      groups: [{ id: "group-1", name: "Research", colour: "amber", collapsed: true }]
+    });
+
+    expect(hiddenCountForGroup(state, "primary", "group-1")).toBe(1);
+  });
+});
 
 function snapshot(overrides: Partial<BrowserSnapshot> = {}): BrowserSnapshot {
   return {
@@ -37,6 +97,7 @@ function snapshot(overrides: Partial<BrowserSnapshot> = {}): BrowserSnapshot {
     ],
     activePaneId: "primary",
     splitEnabled: false,
+    groups: [],
     ...overrides
   };
 }
@@ -95,6 +156,44 @@ describe("pane selectors", () => {
   it("reports only the primary pane as visible until split is enabled", () => {
     expect(visiblePanes(snapshot())).toEqual(["primary"]);
     expect(visiblePanes(snapshot({ splitEnabled: true }))).toEqual(["primary", "secondary"]);
+  });
+});
+
+describe("showsCommandCenter", () => {
+  it("gives a new tab's area to the command center", () => {
+    expect(showsCommandCenter(snapshot({ activePaneId: "secondary" }), "secondary")).toBe(true);
+  });
+
+  it("leaves a pane showing a real page alone", () => {
+    // The native view is composited into the pane's bounds, so drawing here
+    // while a page is loaded would put the surface behind it.
+    expect(showsCommandCenter(snapshot(), "primary")).toBe(false);
+  });
+
+  it("hands the area back the moment the tab navigates", () => {
+    const navigated = snapshot({
+      tabs: [tab({ id: "tab-1", url: "https://example.com/" })],
+      panes: [
+        { id: "primary", activeTabId: "tab-1" },
+        { id: "secondary", activeTabId: null }
+      ]
+    });
+
+    expect(showsCommandCenter(navigated, "primary")).toBe(false);
+  });
+
+  it("draws nothing for a pane holding no tab at all", () => {
+    // An empty pane is not a new tab, and inventing one would put a surface in
+    // a pane the user never opened anything in.
+    const empty = snapshot({
+      tabs: [],
+      panes: [
+        { id: "primary", activeTabId: null },
+        { id: "secondary", activeTabId: null }
+      ]
+    });
+
+    expect(showsCommandCenter(empty, "primary")).toBe(false);
   });
 });
 

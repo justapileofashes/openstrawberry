@@ -18,9 +18,11 @@
 import { WebContentsView, type BrowserWindow, type Session } from "electron";
 import { writeFileSync, readFileSync } from "node:fs";
 import {
+  attachmentPlan,
   PANE_IDS,
   parsePersistedSession,
   toPersistedSession,
+  visibleTabIds,
   type BrowserPaneId,
   type BrowserSnapshot,
   type BrowserTabState,
@@ -29,12 +31,22 @@ import {
 } from "../shared/browser.js";
 import { BLANK_PAGE } from "../shared/desktop-shell.js";
 import {
+  DEFAULT_SEARCH_TEMPLATE,
   displayHostname,
   isAllowedUrl,
+  isLocalDocumentUrl,
   isSafeFaviconUrl,
-  normalizeAddressInput
+  normalizeAddressInput,
+  resolveSearchTemplate
 } from "../shared/navigation.js";
 import { conventionalFaviconUrl, FaviconResolver } from "./favicon.js";
+import {
+  MAX_TAB_GROUPS,
+  nextColour,
+  pruneEmptyGroups,
+  type GroupColour,
+  type TabGroup
+} from "../shared/tab-groups.js";
 
 interface TabRuntime {
   readonly view: WebContentsView;
@@ -81,7 +93,17 @@ export class BrowserManager {
   private activePaneId: BrowserPaneId = "primary";
   private splitEnabled = false;
   private nextTabSequence = 1;
+  private nextGroupSequence = 1;
+  private groups: readonly TabGroup[] = [];
   private destroyed = false;
+
+  /**
+   * Where a non-URL address goes.
+   *
+   * Always one of the templates shipped in `navigation.ts`. Migration can change
+   * *which* one by name; it can never supply one.
+   */
+  private searchTemplate: string = DEFAULT_SEARCH_TEMPLATE;
 
   public constructor(options: BrowserManagerOptions) {
     this.window = options.window;
@@ -106,9 +128,23 @@ export class BrowserManager {
 
     // Persisted ids are reused so active-tab references stay meaningful. The
     // sequence counter is advanced past them so newly minted ids cannot collide.
+    // Groups first, so a restored tab's membership resolves to a real group.
+    this.groups = session.groups;
+    for (const group of this.groups) {
+      const suffix = Number.parseInt(group.id.replace(/^group-/u, ""), 10);
+      if (Number.isInteger(suffix) && suffix >= this.nextGroupSequence) {
+        this.nextGroupSequence = suffix + 1;
+      }
+    }
+
     for (const tab of session.tabs) {
       if (this.tabs.size >= MAX_TABS) break;
       this.createTabWithId(tab.id, tab.paneId, tab.url, false);
+
+      const restored = this.tabs.get(tab.id);
+      if (restored !== undefined && tab.groupId !== null) {
+        restored.state = { ...restored.state, groupId: tab.groupId };
+      }
 
       const suffix = Number.parseInt(tab.id.replace(/^tab-/u, ""), 10);
       if (Number.isInteger(suffix) && suffix >= this.nextTabSequence) {
@@ -171,17 +207,31 @@ export class BrowserManager {
     return this.createTabWithId(`tab-${this.nextTabSequence++}`, paneId, url, options.activate);
   }
 
+  /**
+   * Opens a local document the operating system handed us.
+   *
+   * A separate entrance rather than a flag on `createTab`, because the callers
+   * are what makes this safe. Every other way a tab is born - the renderer, a
+   * restored session, a link in a page - goes through `createTab` and cannot
+   * reach `file:` at all. Only a command line can arrive here, and only after
+   * `launchTargetFromCommandLine` has resolved it against the disk.
+   */
+  public openLocalDocument(paneId: BrowserPaneId, url: string): BrowserSnapshot {
+    return this.createTabWithId(`tab-${this.nextTabSequence++}`, paneId, url, true, true);
+  }
+
   private createTabWithId(
     id: string,
     paneId: BrowserPaneId,
     url: string,
-    activate: boolean
+    activate: boolean,
+    fromOperatingSystem = false
   ): BrowserSnapshot {
     if (this.destroyed) return this.snapshot();
     if (this.tabs.size >= MAX_TABS) return this.snapshot();
     if (this.tabs.has(id)) return this.snapshot();
 
-    const target = isAllowedUrl(url) ? url : BLANK_PAGE;
+    const target = this.openableUrl(url, fromOperatingSystem);
 
     const view = new WebContentsView({
       webPreferences: {
@@ -210,7 +260,8 @@ export class BrowserManager {
         canGoForward: false,
         faviconUrl: null,
         isAudible: false,
-        paneId
+        paneId,
+        groupId: null
       }
     };
 
@@ -236,6 +287,8 @@ export class BrowserManager {
     const paneId = tab.state.paneId;
     this.destroyTabRuntime(tabId, tab);
     this.tabs.delete(tabId);
+    // Closing the last member leaves a group nothing can reach again.
+    this.pruneGroups();
 
     if (this.panes[paneId].activeTabId === tabId) {
       const next = [...this.tabs.values()].find((candidate) => candidate.state.paneId === paneId);
@@ -292,7 +345,9 @@ export class BrowserManager {
     const tab = this.tabs.get(tabId);
     if (tab === undefined) return this.snapshot();
 
-    const decision = normalizeAddressInput(address);
+    // The template is whatever the user's imported engine resolved to, or the
+    // shipped default. It is always one of this app's own addresses.
+    const decision = normalizeAddressInput(address, this.searchTemplate);
     if (decision.kind === "rejected") return this.snapshot();
 
     this.loadUrl(tabId, decision.url);
@@ -300,24 +355,24 @@ export class BrowserManager {
   }
 
   public goBack(tabId: string): BrowserSnapshot {
-    const contents = this.liveContents(tabId);
+    const contents = this.contentsFor(tabId);
     if (contents?.navigationHistory.canGoBack() === true) contents.navigationHistory.goBack();
     return this.snapshot();
   }
 
   public goForward(tabId: string): BrowserSnapshot {
-    const contents = this.liveContents(tabId);
+    const contents = this.contentsFor(tabId);
     if (contents?.navigationHistory.canGoForward() === true) contents.navigationHistory.goForward();
     return this.snapshot();
   }
 
   public reload(tabId: string): BrowserSnapshot {
-    this.liveContents(tabId)?.reload();
+    this.contentsFor(tabId)?.reload();
     return this.snapshot();
   }
 
   public stop(tabId: string): BrowserSnapshot {
-    this.liveContents(tabId)?.stop();
+    this.contentsFor(tabId)?.stop();
     return this.snapshot();
   }
 
@@ -354,8 +409,98 @@ export class BrowserManager {
       tabs: [...this.tabs.values()].map((tab) => tab.state),
       panes: PANE_IDS.map((id) => ({ id, activeTabId: this.panes[id].activeTabId })),
       activePaneId: this.activePaneId,
-      splitEnabled: this.splitEnabled
+      splitEnabled: this.splitEnabled,
+      groups: this.groups
     };
+  }
+
+  /* --------------------------------------------------------------------- */
+  /* Groups                                                                */
+  /* --------------------------------------------------------------------- */
+
+  /**
+   * Creates a group holding one tab.
+   *
+   * A group is always born with a member, because an empty one has no rail
+   * presence and would be immediately pruned. The colour cycles through the
+   * palette so two groups made in a row look different without the user being
+   * asked to choose.
+   */
+  public createGroup(tabId: string, name: string): BrowserSnapshot {
+    const tab = this.tabs.get(tabId);
+    if (tab === undefined || this.groups.length >= MAX_TAB_GROUPS) return this.snapshot();
+
+    const group: TabGroup = {
+      id: `group-${this.nextGroupSequence++}`,
+      name,
+      colour: nextColour(this.groups.length),
+      collapsed: false
+    };
+
+    this.groups = [...this.groups, group];
+    tab.state = { ...tab.state, groupId: group.id };
+
+    return this.emit();
+  }
+
+  /** Renames, recolours, or collapses a group. Membership is untouched. */
+  public updateGroup(
+    groupId: string,
+    name: string,
+    colour: GroupColour,
+    collapsed: boolean
+  ): BrowserSnapshot {
+    if (!this.groups.some((group) => group.id === groupId)) return this.snapshot();
+
+    this.groups = this.groups.map((group) =>
+      group.id === groupId ? { ...group, name, colour, collapsed } : group
+    );
+
+    return this.emit();
+  }
+
+  /**
+   * Moves a tab into a group, or out of whichever one it was in.
+   *
+   * A group id that names nothing leaves the tab ungrouped rather than pointing
+   * at something absent.
+   */
+  public assignTabToGroup(tabId: string, groupId: string | null): BrowserSnapshot {
+    const tab = this.tabs.get(tabId);
+    if (tab === undefined) return this.snapshot();
+
+    const target =
+      groupId !== null && this.groups.some((group) => group.id === groupId) ? groupId : null;
+
+    tab.state = { ...tab.state, groupId: target };
+    this.pruneGroups();
+
+    return this.emit();
+  }
+
+  /**
+   * Dissolves a group.
+   *
+   * Its tabs are released rather than closed. "Ungroup" is a statement about
+   * organisation, and reading it as "close these" would destroy work.
+   */
+  public removeGroup(groupId: string): BrowserSnapshot {
+    if (!this.groups.some((group) => group.id === groupId)) return this.snapshot();
+
+    for (const tab of this.tabs.values()) {
+      if (tab.state.groupId === groupId) tab.state = { ...tab.state, groupId: null };
+    }
+
+    this.groups = this.groups.filter((group) => group.id !== groupId);
+    return this.emit();
+  }
+
+  /** Drops groups nothing belongs to, after a tab moved out or closed. */
+  private pruneGroups(): void {
+    this.groups = pruneEmptyGroups(
+      this.groups,
+      [...this.tabs.values()].map((tab) => tab.state.groupId)
+    );
   }
 
   /* --------------------------------------------------------------------- */
@@ -368,15 +513,58 @@ export class BrowserManager {
     return next;
   }
 
-  private liveContents(tabId: string): Electron.WebContents | null {
+  /**
+   * The live contents behind a tab, or null once it has gone.
+   *
+   * Public so the agent runtime can read and drive a page through its own narrow
+   * port. This is the only handle out of the tab engine, and it stays in the
+   * trusted process: the renderer receives tab ids and never a view.
+   */
+  public contentsFor(tabId: string): Electron.WebContents | null {
     const tab = this.tabs.get(tabId);
     if (tab === undefined) return null;
     if (tab.view.webContents.isDestroyed()) return null;
     return tab.view.webContents;
   }
 
+  /**
+   * The tab a WebContents belongs to, with the page it is currently showing.
+   *
+   * Exists for the tracker blocker, which sees requests identified by
+   * WebContents rather than by tab and has to know what page a request is being
+   * made *from* before it can decide whether it is first-party.
+   */
+  public pageForWebContents(webContentsId: number): { tabId: string; url: string } | null {
+    for (const [tabId, tab] of this.tabs) {
+      if (tab.view.webContents.isDestroyed()) continue;
+      if (tab.view.webContents.id !== webContentsId) continue;
+      return { tabId, url: tab.state.url };
+    }
+    return null;
+  }
+
+  /**
+   * Points searches at the engine a migration recorded.
+   *
+   * Takes the engine's *name*, not a URL, and resolves it against the shipped
+   * table. An unrecognised name leaves the default in place, which is the right
+   * outcome for an engine this browser has no template for.
+   */
+  public setSearchEngineName(name: string | null): void {
+    this.searchTemplate = resolveSearchTemplate(name);
+  }
+
+  /** The tab the user is looking at, which is the one the chrome reports on. */
+  public focusedTab(): { tabId: string; url: string } | null {
+    const tabId = this.panes[this.activePaneId].activeTabId;
+    if (tabId === null) return null;
+
+    const tab = this.tabs.get(tabId);
+    return tab === undefined ? null : { tabId, url: tab.state.url };
+  }
+
   private loadUrl(tabId: string, url: string): void {
-    const contents = this.liveContents(tabId);
+    const contents = this.contentsFor(tabId);
     if (contents === null) return;
 
     try {
@@ -415,21 +603,56 @@ export class BrowserManager {
     // The navigation policy is enforced on the guest itself, not just at the
     // address bar, so a page cannot script its way to a disallowed scheme.
     contents.on("will-navigate", (event, url) => {
-      if (!isAllowedUrl(url)) event.preventDefault();
+      if (!this.mayNavigate(contents, url)) event.preventDefault();
     });
 
     contents.on("will-redirect", (event, url) => {
-      if (!isAllowedUrl(url)) event.preventDefault();
+      if (!this.mayNavigate(contents, url)) event.preventDefault();
     });
 
     // Popups become real tabs when they are allowed, and are denied otherwise.
     contents.setWindowOpenHandler(({ url }) => {
-      if (isAllowedUrl(url)) {
+      if (this.mayNavigate(contents, url)) {
         const current = this.tabs.get(tabId);
-        this.createTab(current?.state.paneId ?? "primary", url, { activate: true });
+        const paneId = current?.state.paneId ?? "primary";
+        if (isAllowedUrl(url)) this.createTab(paneId, url, { activate: true });
+        else this.openLocalDocument(paneId, url);
       }
       return { action: "deny" };
     });
+  }
+
+  /**
+   * The scheme a tab may be opened at, given who asked for it.
+   *
+   * `BLANK_PAGE` rather than a refusal, because every caller of this expects a
+   * tab to exist afterwards; a tab showing nothing is recoverable, a missing
+   * tab is a chrome that has lost track of itself.
+   */
+  private openableUrl(url: string, fromOperatingSystem: boolean): string {
+    if (isAllowedUrl(url)) return url;
+    if (fromOperatingSystem && isLocalDocumentUrl(url)) return url;
+    return BLANK_PAGE;
+  }
+
+  /**
+   * Whether a guest may follow a navigation to `url`.
+   *
+   * The rule for `file:` is that it is reachable only from itself. A local
+   * document links to its neighbours - relative links are most of what a saved
+   * page or a generated documentation tree is made of, and an association that
+   * opens the first page but refuses the second honours the letter of what was
+   * registered and none of its point. A page from the network, meanwhile, can
+   * never steer a tab onto the disk, because the tab it is steering is not
+   * showing a local document.
+   *
+   * `getURL` is the live location of the guest rather than the tab state this
+   * class keeps, so a navigation cannot be smuggled through the gap between a
+   * redirect landing and the snapshot catching up.
+   */
+  private mayNavigate(contents: Electron.WebContents, url: string): boolean {
+    if (isAllowedUrl(url)) return true;
+    return isLocalDocumentUrl(url) && isLocalDocumentUrl(contents.getURL());
   }
 
   /**
@@ -486,16 +709,23 @@ export class BrowserManager {
     if (this.destroyed || this.window.isDestroyed()) return;
 
     const visiblePanes: readonly BrowserPaneId[] = this.splitEnabled ? PANE_IDS : ["primary"];
-    const visibleTabIds = new Set(
-      visiblePanes
-        .map((paneId) => this.panes[paneId].activeTabId)
-        .filter((tabId): tabId is string => tabId !== null)
+
+    /*
+     * The decision is made by pure functions so it can be tested without a
+     * window. Detachments are applied first, which matters when a tab moves
+     * between panes: it is in both sets, and attaching first would leave the
+     * bookkeeping claiming it twice.
+     */
+    const visible = visibleTabIds(
+      {
+        primary: this.panes.primary.activeTabId,
+        secondary: this.panes.secondary.activeTabId
+      },
+      this.splitEnabled
     );
 
-    for (const tabId of [...this.attachedTabIds]) {
-      if (visibleTabIds.has(tabId)) continue;
-      this.detachTab(tabId);
-    }
+    const { toDetach } = attachmentPlan(this.attachedTabIds, visible);
+    for (const tabId of toDetach) this.detachTab(tabId);
 
     for (const paneId of visiblePanes) {
       const tabId = this.panes[paneId].activeTabId;

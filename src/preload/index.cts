@@ -18,17 +18,54 @@
  */
 import electron = require("electron");
 import type {
+  AGENT_STATE_EVENT as AgentStateEvent,
   BROWSER_STATE_EVENT as BrowserStateEvent,
+  CompanionDraft,
+  DOWNLOAD_STATE_EVENT as DownloadStateEvent,
   IPC_CHANNELS,
+  PLAN_STATE_EVENT as PlanStateEvent,
+  UPDATE_STATE_EVENT as UpdateStateEvent,
+  TRACKING_STATE_EVENT as TrackingStateEvent,
   OpenStrawberryBridge,
-  ShellInfo
+  ShellInfo,
+  WINDOW_STATE_EVENT as WindowStateEvent,
+  WindowState
 } from "../shared/bridge.js";
+import type { DownloadSnapshot } from "../shared/downloads.js";
+import type { TrackingSnapshot } from "../shared/tracking.js";
+import type { ReaderState } from "../shared/reader.js";
+import type { WorkspaceSnapshot } from "../shared/workspaces.js";
+import type { MediaAction, MediaState } from "../shared/media.js";
+import type { GroupColour } from "../shared/tab-groups.js";
+import type { BookmarkPage } from "../shared/bookmarks.js";
+import type { Plan, PlanDraftPayload } from "../shared/orchestration.js";
+import type { UpdateState } from "../shared/updates.js";
+import type { DefaultBrowserState } from "../shared/default-browser.js";
 import type { BrowserPaneId, BrowserSnapshot, BrowserViewport } from "../shared/browser.js";
+import type {
+  AgentConfigStatus,
+  AgentSkillSummary,
+  AgentSnapshot,
+  ApprovalDecision
+} from "../shared/agents.js";
+import type {
+  BookmarkPreviewResponse,
+  HtmlSourceKind,
+  MigrationCommitPayload,
+  MigrationOverview,
+  MigrationResult,
+  PickedBookmarkFile,
+  PickedPasswordFile
+} from "../shared/migration.js";
 
 type Channels = typeof IPC_CHANNELS;
 
 const CHANNEL: Channels = {
   shellInfo: "shell:info",
+  windowState: "window:state",
+  windowMinimize: "window:minimize",
+  windowToggleMaximize: "window:toggle-maximize",
+  windowClose: "window:close",
   browserSnapshot: "browser:snapshot",
   browserCreateTab: "browser:create-tab",
   browserCloseTab: "browser:close-tab",
@@ -41,13 +78,97 @@ const CHANNEL: Channels = {
   browserStop: "browser:stop",
   browserSetViewport: "browser:set-viewport",
   browserSetSplit: "browser:set-split",
-  browserSetActivePane: "browser:set-active-pane"
+  browserSetActivePane: "browser:set-active-pane",
+  agentSnapshot: "agent:snapshot",
+  agentStartRun: "agent:start-run",
+  agentCancelRun: "agent:cancel-run",
+  agentResolveApproval: "agent:resolve-approval",
+  agentListSkills: "agent:list-skills",
+  agentConfig: "agent:config",
+  agentSetCredential: "agent:set-credential",
+  agentClearCredential: "agent:clear-credential",
+  agentCreateCompanion: "agent:create-companion",
+  agentUpdateCompanion: "agent:update-companion",
+  agentDeleteCompanion: "agent:delete-companion",
+  agentSelectCompanion: "agent:select-companion",
+  agentSetOrchestrator: "agent:set-orchestrator",
+  migrationOverview: "migration:overview",
+  migrationPreviewProfile: "migration:preview-profile",
+  migrationPickBookmarks: "migration:pick-bookmarks",
+  migrationPickPasswords: "migration:pick-passwords",
+  migrationCommit: "migration:commit",
+  migrationRelease: "migration:release",
+  migrationStartFresh: "migration:start-fresh",
+  migrationFinish: "migration:finish",
+  migrationCancel: "migration:cancel",
+  migrationReopen: "migration:reopen",
+  migrationDeleteStaged: "migration:delete-staged",
+  downloadSnapshot: "download:snapshot",
+  downloadPause: "download:pause",
+  downloadResume: "download:resume",
+  downloadCancel: "download:cancel",
+  downloadShowInFolder: "download:show-in-folder",
+  downloadClearFinished: "download:clear-finished",
+  trackingSnapshot: "tracking:snapshot",
+  trackingSetEnabled: "tracking:set-enabled",
+  trackingExceptSite: "tracking:except-site",
+  trackingResumeSite: "tracking:resume-site",
+  trackingRemoveException: "tracking:remove-exception",
+  readerOpen: "reader:open",
+  workspaceSnapshot: "workspace:snapshot",
+  workspaceSave: "workspace:save",
+  workspaceOpen: "workspace:open",
+  workspaceRemove: "workspace:remove",
+  mediaState: "media:state",
+  mediaCommand: "media:command",
+  groupCreate: "group:create",
+  groupUpdate: "group:update",
+  groupAssign: "group:assign",
+  groupRemove: "group:remove",
+  bookmarkSearch: "bookmark:search",
+  planSnapshot: "plan:snapshot",
+  planPropose: "plan:propose",
+  planApprove: "plan:approve",
+  planResolveStep: "plan:resolve-step",
+  planCancel: "plan:cancel",
+  updateState: "update:state",
+  updateCheck: "update:check",
+  updateDownload: "update:download",
+  updateInstall: "update:install",
+  defaultBrowserState: "default-browser:state",
+  defaultBrowserRequest: "default-browser:request"
 };
 
 const STATE_EVENT: typeof BrowserStateEvent = "browser:state";
+const WINDOW_EVENT: typeof WindowStateEvent = "window:state-changed";
+const AGENT_EVENT: typeof AgentStateEvent = "agent:state";
+const DOWNLOAD_EVENT: typeof DownloadStateEvent = "download:state";
+const TRACKING_EVENT: typeof TrackingStateEvent = "tracking:state";
+const PLAN_EVENT: typeof PlanStateEvent = "plan:state";
+const UPDATE_EVENT: typeof UpdateStateEvent = "update:state-changed";
 
 async function snapshotCall(channel: string, payload?: unknown): Promise<BrowserSnapshot> {
   return (await electron.ipcRenderer.invoke(channel, payload)) as BrowserSnapshot;
+}
+
+async function agentCall(channel: string, payload?: unknown): Promise<AgentSnapshot> {
+  return (await electron.ipcRenderer.invoke(channel, payload)) as AgentSnapshot;
+}
+
+async function configCall(channel: string, payload?: unknown): Promise<AgentConfigStatus> {
+  return (await electron.ipcRenderer.invoke(channel, payload)) as AgentConfigStatus;
+}
+
+async function migrationCall(channel: string, payload?: unknown): Promise<MigrationOverview> {
+  return (await electron.ipcRenderer.invoke(channel, payload)) as MigrationOverview;
+}
+
+async function downloadCall(channel: string, payload?: unknown): Promise<DownloadSnapshot> {
+  return (await electron.ipcRenderer.invoke(channel, payload)) as DownloadSnapshot;
+}
+
+async function trackingCall(channel: string, payload?: unknown): Promise<TrackingSnapshot> {
+  return (await electron.ipcRenderer.invoke(channel, payload)) as TrackingSnapshot;
 }
 
 const api: OpenStrawberryBridge = {
@@ -55,6 +176,24 @@ const api: OpenStrawberryBridge = {
     platform: process.platform,
     getInfo: async (): Promise<ShellInfo> =>
       (await electron.ipcRenderer.invoke(CHANNEL.shellInfo)) as ShellInfo
+  },
+  window: {
+    getState: async (): Promise<WindowState> =>
+      (await electron.ipcRenderer.invoke(CHANNEL.windowState)) as WindowState,
+    minimize: async (): Promise<void> => {
+      await electron.ipcRenderer.invoke(CHANNEL.windowMinimize);
+    },
+    toggleMaximize: async (): Promise<void> => {
+      await electron.ipcRenderer.invoke(CHANNEL.windowToggleMaximize);
+    },
+    close: async (): Promise<void> => {
+      await electron.ipcRenderer.invoke(CHANNEL.windowClose);
+    },
+    onState: (listener: (state: WindowState) => void): (() => void) => {
+      const handler = (_event: unknown, state: WindowState): void => listener(state);
+      electron.ipcRenderer.on(WINDOW_EVENT, handler);
+      return () => electron.ipcRenderer.removeListener(WINDOW_EVENT, handler);
+    }
   },
   browser: {
     getSnapshot: async () => snapshotCall(CHANNEL.browserSnapshot),
@@ -76,6 +215,19 @@ const api: OpenStrawberryBridge = {
       snapshotCall(CHANNEL.browserSetSplit, { enabled }),
     setActivePane: async (paneId: BrowserPaneId) =>
       snapshotCall(CHANNEL.browserSetActivePane, { paneId }),
+    createGroup: async (tabId: string, name: string) =>
+      snapshotCall(CHANNEL.groupCreate, { tabId, name }),
+    // The colour is a palette token, not a CSS value; the trusted process
+    // refuses anything outside the shipped set.
+    updateGroup: async (
+      groupId: string,
+      name: string,
+      colour: GroupColour,
+      collapsed: boolean
+    ) => snapshotCall(CHANNEL.groupUpdate, { groupId, name, colour, collapsed }),
+    assignTabToGroup: async (tabId: string, groupId: string | null) =>
+      snapshotCall(CHANNEL.groupAssign, { tabId, groupId }),
+    removeGroup: async (groupId: string) => snapshotCall(CHANNEL.groupRemove, { groupId }),
     onState: (listener: (snapshot: BrowserSnapshot) => void): (() => void) => {
       // The raw IpcRendererEvent is deliberately not passed through; the
       // renderer receives only the snapshot payload.
@@ -83,6 +235,205 @@ const api: OpenStrawberryBridge = {
       electron.ipcRenderer.on(STATE_EVENT, handler);
       return () => electron.ipcRenderer.removeListener(STATE_EVENT, handler);
     }
+  },
+  agents: {
+    getSnapshot: async () => agentCall(CHANNEL.agentSnapshot),
+    startRun: async (companionId: string, task: string, tabIds: readonly string[]) =>
+      agentCall(CHANNEL.agentStartRun, { companionId, task, tabIds }),
+    cancelRun: async (runId: string) => agentCall(CHANNEL.agentCancelRun, { runId }),
+    resolveApproval: async (approvalId: string, decision: ApprovalDecision) =>
+      agentCall(CHANNEL.agentResolveApproval, { approvalId, decision }),
+    listSkills: async (): Promise<readonly AgentSkillSummary[]> =>
+      (await electron.ipcRenderer.invoke(
+        CHANNEL.agentListSkills
+      )) as readonly AgentSkillSummary[],
+    getConfig: async () => configCall(CHANNEL.agentConfig),
+    // One direction only. The key is handed to the trusted process and what
+    // comes back is status, so no path exists for reading a stored key out.
+    setCredential: async (provider: string, key: string, companionId?: string | null) =>
+      configCall(CHANNEL.agentSetCredential, {
+        provider,
+        key,
+        companionId: companionId ?? null
+      }),
+    clearCredential: async (provider: string, companionId?: string | null) =>
+      configCall(CHANNEL.agentClearCredential, {
+        provider,
+        companionId: companionId ?? null
+      }),
+    createCompanion: async (draft: CompanionDraft) =>
+      agentCall(CHANNEL.agentCreateCompanion, draft),
+    updateCompanion: async (companionId: string, draft: CompanionDraft) =>
+      agentCall(CHANNEL.agentUpdateCompanion, { companionId, ...draft }),
+    deleteCompanion: async (companionId: string) =>
+      agentCall(CHANNEL.agentDeleteCompanion, { companionId }),
+    selectCompanion: async (companionId: string) =>
+      agentCall(CHANNEL.agentSelectCompanion, { companionId }),
+    setOrchestrator: async (
+      provider: string,
+      model: string,
+      baseUrl?: string | null,
+      command?: string | null
+    ) =>
+      configCall(CHANNEL.agentSetOrchestrator, {
+        provider,
+        model,
+        baseUrl: baseUrl ?? null,
+        command: command ?? null
+      }),
+    onState: (listener: (snapshot: AgentSnapshot) => void): (() => void) => {
+      const handler = (_event: unknown, snapshot: AgentSnapshot): void => listener(snapshot);
+      electron.ipcRenderer.on(AGENT_EVENT, handler);
+      return () => electron.ipcRenderer.removeListener(AGENT_EVENT, handler);
+    }
+  },
+  migration: {
+    getOverview: async () => migrationCall(CHANNEL.migrationOverview),
+    // Names a detected profile by identifier. Note what this cannot express: a
+    // path. There is no method on this object that accepts one.
+    previewProfile: async (sourceId: string, profileId: string): Promise<BookmarkPreviewResponse> =>
+      (await electron.ipcRenderer.invoke(CHANNEL.migrationPreviewProfile, {
+        sourceId,
+        profileId
+      })) as BookmarkPreviewResponse,
+    // The dialog is opened by the trusted process. The renderer asks for one and
+    // receives a handle, never the location the user chose.
+    pickBookmarksFile: async (kind: HtmlSourceKind): Promise<PickedBookmarkFile> =>
+      (await electron.ipcRenderer.invoke(CHANNEL.migrationPickBookmarks, {
+        kind
+      })) as PickedBookmarkFile,
+    pickPasswordFile: async (): Promise<PickedPasswordFile> =>
+      (await electron.ipcRenderer.invoke(CHANNEL.migrationPickPasswords)) as PickedPasswordFile,
+    // Write-only for credentials: the request carries a handle and the reply
+    // carries a count, so no path exists for reading a staged password out.
+    commit: async (request: MigrationCommitPayload): Promise<MigrationResult> =>
+      (await electron.ipcRenderer.invoke(CHANNEL.migrationCommit, request)) as MigrationResult,
+    releaseSelection: async (handle: string): Promise<void> => {
+      await electron.ipcRenderer.invoke(CHANNEL.migrationRelease, { handle });
+    },
+    startFresh: async () => migrationCall(CHANNEL.migrationStartFresh),
+    finish: async () => migrationCall(CHANNEL.migrationFinish),
+    cancel: async () => migrationCall(CHANNEL.migrationCancel),
+    reopen: async () => migrationCall(CHANNEL.migrationReopen),
+    deleteStagedPasswords: async () => migrationCall(CHANNEL.migrationDeleteStaged),
+    // A bounded page comes back, never the whole store.
+    searchBookmarks: async (query: string): Promise<BookmarkPage> =>
+      (await electron.ipcRenderer.invoke(CHANNEL.bookmarkSearch, { query })) as BookmarkPage
+  },
+  downloads: {
+    getSnapshot: async () => downloadCall(CHANNEL.downloadSnapshot),
+    pause: async (downloadId: string) => downloadCall(CHANNEL.downloadPause, { downloadId }),
+    resume: async (downloadId: string) => downloadCall(CHANNEL.downloadResume, { downloadId }),
+    cancel: async (downloadId: string) => downloadCall(CHANNEL.downloadCancel, { downloadId }),
+    // Names a download this process already knows about. Note what it cannot
+    // express: a location. There is no path parameter here to point elsewhere.
+    showInFolder: async (downloadId: string) =>
+      downloadCall(CHANNEL.downloadShowInFolder, { downloadId }),
+    clearFinished: async () => downloadCall(CHANNEL.downloadClearFinished),
+    onState: (listener: (snapshot: DownloadSnapshot) => void): (() => void) => {
+      const handler = (_event: unknown, snapshot: DownloadSnapshot): void => listener(snapshot);
+      electron.ipcRenderer.on(DOWNLOAD_EVENT, handler);
+      return () => electron.ipcRenderer.removeListener(DOWNLOAD_EVENT, handler);
+    }
+  },
+  tracking: {
+    getSnapshot: async () => trackingCall(CHANNEL.trackingSnapshot),
+    setEnabled: async (enabled: boolean) =>
+      trackingCall(CHANNEL.trackingSetEnabled, { enabled }),
+    // Names a tab, not a site, so a site the user is not looking at cannot be
+    // excepted from here.
+    exceptSite: async (tabId: string) => trackingCall(CHANNEL.trackingExceptSite, { tabId }),
+    resumeSite: async (tabId: string) => trackingCall(CHANNEL.trackingResumeSite, { tabId }),
+    removeException: async (site: string) =>
+      trackingCall(CHANNEL.trackingRemoveException, { site }),
+    onState: (listener: (snapshot: TrackingSnapshot) => void): (() => void) => {
+      const handler = (_event: unknown, snapshot: TrackingSnapshot): void => listener(snapshot);
+      electron.ipcRenderer.on(TRACKING_EVENT, handler);
+      return () => electron.ipcRenderer.removeListener(TRACKING_EVENT, handler);
+    }
+  },
+  reader: {
+    // One verb, and it is a read. Closing the view is renderer-local state and
+    // needs no channel.
+    open: async (tabId: string): Promise<ReaderState> =>
+      (await electron.ipcRenderer.invoke(CHANNEL.readerOpen, { tabId })) as ReaderState
+  },
+  workspaces: {
+    getSnapshot: async (): Promise<WorkspaceSnapshot> =>
+      (await electron.ipcRenderer.invoke(CHANNEL.workspaceSnapshot)) as WorkspaceSnapshot,
+    // A name only. What is open is read in the trusted process, so a workspace
+    // records the real tabs rather than a list assembled here.
+    save: async (name: string): Promise<WorkspaceSnapshot> =>
+      (await electron.ipcRenderer.invoke(CHANNEL.workspaceSave, { name })) as WorkspaceSnapshot,
+    open: async (workspaceId: string): Promise<BrowserSnapshot> =>
+      (await electron.ipcRenderer.invoke(CHANNEL.workspaceOpen, {
+        workspaceId
+      })) as BrowserSnapshot,
+    remove: async (workspaceId: string): Promise<WorkspaceSnapshot> =>
+      (await electron.ipcRenderer.invoke(CHANNEL.workspaceRemove, {
+        workspaceId
+      })) as WorkspaceSnapshot
+  },
+  updates: {
+    getState: async (): Promise<UpdateState> =>
+      (await electron.ipcRenderer.invoke(CHANNEL.updateState)) as UpdateState,
+    check: async (): Promise<UpdateState> =>
+      (await electron.ipcRenderer.invoke(CHANNEL.updateCheck)) as UpdateState,
+    download: async (): Promise<UpdateState> =>
+      (await electron.ipcRenderer.invoke(CHANNEL.updateDownload)) as UpdateState,
+    install: async (): Promise<UpdateState> =>
+      (await electron.ipcRenderer.invoke(CHANNEL.updateInstall)) as UpdateState,
+    onState: (listener: (state: UpdateState) => void): (() => void) => {
+      const handler = (_event: unknown, state: UpdateState): void => listener(state);
+      electron.ipcRenderer.on(UPDATE_EVENT, handler);
+      return () => electron.ipcRenderer.removeListener(UPDATE_EVENT, handler);
+    }
+  },
+  defaultBrowser: {
+    getState: async (): Promise<DefaultBrowserState> =>
+      (await electron.ipcRenderer.invoke(CHANNEL.defaultBrowserState)) as DefaultBrowserState,
+    // No arguments, deliberately: the trusted process decides which protocols a
+    // browser must own, so this asks for one fixed registration or nothing.
+    request: async (): Promise<DefaultBrowserState> =>
+      (await electron.ipcRenderer.invoke(CHANNEL.defaultBrowserRequest)) as DefaultBrowserState
+  },
+  plans: {
+    getPlans: async (): Promise<readonly Plan[]> =>
+      (await electron.ipcRenderer.invoke(CHANNEL.planSnapshot)) as readonly Plan[],
+    // Returns a draft for review. The graph refuses to offer a runnable step
+    // until it is approved, so the ordering cannot be skipped from here.
+    propose: async (draft: PlanDraftPayload): Promise<readonly Plan[]> =>
+      (await electron.ipcRenderer.invoke(CHANNEL.planPropose, draft)) as readonly Plan[],
+    approve: async (planId: string): Promise<readonly Plan[]> =>
+      (await electron.ipcRenderer.invoke(CHANNEL.planApprove, { planId })) as readonly Plan[],
+    resolveStep: async (
+      planId: string,
+      stepId: string,
+      allow: boolean
+    ): Promise<readonly Plan[]> =>
+      (await electron.ipcRenderer.invoke(CHANNEL.planResolveStep, {
+        planId,
+        stepId,
+        allow
+      })) as readonly Plan[],
+    cancel: async (planId: string): Promise<readonly Plan[]> =>
+      (await electron.ipcRenderer.invoke(CHANNEL.planCancel, { planId })) as readonly Plan[],
+    onState: (listener: (plans: readonly Plan[]) => void): (() => void) => {
+      const handler = (_event: unknown, plans: readonly Plan[]): void => listener(plans);
+      electron.ipcRenderer.on(PLAN_EVENT, handler);
+      return () => electron.ipcRenderer.removeListener(PLAN_EVENT, handler);
+    }
+  },
+  media: {
+    getState: async (tabId: string): Promise<MediaState> =>
+      (await electron.ipcRenderer.invoke(CHANNEL.mediaState, { tabId })) as MediaState,
+    // An action identifier, never code. The script for it lives in the trusted
+    // process and is selected by this value after validation.
+    run: async (tabId: string, action: MediaAction): Promise<MediaState> =>
+      (await electron.ipcRenderer.invoke(CHANNEL.mediaCommand, {
+        tabId,
+        action
+      })) as MediaState
   }
 };
 

@@ -11,6 +11,8 @@ import type {
   BrowserTabState,
   BrowserViewport
 } from "../shared/browser.js";
+import { BLANK_PAGE } from "../shared/desktop-shell.js";
+import type { TabGroup } from "../shared/tab-groups.js";
 
 /**
  * Converts a measured DOM rect into view bounds.
@@ -45,6 +47,52 @@ export function tabsForPane(
   return snapshot.tabs.filter((tab) => tab.paneId === paneId);
 }
 
+/** The group a tab belongs to, or null. */
+export function groupForTab(
+  snapshot: BrowserSnapshot,
+  tab: BrowserTabState
+): TabGroup | null {
+  if (tab.groupId === null) return null;
+  return snapshot.groups.find((group) => group.id === tab.groupId) ?? null;
+}
+
+/**
+ * The tabs a pane's rail actually draws.
+ *
+ * A collapsed group hides its members - except the active one, which stays
+ * visible however its group is set. Hiding the tab a user is looking at would
+ * leave the rail describing a window that is not the one in front of them, and
+ * no amount of tidiness is worth that.
+ *
+ * Collapsing never closes or unloads anything; the tabs are still there, still
+ * loaded, and still reachable by expanding.
+ */
+export function railTabsForPane(
+  snapshot: BrowserSnapshot,
+  paneId: BrowserPaneId
+): readonly BrowserTabState[] {
+  const active = activeTabId(snapshot, paneId);
+
+  return tabsForPane(snapshot, paneId).filter((tab) => {
+    if (tab.id === active) return true;
+    const group = groupForTab(snapshot, tab);
+    return group === null || !group.collapsed;
+  });
+}
+
+/** How many members a collapsed group is hiding, for the rail's count badge. */
+export function hiddenCountForGroup(
+  snapshot: BrowserSnapshot,
+  paneId: BrowserPaneId,
+  groupId: string
+): number {
+  const active = activeTabId(snapshot, paneId);
+
+  return tabsForPane(snapshot, paneId).filter(
+    (tab) => tab.groupId === groupId && tab.id !== active
+  ).length;
+}
+
 export function activeTabId(snapshot: BrowserSnapshot, paneId: BrowserPaneId): string | null {
   return snapshot.panes.find((pane) => pane.id === paneId)?.activeTabId ?? null;
 }
@@ -66,6 +114,25 @@ export function focusedTab(snapshot: BrowserSnapshot): BrowserTabState | null {
 /** Panes that currently host a visible native view. */
 export function visiblePanes(snapshot: BrowserSnapshot): readonly BrowserPaneId[] {
   return snapshot.splitEnabled ? (["primary", "secondary"] as const) : (["primary"] as const);
+}
+
+/**
+ * Whether a pane should draw the command center instead of a page.
+ *
+ * A new tab has nowhere to go yet, so rather than composite an empty native view
+ * the pane hands its area to the agents surface. The test is the tab's address
+ * rather than a flag on the tab: navigating away from the blank page is what ends
+ * the new-tab state, and reading the address is the only way that cannot drift
+ * out of step with where the tab actually is.
+ *
+ * A pane holding no tab at all is not a new tab - it is an empty pane - and gets
+ * nothing.
+ */
+export function showsCommandCenter(
+  snapshot: BrowserSnapshot,
+  paneId: BrowserPaneId
+): boolean {
+  return activeTab(snapshot, paneId)?.url === BLANK_PAGE;
 }
 
 /**

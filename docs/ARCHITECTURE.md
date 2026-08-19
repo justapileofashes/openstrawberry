@@ -97,11 +97,33 @@ The policy is enforced in three places: the address bar, the guest view's
 carrying an explicit scheme is judged as a URL and refused on its merits rather
 than rewritten into a search, which would hide the refusal from the user.
 
+## Migration
+
+Migration is the one subsystem that reads another application's data, so it adds
+one rule to the boundary above: **the renderer never supplies a path.** A
+detected profile is named by an identifier the trusted registry minted and
+resolves itself; a picked file is named by an opaque handle minted after the
+trusted process opened a native dialog. Neither can be pointed anywhere else, and
+neither carries a location back to the chrome.
+
+Detection is a fixed per-platform registry of Chromium profile roots. It never
+opens a bookmark file — reading happens only after a user names a source and a
+category. Firefox and Safari are reached exclusively through an HTML export the
+user picks; their internal databases are never opened.
+
+Full behaviour, limits, and residual risks are in
+[`MIGRATION_PRIVACY.md`](MIGRATION_PRIVACY.md).
+
 ## Persistence
 
 Only bounded metadata is persisted: tab URLs, pane assignment, active pane,
 split state. The persisted shape has nowhere to put cookies, session tokens,
 passkeys, payment data, passwords, or API keys.
+
+Migration writes three further files, all inside the application's own user-data
+directory: imported bookmarks, one `safeStorage` ciphertext per staged
+credential, and a state record of counts and choices. The state record has no
+field for a source location, a bookmark, or a secret.
 
 A corrupt or foreign session file yields an empty session rather than throwing,
 so a bad file can never wedge startup.

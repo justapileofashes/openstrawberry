@@ -17,6 +17,21 @@ export const PROFILE_PARTITION = "persist:openstrawberry-default";
  */
 export const BLANK_PAGE = "about:blank";
 
+/**
+ * Whether OpenStrawberry draws its own window controls on this platform.
+ *
+ * macOS keeps its native traffic lights, which sit inset over the chrome and are
+ * what users there expect. Everywhere else the system title bar is hidden and
+ * the chrome supplies minimise, maximise, and close itself.
+ *
+ * Both sides read this one function: the main process to decide the title-bar
+ * style, the renderer to decide whether to render the controls. They cannot
+ * disagree and leave a window with two sets of buttons, or none.
+ */
+export function usesCustomWindowControls(platform: string): boolean {
+  return platform !== "darwin";
+}
+
 export type ReleasePlatform =
   | "mac-universal"
   | "win-x64"
@@ -38,6 +53,18 @@ export const PLANNED_RELEASE_ARTIFACTS: Readonly<Record<ReleasePlatform, string>
  * until signed artifacts and verified update metadata exist.
  */
 export const RELEASE_READY = false;
+
+/**
+ * The update channel's own switch, mirroring `openstrawberryUpdateChannel` in
+ * `package.json`.
+ *
+ * Held here as well as there because the gate is a conjunction of three
+ * independent facts, and a conjunction is only worth something if its parts are
+ * genuinely separate. This one is the maintainer's intent to publish updates at
+ * all; `RELEASE_READY` is whether the artifacts justify it; `app.isPackaged` is
+ * whether this build could sensibly replace itself.
+ */
+export const UPDATE_CHANNEL_ENABLED = false;
 
 export function plannedArtifactName(platform: ReleasePlatform): string {
   return PLANNED_RELEASE_ARTIFACTS[platform];

@@ -24,6 +24,8 @@ passes. Planned work is never marked done.
 - [x] Narrow typed preload bridge; no generic `invoke`, no renderer-controlled channel, no Node, filesystem, or shell access.
 - [x] Keep the preload self-contained: a sandboxed preload may only require `electron`, so shared contracts are type-only and channel names are compile-time pinned.
 - [x] Tests for malformed payloads, untrusted senders, subframe senders, remote origins, and error redaction.
+- [x] Bound every read of foreign bytes in the trusted process against the bytes as they arrive, not against a header the sender chose. A favicon body is capped mid-stream, because `content-length` is absent from any chunked response and any visited page can name an icon URL.
+- [x] Write every store whole or not at all through one shared atomic write, so a crash or a full disk cannot leave a truncated credential file that reads as "no key was ever stored".
 - [x] Validate: the renderer reads shell state over the hardened channel in a running app.
 
 ## M2 — Real browsing
@@ -39,7 +41,7 @@ passes. Planned work is never marked done.
 - [x] Tolerate a byte-order mark in the session file so an external editor cannot silently discard a session.
 - [x] Destruction-safe teardown: release views at the window `close` lifecycle, idempotent, tolerant of a destroyed parent.
 - [x] Validate: real pages render in both split panes, session restore works, and a normal window close exits cleanly with no main-process error dialog.
-- [ ] Add unit coverage for attach/detach bookkeeping; teardown is currently proven by the launch-and-close smoke test only.
+- [x] Add unit coverage for attach/detach bookkeeping. The decision — which tabs should be attached, and what to detach and attach to get there — is now two pure functions the manager calls, so the case that produced "Object has been destroyed" dialogs is checkable without a window. Detachments are applied first, which is what stops a tab moving between panes being claimed twice.
 
 ## M3 — Obsidian Relay chrome
 
@@ -57,42 +59,62 @@ passes. Planned work is never marked done.
 - [x] Light the chrome from a single ambient field behind the whole workspace rather than per-panel highlights, so the glass reveals what is behind it instead of owning its own shine.
 - [x] Hold back the static tint and edge sweep so the travelling light is the dominant highlight rather than being swamped by fixed lighting.
 - [x] Add an appearance settings panel on the top bar controlling shine on/off, intensity, colour, speed, and non-essential motion, persisted in renderer-owned storage.
-- [ ] Icon-only Updates trigger; the Agent, Downloads, and Settings triggers are present but inert until their milestones land.
-- [ ] Responsive behaviour below the minimum desktop width, and a full keyboard traversal pass.
-- [ ] Bundle Inter and JetBrains Mono as local woff2 rather than relying on installed fonts. The renderer must not fetch webfonts from a remote host.
+- [x] Icon-only Updates trigger, reachable from the command palette. The Agent, Downloads, and Settings triggers are all live now that their milestones have landed.
+- [x] Keyboard traversal pass. Every panel is a dialog that now holds the keyboard: Tab and Shift+Tab cycle within it and wrap at both ends, focus moves in when it opens, and returns to whatever had it when it closes — without which a user who opened a panel from the keyboard is dropped at the top of the document. A modified Tab is left to the window rather than swallowed. The selection arithmetic is pure and tested; only the hook touches the DOM.
+- [x] Drive the shine from what the machine is playing. Loopback capture is taken at the mixer rather than by wrapping the page's own media element: `createMediaElementSource` re-routes an element's audio through the graph it joins, so a suspended context or a page that swaps its element mid-playback can leave a video silent, and a browser cannot ship a decoration that can mute the web. It also returns silence for EME and un-CORSed cross-origin media, so that failure would have been both common and invisible. Loopback is Windows-only in Electron; everywhere else, and on every refusal, the field falls back to reacting to the fact that a tab is audible, which needs no capture at all. Subordinate to the shine switch, the motion switch, and `prefers-reduced-motion` — so the audio device is never opened for someone who has asked the machine to hold still.
+- [x] Name the grid rows on `.shell` and `.panes`. Both declared only columns, leaving an implicit `auto` row that sizes to its content. Nothing exposed it while a pane was an empty measured region with no content to size to; the new-tab panel put a full surface inside one, the rows grew to it, and the shell overflowed the window by roughly six hundred pixels — the foot of the panel unreachable below the edge and a scrollbar on the whole document. Pinning both to `minmax(0, 1fr)` is what makes the panel's own body scroll inside the pane instead. Found by measuring the running app, not by review: the pure functions and the DOM structure were correct, and only the resolved geometry showed it.
+- [ ] Responsive behaviour below the minimum desktop width. The window enforces a 1024px minimum today, so nothing can currently render narrower than the layout assumes; lowering that bound is the change this item describes.
+- [x] The renderer fetches no webfont from a remote host. Verified rather than assumed: the stylesheet contains no `@import` and no remote `url()`, and the shipped policy is `font-src 'self' data:`, so a remote fetch is refused even if one were introduced. Both faces name system fallbacks, so text renders everywhere.
+- [ ] Bundle Inter and JetBrains Mono as local woff2, so the chrome looks the same on a machine that has neither installed. Fidelity only — the privacy property above already holds without it.
 
 ## M4 — Browser fundamentals
 
-- [ ] Downloads with per-item state and main-process-only reveal.
-- [ ] Conservative, transparent tracker blocking with per-site exceptions.
-- [ ] Local text-only reader mode with no network or provider handoff.
-- [ ] Media controls for compatible HTML video with browser-native picture-in-picture fallback.
-- [ ] Persistent tab groups with names, colours, and collapse state.
-- [ ] Named workspace snapshots.
-- [ ] Command palette and keyboard shortcuts.
+- [x] Downloads with per-item state and main-process-only reveal. The save path is chosen in the trusted process and never crosses IPC; the renderer is told a file name and a folder label, and `download:show-in-folder` takes an id, so a compromised renderer can only ask for one of its own downloads to be shown. Server-suggested names go through one sanitiser that flattens separators, strips control characters and bidi overrides, renames Windows device names, and refuses to create a hidden file.
+- [x] Conservative, transparent tracker blocking with per-site exceptions. A short shipped list, never fetched or updated, so the blocker is not itself a third-party call on every launch. First-party requests are never blocked, which gives up CNAME-cloaked tracking deliberately rather than breaking pages. Counts are the whole interface: no blocked URL is recorded, reported, or persisted, because that list would be a browsing history.
+- [x] Local text-only reader mode with no network or provider handoff. Reads the DOM the guest already loaded; nothing is fetched and nothing is summarised. This is the one place page content crosses into the trusted renderer, so a block carries a kind from a closed set and a plain string — no markup, URL, attribute, or style field exists for it to travel in — and the view renders every string as a React text node.
+- [x] Media controls for compatible HTML video with browser-native picture-in-picture fallback. The renderer sends an action identifier from a closed set and the trusted process holds one fixed script per action, so no string the renderer supplies is ever evaluated in a page. Each action is something the user could already do with the page's own controls. State is read from a page that may be hostile, so it is bounded and re-derived, and an unreadable report means no controls rather than wrong ones.
+- [x] Persistent tab groups with names, colours, and collapse state. Membership lives on the tab as a group id, so a tab is in at most one group by construction and closing one cannot leave a group referring to something gone. A colour is a token from a shipped palette, never a CSS value, so stored state can never reach a style attribute. Groups survive restart in the session file, which re-checks every membership against the groups that actually parsed. Collapsing hides members but never the active tab, and never closes or unloads anything.
+- [x] Surface renaming and recolouring a group in the chrome. A groups panel lists every group with an inline name field, the palette as swatches rather than a free colour picker, a collapse toggle, and a dissolve that releases its tabs without closing them.
+- [x] Named workspace snapshots. Addresses and labels only: no cookie, session, storage, or credential, and no type on the contract has a field one would fit in, so opening a workspace loads pages rather than restoring a signed-in state. The http(s) gate is applied on write and again on read, so a hand-edited file cannot introduce a scheme. Saving sends a name; the trusted process reads the open tabs itself.
+- [x] Command palette and keyboard shortcuts. Ctrl/Cmd+K opens it; conventional browser bindings (new tab, close tab, reload, address bar, downloads, settings, back, forward) are bound as users already expect, and anything without a conventional chord is palette-only rather than given an invented one. The palette runs commands by id against capabilities the bridge already exposes, so it adds no IPC surface.
 
 ## M5 — Migration and privacy
 
-- [ ] Consent-first source browser, profile, and category selection.
-- [ ] Reviewable Chromium bookmark import and displayed default-search metadata.
-- [ ] Firefox and Safari support through manual HTML bookmark exports only.
-- [ ] Separately reviewed password CSV staging protected by OS encryption; no autofill, no sync, no raw reveal, unreachable by agents.
-- [ ] Never copy cookies, active sessions, account tokens, passkeys, payment data, extension binaries, or browser passwords.
+- [x] Consent-first source browser, profile, and category selection. Detection is a fixed per-platform registry, read-only, and never opens a bookmark file.
+- [x] Reviewable Chromium bookmark import and displayed default-search metadata — the provider's display name only, never its URL template, keyword, keys, or account state.
+- [x] Firefox and Safari support through manual HTML bookmark exports only. `places.sqlite`, Safari's bookmark database, and every other internal browser file stay unopened.
+- [x] Separately reviewed password CSV staging protected by OS encryption; no autofill, no sync, no raw reveal, unreachable by agents. Refuses to stage rather than falling back to plaintext, and the vault has no read path at all.
+- [x] Never copy cookies, active sessions, account tokens, passkeys, payment data, extension binaries, or browser passwords. No migration type has a field one would fit in.
+- [x] Renderer supplies no path, ever: a detected profile is an app-minted identifier, a picked file is an opaque handle, and the native dialog is opened by the trusted process.
+- [x] Defensive parsers with size, depth, count, and length bounds; an http(s)-only scheme gate; skip-and-count for malformed records; warnings as codes with counts rather than free text that could carry user data.
+- [x] Six-step review-first wizard with loading, empty, cancel, malformed-file, permission-denied, encrypted-storage-unavailable, and recoverable-error states, and a "Start fresh instead" escape on every screen.
+- [x] Application-owned migration state, atomic commits, conservative same-address-and-folder deduplication, and Settings re-entry that says re-running can duplicate.
+- [x] Privacy behaviour documented in `docs/MIGRATION_PRIVACY.md`.
+- [x] Validate: `pnpm check`, `pnpm test` (548 tests), and `pnpm build` all pass.
+- [ ] Exercise the wizard end to end in a running app against real Chrome, Firefox, and Safari exports on each platform. Covered by fixtures and unit tests today, not by a manual pass.
+- [x] Surface imported bookmarks in the chrome. A searchable panel, reachable from the command palette. The search runs in the trusted process because the store holds up to fifty thousand entries and none of them needs to cross IPC to be filtered; what comes back is a bounded page and a total. Opening one goes through the ordinary tab path, so a stored address passes the same navigation policy a typed one does.
+- [x] Apply the imported search provider name to address-bar search. The name selects from a table of templates OpenStrawberry ships; an imported string is never navigated to, interpolated into a URL, or stored as one. An engine with no shipped template falls back to the default rather than having a pattern guessed from its name, which would be the copy-the-template behaviour migration exists to refuse. Applied at launch and immediately on a commit that imported one.
 
 ## M6 — Agents and orchestration
 
-- [ ] Encrypted per-agent registry with profile metadata stored separately from credential values.
-- [ ] Refuse to store a credential when OS encryption is unavailable; never fall back to plaintext.
-- [ ] Agent Control Panel with name, role, executor, provider or CLI, model, optional HTTPS base URL, redacted credential status, and explicit remove/replace.
-- [ ] Provider presets: OpenAI, Anthropic, OpenRouter, Moonshot AI, Qwen, OmniRoute, and generic OpenAI-compatible.
-- [ ] Local CLI adapters: Codex, Claude Code, Qwen Code, Kimi Code, OpenCode — allowlisted executables, restricted environment, bounded execution.
-- [ ] Review-first typed orchestration graph with dependencies, bounded context grants, approval gates, budgets, artifacts, cancellation, and blocked/needs-user states.
-- [ ] Redaction tests proving no raw credential reaches renderer payloads, logs, snapshots, plans, artifacts, or error strings.
+- [x] Encrypted per-agent registry with profile metadata stored separately from credential values. `agent-credentials.enc` holds ciphertext; `agent-profile.json` and `agents.json` hold provider and model metadata and have no field a key would fit in. Per-agent keys are scoped and fall back to a shared one.
+- [x] Refuse to store a credential when OS encryption is unavailable; never fall back to plaintext. A keyringless Linux session counts as unavailable however cheerfully `safeStorage` answers, and a key an earlier build wrote through that fallback is discarded at startup.
+- [x] Agent Control Panel with name, role, executor, provider or CLI, model, optional HTTPS base URL, redacted credential status, and explicit remove/replace.
+- [x] Provider presets: Anthropic, OpenAI, Google, OpenRouter, OmniRoute, Moonshot AI, Qwen, Ollama, and generic OpenAI-compatible.
+- [x] Redaction tests proving no raw credential reaches renderer payloads, logs, snapshots, plans, artifacts, or error strings. A dedicated suite plants a canary key and searches every artefact the system produces: both snapshots, pushed state, both plain state files, the redacted error text, and the run log. Each assertion serialises a whole object, so a field added later that happens to carry a key fails without anyone remembering to extend the suite.
+- [x] Scrub credential-shaped tokens out of task text at the IPC boundary, so a key pasted into the composer is never written to the run log. Anchored on issuer formats rather than entropy, because a task that silently loses part of itself is worse than one that keeps a key the user chose to paste.
+- [x] Local CLI adapters: Codex, Claude Code, Qwen Code, Kimi Code, OpenCode, Gemini CLI, Antigravity — allowlisted executables, restricted environment, bounded execution. Spawned with an argv array and never a shell. The executable is allowlisted by base name, so configuring a path authorises that program rather than an arbitrary binary. The prompt goes in on stdin, never in argv, because a command line is visible to any process listing on the machine. The environment is rebuilt from a fixed list rather than inherited, so a variable added to the parent later is absent by default rather than present until someone excludes it. Bounded in time and output, killed on either, and cancellable from the run. stderr is read so the pipe cannot block the child, and discarded rather than shown.
+- [x] HTTP provider adapters for the Anthropic, OpenAI-compatible, and Ollama dialects. Request shaping lives in a module that never receives a credential; the trusted process adds the header immediately before sending. Redirects are refused rather than followed, because a following client would hand the key to whoever controls the redirect target. Bounded in time and in response size, cancellable from the run, and every failure is a code turned into wording the app holds — a provider's own error text is never shown or logged.
+- [x] Google's dialect. Its key goes in `x-goog-api-key` rather than the `?key=` query parameter the API also accepts: a credential in a URL is written to server logs, proxy logs, and every intermediary that records a request line, and a header is not. The model is addressed in the URL path, so a name carrying a path separator is refused outright rather than encoded — `../../` would otherwise walk out of the API version prefix.
+- [x] Review-first typed orchestration graph with dependencies, bounded context grants, approval gates, budgets, artifacts, cancellation, and blocked/needs-user states. Review-first is structural: a plan is built in `draft` and nothing hands out a runnable step until a person approves it, so an executor cannot start one by forgetting to check. A cycle is refused at construction rather than discovered as a hang. Context is granted per step and intersected with what is open, with no "all tabs" value and no way to widen a grant after approval. The budget is spent at the start rather than checked afterwards. A failed dependency blocks what needed it rather than skipping it, so work that was not done stays visible.
+- [x] Drive the orchestration graph. `PlanRunner` holds plans, drives whatever the graph offers, and stops at every gate. It cannot start a step the graph did not offer, because `readySteps` is the only way it obtains one — there is no second path into execution to keep consistent with the first. The plan is re-read on every pass rather than iterated from a list captured at the start, so an approval arriving mid-flight or a budget running out is seen. The executor is injected; with none, plans are reviewable and simply never run.
+- [x] Make a new tab the command center. A blank tab has nowhere to go, so rather than composite an empty native view the pane hands its area over: opening a tab lands on the agents rather than on an empty rectangle. The test is the tab's address, not a mode flag the chrome would then have to remember to leave, so navigating anywhere hands the area straight back. The pane is squeezed to a zero rect rather than hidden, because the `ResizeObserver` reporting that zero is what makes the main process shrink the native view away — a merely invisible pane would still be composited over the top. As a page the surface is a `region` with no close control, not a `dialog`: announcing a dismissable thing when this *is* the tab would be a lie to a screen-reader user. One agent subscription now lives in `App`, so the roster in a new tab and the roster in the panel cannot disagree.
+- [x] Expose plans over IPC and render them. A plan in draft is the review screen: every step, what each one will be allowed to read, and which will stop for a decision, before any of it runs. A step is executed through the agent runtime's own dispatch, so a plan step and a chat turn reach a provider by the same path — two paths would be two places for the credential rule to be got right.
 
 ## M7 — Updater
 
-- [ ] Update panel states: disabled, checking, available, downloading, downloaded, error, install and restart.
-- [ ] Gate activation on both a packaged build and verified release metadata; never download or install silently.
+- [x] Update panel states: disabled, checking, available, downloading, downloaded, error, install and restart. Every action is derived from the state rather than tracked beside it, so a button and its handler cannot disagree about what is possible. The disabled state names each blocker separately, because a development build and an unsigned release are different problems with different fixes.
+- [x] Gate activation on a packaged build, a release-ready product, and an enabled channel; never download or install silently. The gate is a conjunction of three independent facts re-asked on every command, so no single edit turns downloading-and-running-code on, and a refusal restates the whole gate rather than leaving a stale state. Downloading and installing stay separate acts. `electron-updater` is deliberately still not imported: wiring a transport is the step that comes after signed artifacts exist.
 
 ## M8 — Icons, packaging, CI
 
@@ -101,16 +123,24 @@ passes. Planned work is never marked done.
 - [x] Register the app as its own desktop application: AppUserModelID matching the installed shortcut, `OpenStrawberry.exe` as the executable, a single-instance lock so one taskbar button is shared, and a Linux desktop entry with `StartupWMClass` and search keywords.
 - [x] Handle a URL passed on the command line, handed to a running instance on relaunch, and via `open-url` on macOS.
 - [x] Validate on Windows: built the NSIS artifact, launched the unpacked app, confirmed it stays alive, handed off a second launch, requested a normal close, and got a clean exit with no error dialog. The EXE was not installed.
-- [ ] Register HTTP(S) scheme handlers so the app can be chosen as the default browser. Deferred until the link-handling path has been exercised end to end.
+- [x] Confirm the packaged renderer ships the production Content-Security-Policy and no source maps, so the built output is checked rather than the config that was meant to produce it.
+- [x] Validate the packaged build by driving the running app rather than by reading it. Against `release/win-unpacked`: the policy served from inside the asar is the production one; the default-browser state resolves to `not-default` by way of `system-settings`, which is the branch an unpackaged run can never reach and the reason this had to be checked packaged; loopback capture is granted as one audio track and zero video; a real page loads while `file:` and `javascript:` are both refused with the address left where it was; and a requested close exits cleanly with no main-process error. The registration itself was deliberately not pressed — it changes which application the machine opens links with, which is not a thing to do to someone's system in the course of testing.
+- [x] Register HTTP(S) scheme handlers so the app can be chosen as the default browser. The request takes no arguments at all, so a compromised renderer can ask for exactly one registration — `http` and `https` together, because an app that owns one and not the other is a broken default rather than a partial one. Only a packaged build may ask: an unpackaged run would register the Electron binary and its development arguments as the machine's web handler, and that outlives the session that made it. Windows is reported as `pending` rather than `default`, because since Windows 10 the choice is the user's to make in Settings and the app may only register as a candidate — announcing success there would be a lie the user discovers the next time they click a link.
 - [ ] Validate Linux AppImage, DEB, and RPM on a Linux runner.
 - [ ] Validate the macOS DMG on a native macOS runner.
 
 ## M9 — Release readiness
 
-Blocked: requires signing credentials that are not available in this environment.
+The pipeline is complete and the gate is enforced by tooling. What remains is
+signing credentials, which are not available in this environment and cannot be
+produced here.
 
-- [ ] Windows Authenticode signing.
-- [ ] macOS Developer ID signing and notarisation.
-- [ ] Linux artifact verification.
-- [ ] SHA-256 checksums and release provenance.
+- [x] SHA-256 checksums and release provenance: `scripts/checksums.mjs` writes a `sha256sum -c` manifest and a `provenance.json` naming the commit, ref, and runner.
+- [x] Refuse a release build that could only produce an undistributable artifact: `scripts/release-preflight.mjs` stops before the build and names the missing credential.
+- [x] Verify what was actually produced rather than trusting the builder's exit code: `scripts/verify-artifacts.mjs` checks presence, real signature state, and checksum. It correctly fails the current unsigned local build.
+- [x] Hardened-runtime entitlements for macOS notarisation, limited to the three a Chromium browser cannot run without.
+- [x] Tag-driven release workflow building each platform on its own runner, re-verifying checksums after collection, and opening a draft release that never self-publishes.
+- [ ] Windows Authenticode signing. Blocked: needs a certificate. Everything around it is in place — supply `CSC_LINK` and `CSC_KEY_PASSWORD`.
+- [ ] macOS Developer ID signing and notarisation. Blocked: needs a certificate and an App Store Connect key.
+- [ ] Linux artifact verification. Not blocked by credentials; needs a Linux runner, which the release workflow provides.
 - [ ] Only then: enable download affordances and the update channel.

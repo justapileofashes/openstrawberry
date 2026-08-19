@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Entitlements for the hardened runtime, which notarisation requires.
+
+  Deliberately the minimum a Chromium-based browser cannot run without. Every
+  entitlement here weakens a hardened-runtime protection, so the list is short
+  and each one is present for a stated reason rather than copied from a template:
+
+    - allow-jit: V8 compiles JavaScript to machine code at runtime. Without this
+      the renderer cannot execute a page at all.
+    - allow-unsigned-executable-memory: Chromium allocates executable pages that
+      are not part of the signed binary, which is the same JIT requirement seen
+      from the other side.
+    - allow-dyld-environment-variables: Electron's helper processes are launched
+      with a modified dynamic-linker environment.
+
+  Notably absent: com.apple.security.cs.disable-library-validation, which would
+  let unsigned code load into the app, and cs.debugger. Neither is needed to run,
+  and both would undo much of what the hardened runtime is for.
+-->
+<plist version="1.0">
+  <dict>
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+    <key>com.apple.security.cs.allow-dyld-environment-variables</key>
+    <true/>
+  </dict>
+</plist>

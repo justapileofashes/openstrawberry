@@ -1,0 +1,231 @@
+import { describe, expect, it } from "vitest";
+import {
+  buildReaderDocument,
+  closedReaderState,
+  countWords,
+  MAX_BLOCK_LENGTH,
+  MAX_BLOCKS,
+  MAX_DOCUMENT_CHARS,
+  MAX_TITLE_LENGTH,
+  parseReaderTabPayload,
+  READER_BLOCK_KINDS,
+  readerText,
+  readingMinutes
+} from "./reader.js";
+
+const RTL_OVERRIDE = "\u202E";
+const ZERO_WIDTH_SPACE = "\u200B";
+
+/** A document with enough prose to be considered an article. */
+function extraction(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    title: "A Considered Headline",
+    byline: "By Someone",
+    site: "example.com",
+    blocks: [
+      { kind: "heading", text: "A Considered Headline" },
+      { kind: "paragraph", text: "The first paragraph of the article body." },
+      { kind: "paragraph", text: "A second paragraph, for good measure." }
+    ],
+    ...overrides
+  };
+}
+
+describe("readerText", () => {
+  it("collapses the DOM's own whitespace", () => {
+    expect(readerText("  a\n\n  b\t c  ", 100)).toBe("a b c");
+  });
+
+  it("strips control characters and zero-width padding", () => {
+    expect(readerText(`a\u0000b\u001Fc`, 100)).toBe("abc");
+    expect(readerText(`a${ZERO_WIDTH_SPACE}b`, 100)).toBe("ab");
+  });
+
+  it("strips bidirectional overrides", () => {
+    // A reader view exists so text reads as what it says; an override defeats
+    // exactly that.
+    expect(readerText(`safe${RTL_OVERRIDE}txet`, 100)).toBe("safetxet");
+  });
+
+  it("returns empty for anything that is not a string", () => {
+    for (const value of [null, undefined, 42, {}, []]) {
+      expect(readerText(value, 100)).toBe("");
+    }
+  });
+
+  it("truncates past the cap and marks it", () => {
+    const result = readerText("a".repeat(500), 100);
+    expect(result.length).toBeLessThanOrEqual(103);
+    expect(result.endsWith("...")).toBe(true);
+  });
+});
+
+describe("countWords and readingMinutes", () => {
+  it("counts words", () => {
+    expect(countWords("one two three")).toBe(3);
+    expect(countWords("   ")).toBe(0);
+  });
+
+  it("never claims a zero-minute read", () => {
+    expect(readingMinutes(0)).toBe(1);
+    expect(readingMinutes(10)).toBe(1);
+    expect(readingMinutes(2200)).toBe(10);
+  });
+});
+
+describe("buildReaderDocument", () => {
+  it("builds a document from a well-formed extraction", () => {
+    const document = buildReaderDocument(extraction(), "fallback.com");
+
+    expect(document).not.toBeNull();
+    expect(document?.title).toBe("A Considered Headline");
+    expect(document?.byline).toBe("By Someone");
+    expect(document?.site).toBe("example.com");
+    expect(document?.blocks).toHaveLength(3);
+    expect(document?.truncated).toBe(false);
+    expect(document?.wordCount).toBeGreaterThan(0);
+  });
+
+  it("carries no field markup could travel in", () => {
+    // The security property: a block is a kind and a string. If a page returns
+    // markup, it survives only as text that the renderer escapes.
+    const document = buildReaderDocument(
+      extraction({
+        blocks: [
+          { kind: "paragraph", text: "<img src=x onerror=alert(1)>" },
+          { kind: "paragraph", text: "ordinary prose here to qualify as an article" },
+          { kind: "paragraph", text: "more prose", html: "<script>alert(1)</script>", url: "https://evil" }
+        ]
+      }),
+      "example.com"
+    );
+
+    const block = document?.blocks[0];
+    expect(block?.text).toBe("<img src=x onerror=alert(1)>");
+    expect(Object.keys(block ?? {})).toEqual(["kind", "text"]);
+    // The extra fields a hostile extraction added are simply not carried.
+    expect(JSON.stringify(document)).not.toContain("evil");
+    expect(JSON.stringify(document)).not.toContain("<script>");
+  });
+
+  it("refuses a block kind the component does not have an element for", () => {
+    const document = buildReaderDocument(
+      extraction({
+        blocks: [
+          { kind: "iframe", text: "should not survive" },
+          { kind: "script", text: "nor this" },
+          { kind: "paragraph", text: "real prose that makes this an article" }
+        ]
+      }),
+      "example.com"
+    );
+
+    expect(document?.blocks.map((block) => block.kind)).toEqual(["paragraph"]);
+  });
+
+  it("only produces kinds from the closed set", () => {
+    const document = buildReaderDocument(extraction(), "example.com");
+    for (const block of document?.blocks ?? []) {
+      expect(READER_BLOCK_KINDS).toContain(block.kind);
+    }
+  });
+
+  it("is null when there is no prose, so a nav page is not shown as an article", () => {
+    const headingsOnly = buildReaderDocument(
+      extraction({
+        blocks: [
+          { kind: "heading", text: "Section" },
+          { kind: "subheading", text: "Another" }
+        ]
+      }),
+      "example.com"
+    );
+
+    expect(headingsOnly).toBeNull();
+  });
+
+  it("is null for anything that is not an extraction result", () => {
+    for (const hostile of [null, undefined, 42, "text", [], { blocks: "not an array" }]) {
+      expect(buildReaderDocument(hostile, "example.com")).toBeNull();
+    }
+  });
+
+  it("falls back to the real host when the page reports none", () => {
+    // The site line is provenance. A page claiming someone else's name must not
+    // be able to mislabel what the user is reading.
+    const document = buildReaderDocument(extraction({ site: "" }), "actual-host.com");
+    expect(document?.site).toBe("actual-host.com");
+  });
+
+  it("bounds the block count and says it truncated", () => {
+    const document = buildReaderDocument(
+      extraction({
+        blocks: Array.from({ length: MAX_BLOCKS + 500 }, () => ({
+          kind: "paragraph",
+          text: "prose"
+        }))
+      }),
+      "example.com"
+    );
+
+    expect(document?.blocks.length).toBeLessThanOrEqual(MAX_BLOCKS);
+    expect(document?.truncated).toBe(true);
+  });
+
+  it("bounds the whole document, not merely each block", () => {
+    const document = buildReaderDocument(
+      extraction({
+        blocks: Array.from({ length: 400 }, () => ({
+          kind: "paragraph",
+          text: "a".repeat(MAX_BLOCK_LENGTH)
+        }))
+      }),
+      "example.com"
+    );
+
+    const total = (document?.blocks ?? []).reduce((sum, block) => sum + block.text.length, 0);
+    expect(total).toBeLessThanOrEqual(MAX_DOCUMENT_CHARS);
+    expect(document?.truncated).toBe(true);
+  });
+
+  it("bounds the title", () => {
+    const document = buildReaderDocument(
+      extraction({ title: "t".repeat(2000) }),
+      "example.com"
+    );
+    expect((document?.title ?? "").length).toBeLessThanOrEqual(MAX_TITLE_LENGTH + 3);
+  });
+
+  it("skips blocks that are empty after reduction", () => {
+    const document = buildReaderDocument(
+      extraction({
+        blocks: [
+          { kind: "paragraph", text: "   " },
+          { kind: "paragraph", text: ZERO_WIDTH_SPACE },
+          { kind: "paragraph", text: "real prose that makes this an article" }
+        ]
+      }),
+      "example.com"
+    );
+
+    expect(document?.blocks).toHaveLength(1);
+  });
+});
+
+describe("closedReaderState", () => {
+  it("starts closed", () => {
+    expect(closedReaderState()).toEqual({ status: "closed" });
+  });
+});
+
+describe("parseReaderTabPayload", () => {
+  it("accepts an app-minted tab id", () => {
+    expect(parseReaderTabPayload({ tabId: "tab-2" })).toEqual({ tabId: "tab-2" });
+  });
+
+  it("refuses anything else", () => {
+    for (const hostile of [null, [], "tab-2", { tabId: "" }, { tabId: 2 }, { tabId: "../x" }]) {
+      expect(() => parseReaderTabPayload(hostile)).toThrow();
+    }
+  });
+});

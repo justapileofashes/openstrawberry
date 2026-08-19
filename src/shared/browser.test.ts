@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { BLANK_PAGE } from "./desktop-shell.js";
 import { IpcValidationError } from "./ipc-validation.js";
 import {
+  attachmentPlan,
   emptySession,
   MAX_TABS,
   parseActivePanePayload,
@@ -14,6 +15,7 @@ import {
   parseViewportPayload,
   SESSION_VERSION,
   toPersistedSession,
+  visibleTabIds,
   type BrowserSnapshot
 } from "./browser.js";
 
@@ -29,7 +31,8 @@ function snapshot(): BrowserSnapshot {
         canGoForward: false,
         faviconUrl: "https://example.com/favicon.ico",
         isAudible: false,
-        paneId: "primary"
+        paneId: "primary",
+        groupId: null
       },
       {
         id: "tab-2",
@@ -40,7 +43,8 @@ function snapshot(): BrowserSnapshot {
         canGoForward: false,
         faviconUrl: null,
         isAudible: false,
-        paneId: "secondary"
+        paneId: "secondary",
+        groupId: null
       }
     ],
     panes: [
@@ -48,7 +52,8 @@ function snapshot(): BrowserSnapshot {
       { id: "secondary", activeTabId: "tab-2" }
     ],
     activePaneId: "primary",
-    splitEnabled: true
+    splitEnabled: true,
+    groups: []
   };
 }
 
@@ -57,8 +62,8 @@ describe("toPersistedSession", () => {
     const session = toPersistedSession(snapshot());
 
     expect(session.tabs).toEqual([
-      { id: "tab-1", url: "https://example.com/", paneId: "primary" },
-      { id: "tab-2", url: BLANK_PAGE, paneId: "secondary" }
+      { id: "tab-1", url: "https://example.com/", paneId: "primary", groupId: null },
+      { id: "tab-2", url: BLANK_PAGE, paneId: "secondary", groupId: null }
     ]);
     expect(session.activeTabByPane).toEqual({ primary: "tab-1", secondary: "tab-2" });
     expect(session.splitEnabled).toBe(true);
@@ -98,7 +103,8 @@ describe("parsePersistedSession", () => {
       ],
       activeTabByPane: { primary: "safe", secondary: null },
       activePaneId: "primary",
-      splitEnabled: false
+      splitEnabled: false,
+      groups: []
     });
 
     expect(restored.tabs.map((tab) => tab.id)).toEqual(["safe"]);
@@ -110,7 +116,8 @@ describe("parsePersistedSession", () => {
       tabs: [{ id: "local", url: "file:///etc/passwd", paneId: "primary" }],
       activeTabByPane: { primary: "local", secondary: null },
       activePaneId: "primary",
-      splitEnabled: false
+      splitEnabled: false,
+      groups: []
     });
 
     expect(restored.tabs).toHaveLength(0);
@@ -126,7 +133,8 @@ describe("parsePersistedSession", () => {
       ],
       activeTabByPane: { primary: "dupe", secondary: null },
       activePaneId: "primary",
-      splitEnabled: false
+      splitEnabled: false,
+      groups: []
     });
 
     expect(restored.tabs).toHaveLength(1);
@@ -146,7 +154,8 @@ describe("parsePersistedSession", () => {
         tabs,
         activeTabByPane: { primary: null, secondary: null },
         activePaneId: "primary",
-        splitEnabled: false
+        splitEnabled: false,
+        groups: []
       })
     ).toEqual(emptySession());
   });
@@ -203,5 +212,98 @@ describe("IPC payload parsers", () => {
     for (const tabId of ["../../etc", "tab 1", "", 7, null]) {
       expect(() => parseTabIdPayload({ tabId })).toThrow(IpcValidationError);
     }
+  });
+});
+
+describe("visibleTabIds", () => {
+  it("shows only the primary pane's tab when the split is closed", () => {
+    // The secondary pane's tab stays alive but unattached, so switching back is
+    // instant while only what is on screen costs compositing.
+    const visible = visibleTabIds({ primary: "tab-1", secondary: "tab-2" }, false);
+    expect([...visible]).toEqual(["tab-1"]);
+  });
+
+  it("shows both panes' tabs when the split is open", () => {
+    const visible = visibleTabIds({ primary: "tab-1", secondary: "tab-2" }, true);
+    expect([...visible].sort()).toEqual(["tab-1", "tab-2"]);
+  });
+
+  it("shows nothing for a pane with no active tab", () => {
+    expect([...visibleTabIds({ primary: null, secondary: null }, true)]).toEqual([]);
+    expect([...visibleTabIds({ primary: null, secondary: "tab-2" }, true)]).toEqual(["tab-2"]);
+  });
+
+  it("counts a tab active in both panes once", () => {
+    const visible = visibleTabIds({ primary: "tab-1", secondary: "tab-1" }, true);
+    expect(visible.size).toBe(1);
+  });
+});
+
+describe("attachmentPlan", () => {
+  it("attaches what is newly visible", () => {
+    const plan = attachmentPlan(new Set(), new Set(["tab-1"]));
+    expect(plan).toEqual({ toDetach: [], toAttach: ["tab-1"] });
+  });
+
+  it("detaches what is no longer visible", () => {
+    const plan = attachmentPlan(new Set(["tab-1", "tab-2"]), new Set(["tab-1"]));
+    expect(plan).toEqual({ toDetach: ["tab-2"], toAttach: [] });
+  });
+
+  it("does nothing when the attached set already matches", () => {
+    // Idempotence is what makes calling this on every layout pass free, and is
+    // why a repeated pass cannot double-attach a view.
+    const plan = attachmentPlan(new Set(["tab-1"]), new Set(["tab-1"]));
+    expect(plan).toEqual({ toDetach: [], toAttach: [] });
+  });
+
+  it("both detaches and attaches when the visible set is replaced", () => {
+    const plan = attachmentPlan(new Set(["tab-1"]), new Set(["tab-2"]));
+    expect(plan.toDetach).toEqual(["tab-1"]);
+    expect(plan.toAttach).toEqual(["tab-2"]);
+  });
+
+  it("detaches everything when nothing is visible", () => {
+    // What a window beginning to close looks like: the panes report zero, and
+    // every view has to come off before the parent goes.
+    const plan = attachmentPlan(new Set(["tab-1", "tab-2"]), new Set());
+    expect([...plan.toDetach].sort()).toEqual(["tab-1", "tab-2"]);
+    expect(plan.toAttach).toEqual([]);
+  });
+
+  it("is empty on both sides for an empty window", () => {
+    expect(attachmentPlan(new Set(), new Set())).toEqual({ toDetach: [], toAttach: [] });
+  });
+
+  it("keeps a tab attached when the split opens beside it", () => {
+    // Opening a split must not churn the tab that was already on screen.
+    const before = visibleTabIds({ primary: "tab-1", secondary: "tab-2" }, false);
+    const after = visibleTabIds({ primary: "tab-1", secondary: "tab-2" }, true);
+    const plan = attachmentPlan(before, after);
+
+    expect(plan.toDetach).toEqual([]);
+    expect(plan.toAttach).toEqual(["tab-2"]);
+  });
+
+  it("detaches only the secondary tab when the split closes", () => {
+    const before = visibleTabIds({ primary: "tab-1", secondary: "tab-2" }, true);
+    const after = visibleTabIds({ primary: "tab-1", secondary: "tab-2" }, false);
+    const plan = attachmentPlan(before, after);
+
+    expect(plan.toDetach).toEqual(["tab-2"]);
+    expect(plan.toAttach).toEqual([]);
+  });
+
+  it("names a tab moving between panes on both sides", () => {
+    /*
+     * The case that makes ordering matter. A tab active in the primary pane and
+     * then activated in the secondary appears in neither set here - it stays
+     * attached - but a tab swapping with another appears in both, and the caller
+     * has to detach before attaching or the bookkeeping claims it twice.
+     */
+    const before = visibleTabIds({ primary: "tab-1", secondary: "tab-2" }, true);
+    const after = visibleTabIds({ primary: "tab-2", secondary: "tab-1" }, true);
+
+    expect(attachmentPlan(before, after)).toEqual({ toDetach: [], toAttach: [] });
   });
 });

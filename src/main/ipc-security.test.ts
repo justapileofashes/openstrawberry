@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { IPC_CHANNELS } from "../shared/bridge.js";
 import { IpcValidationError } from "../shared/ipc-validation.js";
 import {
   assertTrustedSender,
@@ -81,6 +82,37 @@ describe("assertTrustedSender", () => {
     const hostile = "https://evil.test/steal?token=abc123";
     expect(() => assertTrustedSender(event({ senderFrameUrl: hostile }), POLICY, "browser:navigate"))
       .toThrow(expect.objectContaining({ message: expect.not.stringContaining("evil.test") }));
+  });
+
+  /*
+   * Migration reads another application's data and can encrypt credentials, so
+   * it is the subsystem where an unverified sender would cost the most. The
+   * router applies this same check to every channel with no per-channel opt-out;
+   * these cases pin that the migration channels are covered by it.
+   */
+  it("rejects every migration channel from a sender that is not the chrome", () => {
+    const channels = Object.values(IPC_CHANNELS).filter((channel) =>
+      channel.startsWith("migration:")
+    );
+
+    expect(channels.length).toBeGreaterThan(0);
+
+    for (const channel of channels) {
+      // A guest view: same application, different WebContents.
+      expect(() => assertTrustedSender(event({ senderWebContentsId: 2 }), POLICY, channel)).toThrow(
+        IpcSecurityError
+      );
+      // A subframe inside the chrome, which an embedded document could be.
+      expect(() => assertTrustedSender(event({ senderIsMainFrame: false }), POLICY, channel)).toThrow(
+        IpcSecurityError
+      );
+      // A remote origin that somehow reached the bridge.
+      expect(() =>
+        assertTrustedSender(event({ senderFrameUrl: "https://evil.test/" }), POLICY, channel)
+      ).toThrow(IpcSecurityError);
+
+      expect(() => assertTrustedSender(event(), POLICY, channel)).not.toThrow();
+    }
   });
 });
 

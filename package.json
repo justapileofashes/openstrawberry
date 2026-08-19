@@ -25,17 +25,22 @@
     "check": "tsc --noEmit -p tsconfig.main.json && tsc --noEmit -p tsconfig.renderer.json",
     "test": "vitest run --config vitest.config.ts",
     "build": "vite build && tsc -p tsconfig.main.json",
-    "package": "pnpm build && electron-builder",
-    "package:dir": "pnpm build && electron-builder --dir"
+    "package": "pnpm build && electron-builder --publish never",
+    "package:dir": "pnpm build && electron-builder --dir",
+    "checksums": "node scripts/checksums.mjs",
+    "verify:config": "node scripts/verify-config.mjs",
+    "verify:artifacts": "node scripts/verify-artifacts.mjs",
+    "release:preflight": "node scripts/release-preflight.mjs",
+    "release": "pnpm verify:config && pnpm release:preflight && pnpm check && pnpm test && pnpm build && electron-builder --publish never --config.mac.notarize=true && pnpm checksums && pnpm verify:artifacts"
   },
-  "dependencies": {
+  "comment:dependencies": "Empty on purpose. electron-builder ships every production dependency inside the asar, and nothing here is loaded at runtime: React, React DOM, and Lucide are bundled into the renderer by Vite, and electron-updater is not imported at all until a transport is wired. Declaring them as runtime dependencies shipped sixteen packages and fifty source maps of never-executed code in every artifact. They move back the moment something actually requires them at runtime.",
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "26.2.0",
     "electron-updater": "6.8.9",
     "lucide-react": "1.31.0",
     "react": "19.2.8",
-    "react-dom": "19.2.8"
-  },
-  "devDependencies": {
-    "@types/node": "26.2.0",
+    "react-dom": "19.2.8",
     "@types/react": "19.2.18",
     "@types/react-dom": "19.2.4",
     "@vitejs/plugin-react": "6.0.5",
@@ -80,7 +85,11 @@
         }
       ],
       "artifactName": "OpenStrawberry-mac-universal.${ext}",
-      "category": "public.app-category.productivity"
+      "category": "public.app-category.productivity",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "resources/entitlements.mac.plist",
+      "entitlementsInherit": "resources/entitlements.mac.plist"
     },
     "win": {
       "icon": "resources/icon.png",
@@ -88,9 +97,15 @@
         "nsis"
       ],
       "artifactName": "OpenStrawberry-win-x64.${ext}",
-      "requestedExecutionLevel": "asInvoker"
+      "requestedExecutionLevel": "asInvoker",
+      "signtoolOptions": {
+        "signingHashAlgorithms": [
+          "sha256"
+        ]
+      }
     },
     "nsis": {
+      "include": "resources/installer.nsh",
       "oneClick": true,
       "perMachine": false,
       "allowToChangeInstallationDirectory": false,

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   appearanceCssVariables,
+  audioReactionActive,
   DEFAULT_APPEARANCE,
   hexToRgbTriplet,
   parseAppearance,
@@ -19,6 +20,7 @@ describe("parseAppearance", () => {
   it("keeps the shipped look as the default", () => {
     expect(DEFAULT_APPEARANCE.shineEnabled).toBe(true);
     expect(DEFAULT_APPEARANCE.motionEnabled).toBe(true);
+    expect(DEFAULT_APPEARANCE.audioReactive).toBe(true);
     // The default shine stays achromatic so the palette rule holds unless a
     // user deliberately opts out of it.
     expect(DEFAULT_APPEARANCE.shineColor).toBe("#dbe6fa");
@@ -36,15 +38,28 @@ describe("parseAppearance", () => {
         shineIntensity: 70,
         shineColor: "#FF8800",
         shineSpeed: 90,
-        motionEnabled: false
+        motionEnabled: false,
+        audioReactive: false
       })
     ).toEqual({
       shineEnabled: false,
       shineIntensity: 70,
       shineColor: "#ff8800",
       shineSpeed: 90,
-      motionEnabled: false
+      motionEnabled: false,
+      audioReactive: false
     });
+  });
+
+  it("keeps settings stored before the audio reaction existed", () => {
+    // An existing user's stored payload has no such key, and inheriting the
+    // default is what makes the upgrade silent rather than a reset.
+    expect(parseAppearance({ shineIntensity: 70 }).audioReactive).toBe(
+      DEFAULT_APPEARANCE.audioReactive
+    );
+    expect(parseAppearance({ audioReactive: "yes" }).audioReactive).toBe(
+      DEFAULT_APPEARANCE.audioReactive
+    );
   });
 
   it("clamps out-of-range percentages instead of rejecting them", () => {
@@ -111,5 +126,37 @@ describe("appearanceCssVariables", () => {
       "--shine-intensity": String(DEFAULT_APPEARANCE.shineIntensity),
       "--shine-duration": `${shineDurationSeconds(DEFAULT_APPEARANCE.shineSpeed)}s`
     });
+  });
+});
+
+describe("audioReactionActive", () => {
+  it("runs on the shipped defaults", () => {
+    expect(audioReactionActive(DEFAULT_APPEARANCE, false)).toBe(true);
+  });
+
+  it("yields to reduced motion whatever the settings say", () => {
+    // Checked here rather than in the capture layer, so the audio device is
+    // never opened for a user who has asked the machine to hold still.
+    expect(audioReactionActive(DEFAULT_APPEARANCE, true)).toBe(false);
+    expect(
+      audioReactionActive({ ...DEFAULT_APPEARANCE, audioReactive: true }, true)
+    ).toBe(false);
+  });
+
+  it("yields to either master switch", () => {
+    // The reaction is motion, and it modulates the shine; with either off there
+    // is nothing for it to be.
+    expect(audioReactionActive({ ...DEFAULT_APPEARANCE, motionEnabled: false }, false)).toBe(
+      false
+    );
+    expect(audioReactionActive({ ...DEFAULT_APPEARANCE, shineEnabled: false }, false)).toBe(
+      false
+    );
+  });
+
+  it("is off when the user turned it off", () => {
+    expect(audioReactionActive({ ...DEFAULT_APPEARANCE, audioReactive: false }, false)).toBe(
+      false
+    );
   });
 });

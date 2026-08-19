@@ -7,7 +7,8 @@ import {
   PRODUCT_NAME,
   PROFILE_PARTITION,
   RELEASE_READY,
-  plannedArtifactName
+  plannedArtifactName,
+  usesCustomWindowControls
 } from "./desktop-shell.js";
 
 describe("desktop identity", () => {
@@ -24,6 +25,20 @@ describe("desktop identity", () => {
 
   it("uses a neutral blank start page rather than a live example domain", () => {
     expect(BLANK_PAGE).toBe("about:blank");
+  });
+});
+
+describe("window controls", () => {
+  it("leaves macOS its native traffic lights", () => {
+    expect(usesCustomWindowControls("darwin")).toBe(false);
+  });
+
+  it("draws its own controls everywhere the title bar is hidden", () => {
+    expect(usesCustomWindowControls("win32")).toBe(true);
+    expect(usesCustomWindowControls("linux")).toBe(true);
+    // An unrecognised platform gets the hidden title bar and the controls that
+    // go with it, never a hidden title bar with no way to close the window.
+    expect(usesCustomWindowControls("freebsd")).toBe(true);
   });
 });
 

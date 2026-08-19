@@ -27,16 +27,67 @@ The Windows target is a one-click, per-user NSIS installer.
 A release may not be announced, and download affordances may not be enabled,
 until **all** of the following are complete:
 
-- [ ] Windows Authenticode signing
-- [ ] macOS Developer ID signing and notarisation
-- [ ] Linux artifact verification on a Linux runner
-- [ ] macOS DMG validated on a native macOS runner
-- [ ] SHA-256 checksums published for every artifact
-- [ ] Release provenance recorded
+- [ ] Windows Authenticode signing — *enforced, awaiting a certificate*
+- [ ] macOS Developer ID signing and notarisation — *enforced, awaiting a certificate*
+- [ ] Linux artifact verification on a Linux runner — *automated, not yet run*
+- [ ] macOS DMG validated on a native macOS runner — *automated, not yet run*
+- [x] SHA-256 checksums published for every artifact
+- [x] Release provenance recorded
 
 `RELEASE_READY` in [`src/shared/desktop-shell.ts`](../src/shared/desktop-shell.ts)
 is the in-code expression of this gate. It must only change alongside real
 signing and verified metadata.
+
+## How the gate is enforced
+
+The gate is not kept by whoever remembers to read this page. Four scripts hold
+it, and `pnpm release` chains them:
+
+| Step | Script | What it refuses |
+|---|---|---|
+| `pnpm verify:config` | `scripts/verify-config.mjs` | A packaging option the installed electron-builder does not recognise, on any platform — including the ones the current host cannot build; and an installer script that has stopped registering the app with Windows, writes to a registry root a per-user install cannot reach, or leaves a key behind on uninstall |
+| `pnpm release:preflight` | `scripts/release-preflight.mjs` | Starting a release build on a host that cannot sign, naming the missing credential |
+| `pnpm checksums` | `scripts/checksums.mjs` | — writes `SHA256SUMS.txt` and `provenance.json` |
+| `pnpm verify:artifacts` | `scripts/verify-artifacts.mjs` | A missing, empty, unsigned, un-notarised, or checksum-mismatched artifact |
+
+`pnpm package` is unchanged and still produces an unsigned local build. Testing
+a build you cannot distribute is normal; only the distribution path is gated.
+
+Running the verifier against the current unsigned local build fails, which is
+the correct result:
+
+```
+FAIL  release\OpenStrawberry-win-x64.exe: Authenticode status is NotSigned, not Valid
+1 check(s) failed. These artifacts must not be distributed.
+```
+
+## Signing credentials
+
+Supplied as CI secrets or local environment variables. None is stored in the
+repository, and the preflight names whichever is absent.
+
+| Platform | Variables | Notes |
+|---|---|---|
+| Windows | `CSC_LINK`, `CSC_KEY_PASSWORD` | Path or base64 of the `.pfx`, and its password |
+| Windows (alternative) | `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`, `AZURE_CODE_SIGNING_NAME`, `AZURE_CERT_PROFILE_NAME` | Azure Trusted Signing instead of a certificate file |
+| macOS signing | `CSC_LINK`, `CSC_KEY_PASSWORD` | Developer ID Application certificate |
+| macOS notarisation | `APPLE_API_KEY`, `APPLE_API_KEY_ID`, `APPLE_API_ISSUER` | App Store Connect API key, preferred |
+| macOS notarisation (alternative) | `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID` | Must be an app-specific password, never the account password |
+
+macOS builds use the hardened runtime with
+[`resources/entitlements.mac.plist`](../resources/entitlements.mac.plist), which
+grants only the three entitlements a Chromium browser cannot run without.
+
+## Release workflow
+
+[`.github/workflows/release.yml`](../.github/workflows/release.yml) runs on a
+`v*` tag. It builds Windows, macOS, and Linux on their own runners, runs the
+full gate on each, re-verifies every checksum after the artifacts are collected,
+and opens a **draft** release.
+
+It never publishes. `GH_TOKEN` is explicitly cleared so electron-builder cannot
+upload on its own, `make_latest` is false, and the draft is left for a person to
+review and release deliberately.
 
 ## Current platform validation
 
@@ -44,8 +95,10 @@ Honest status, not aspiration:
 
 | Target | State |
 |---|---|
-| Windows unpacked launch and clean exit | Validated on Windows 11 |
-| Windows NSIS artifact | Built locally and **unsigned**; not installed or published |
+| Windows unpacked launch and clean exit | Validated on Windows 11: launches, holds its window, hands off a second launch to the single-instance lock, exits cleanly with no orphaned processes |
+| Windows NSIS artifact | Built locally and **unsigned**; not installed or published. The verifier refuses it |
+| Windows application registration | Compiled into the installer and checked by `pnpm verify:config`; **not yet confirmed by running an install**, which is the only way to see the keys land |
+| Packaged renderer CSP | Verified in `dist/renderer/index.html`: production policy, no source maps |
 | Linux AppImage / DEB / RPM | Not yet built; requires a Linux runner |
 | macOS DMG | Not yet built; requires a native macOS runner |
 
@@ -80,8 +133,90 @@ indexed; Windows resolves search from installed shortcuts. Running the NSIS
 installer creates the Start-menu and desktop shortcuts that make the app
 searchable and pinnable.
 
+### Windows application registration
+
+Add/Remove Programs was never the gap. electron-builder writes that entry, so
+Settings > Apps > Installed apps has always listed OpenStrawberry. What was
+missing is a separate set of keys — the ones that make Windows treat the app as
+an application it *knows about*. Without them the app had no ProgID for an
+association to name, was not registered as a web browser at all, and was unknown
+to the Run dialog.
+
+[`resources/installer.nsh`](../resources/installer.nsh) writes four
+registrations, all to `SHELL_CONTEXT` so a per-user install reaches them without
+elevation. Each is load-bearing on its own:
+
+| Key | What it buys |
+|---|---|
+| `Software\Classes\OpenStrawberryHTML` | The ProgID an association points *at*. An association with no ProgID to name has nothing to record |
+| `Software\Clients\StartMenuInternet\OpenStrawberry` | Classifies the app as a web browser rather than a program that happens to accept a URL. Only clients listed here are offered under "Web browser" |
+| `Software\RegisteredApplications` | The index Windows reads to find the Capabilities key |
+| `App Paths\OpenStrawberry.exe` | `start openstrawberry` and the Run dialog resolve the executable without a full path |
+
+`http` and `https` are claimed together — the same pair `DEFAULT_BROWSER_PROTOCOLS`
+names, and they must stay in step. The document types are claimed to match
+`LOCAL_DOCUMENT_EXTENSIONS`, and `pnpm verify:config` fails the release if those
+two lists drift: an extension registered here that the app will not render means
+someone picks OpenStrawberry for their `.html` files and gets an empty tab on
+every double-click.
+
+The legacy `InstallInfo` subkey is deliberately not written. Chrome, Firefox, and
+every Chromium fork write it, so it was tested by hand — it changed nothing, and
+its commands are switches this application does not implement.
+
+The ProgID name is fixed forever. Windows seals the person's default-browser
+choice against it with a hash an installer cannot forge, so renaming the ProgID
+silently unsets their default months later.
+
+The uninstaller removes all four — but only on a real uninstall. An update runs
+the old uninstaller before the new installer rewrites everything, and tearing
+the registration down in between is pointless when the update succeeds and
+harmful when it does not.
+
+#### What this does not yet achieve
+
+**OpenStrawberry still does not appear in Settings > Default apps.** Measured on
+Windows 11 build 26200, with every key below present and correct:
+
+| Checked | Result |
+|---|---|
+| All four registrations, read back after a real install | Present, correct values |
+| `AssocQueryStringW` on the ProgID | Resolves to the executable, friendly name, and open command |
+| `shell:AppsFolder` | Lists OpenStrawberry under AUMID `io.openstrawberry.browser` |
+| `start openstrawberry` via App Paths | Launches |
+| Settings > Default apps, searched for the app | *"We couldn't find anything to show here"* |
+
+Two hypotheses were tested and both were wrong: adding the `InstallInfo` subkey
+changed nothing, and neither did adding file associations. The registration now
+matches a working per-user Chromium browser on the same machine key-for-key and
+Windows still will not list it. The remaining untested explanation is that the
+list is built from a per-user index that rebuilds at sign-in, which no amount of
+`SHChangeNotify` reaches.
+
+Nothing above is wasted — the ProgID, the browser client entry, and App Paths are
+each independently required and independently verified. But the headline claim is
+not yet earned, and this section will say so until it is.
+
 Cross-platform packaging is not validated by building on one host. Each target
 is confirmed on its own runner before any claim of readiness.
+
+## The download page
+
+[`site/index.html`](../site/index.html) is a single static page, published to
+GitHub Pages by [`.github/workflows/pages.yml`](../.github/workflows/pages.yml).
+It detects the visitor's platform, lets them pick another, and shows the
+artifacts each one would receive.
+
+It holds no download URL of its own. On load it asks
+`api.github.com/.../releases/latest` what has actually been published and builds
+its links from the assets that come back. Every failure path — no release, a
+draft, a prerelease, a release with no assets, a network error — leaves the
+buttons in their disabled state. That is what keeps the rule below true without
+depending on anyone remembering to edit the page: it cannot link an artifact
+GitHub did not report, and it needs no change when the gate finally opens.
+
+The artifact names in its catalogue mirror `PLANNED_RELEASE_ARTIFACTS`. A name
+that drifts costs a disabled button, never a broken link.
 
 ## Rules
 

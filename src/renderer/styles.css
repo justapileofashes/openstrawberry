@@ -1,5 +1,5 @@
-﻿/* =========================================================
-   Obsidian Relay â€” OpenStrawberry design system
+/* =========================================================
+   Obsidian Relay — OpenStrawberry design system
 
    A warm-monochrome near-black workspace. Colour is reserved for meaning, not
    decoration. Liquid Glass is deliberately cooler than the base so chrome reads
@@ -13,7 +13,7 @@
    webfonts from a remote host; bundled woff2 files are a later refinement.
    ========================================================= */
 :root {
-  /* grounds and surfaces â€” warm monochrome */
+  /* grounds and surfaces — warm monochrome */
   --bg-deep: #08080a;
   --bg: #0e0d0c;
   --surface: #1a1816;
@@ -39,7 +39,7 @@
      Four stacked effects make a surface read as real glass:
        1. a cool tint film, brighter at the top edge
        2. a heavy backdrop blur with saturation and a slight lift
-       3. a specular rim â€” bright top inner edge, dark bottom inner edge
+       3. a specular rim — bright top inner edge, dark bottom inner edge
        4. an outer drop shadow that separates it from the ground
      -------------------------------------------------------------------- */
   /*
@@ -104,13 +104,19 @@
   --d-base: 200ms;
   --d-slow: 360ms;
 
-  /* frame gutter â€” the gap that lets the ground show behind the glass */
+  /* frame gutter — the gap that lets the ground show behind the glass */
   --frame: 14px;
+  --agent-width: 380px;
 
   /* Shine defaults. Overwritten at runtime from user settings. */
   --shine-rgb: 219, 230, 250;
   --shine-intensity: 34;
   --shine-duration: 31s;
+
+  /* The audio reaction. Both rest at 1; the visualiser writes them per frame
+     while something is playing, and removes them when it stops. */
+  --shine-audio-gain: 1;
+  --shine-audio-punch: 1;
 
   /* Overshoot easing: the little rebound that makes the tab morph feel liquid. */
   --ease-liquid: cubic-bezier(0.34, 1.56, 0.64, 1);
@@ -189,13 +195,28 @@ body {
   pointer-events: none;
 }
 
+/*
+ * The audio reaction, as two multipliers against the settings above.
+ *
+ * Both rest at 1, so a silent machine - or one where capture was refused, or a
+ * user who turned the reaction off - renders exactly the appearance the
+ * appearance panel describes. Nothing here has an opinion about the look; it
+ * only scales whatever the user already chose.
+ */
+.ambient-pulse {
+  position: absolute;
+  inset: 0;
+  transform: scale(var(--shine-audio-punch, 1));
+  will-change: transform;
+}
+
 .ambient-blob {
   position: absolute;
   border-radius: 50%;
   background: radial-gradient(
     closest-side,
-    rgba(var(--shine-rgb), calc(var(--shine-intensity) * 0.019)),
-    rgba(var(--shine-rgb), calc(var(--shine-intensity) * 0.007)) 52%,
+    rgba(var(--shine-rgb), calc(var(--shine-intensity) * var(--shine-audio-gain, 1) * 0.019)),
+    rgba(var(--shine-rgb), calc(var(--shine-intensity) * var(--shine-audio-gain, 1) * 0.007)) 52%,
     transparent 76%
   );
   /* Heavy blur so neighbouring pools bleed into one field rather than reading
@@ -214,9 +235,30 @@ body {
   animation-play-state: paused;
 }
 
+/*
+ * Both switches also neutralise the audio reaction here, in CSS, even though
+ * the engine is already stopped by the time either is set. A pulsing highlight
+ * is precisely the movement someone turns motion off to be rid of, so it is
+ * worth being unable to leave one behind: a stale custom property cannot
+ * outlive the setting that permitted it.
+ */
+:root.motion-off .ambient-pulse,
+:root.shine-off .ambient-pulse {
+  transform: none;
+}
+
+:root.motion-off .ambient-blob {
+  --shine-audio-gain: 1;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .ambient-blob {
     animation-play-state: paused;
+    --shine-audio-gain: 1;
+  }
+
+  .ambient-pulse {
+    transform: none;
   }
 }
 
@@ -405,12 +447,21 @@ body {
 }
 
 /* =========================================================
-   Shell â€” floating chrome over an ambient ground
+   Shell — floating chrome over an ambient ground
    ========================================================= */
 .shell {
   position: relative;
   display: grid;
   grid-template-columns: 56px minmax(0, 1fr);
+  /*
+   * The row is named for the same reason the pane row is: `height: 100%` bounds
+   * this element, but an implicit `auto` row inside it is still free to size to
+   * its content and overflow that bound. Nothing in the chrome had content tall
+   * enough to expose it until a new tab began drawing a full panel inside a pane.
+   * Pinning the row here is what makes every `minmax(0, 1fr)` below it resolve
+   * against the window instead of against the tallest thing in the tree.
+   */
+  grid-template-rows: minmax(0, 1fr);
   gap: var(--frame);
   padding: var(--frame);
   height: 100%;
@@ -451,7 +502,7 @@ body {
 }
 
 /* =========================================================
-   Tab rail â€” favicons only, floating glass slab
+   Tab rail — favicons only, floating glass slab
    ========================================================= */
 .tab-rail {
   display: flex;
@@ -728,6 +779,75 @@ body {
   gap: 2px;
 }
 
+/*
+ * The window's grab strip. Everything else in the top bar is no-drag, so without
+ * a reserved region a wide address well would leave nowhere to move the window
+ * from. It gives up width before it gives up existence.
+ */
+.drag-handle {
+  flex: 0 1 72px;
+  min-width: 26px;
+  align-self: stretch;
+}
+
+/* =========================================================
+   Window controls — drawn by the app, not the system
+   ========================================================= */
+.window-controls {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: calc(-1 * var(--s-1));
+}
+
+/* The same hairline that separates the other clusters. */
+.window-controls::before {
+  content: "";
+  width: 1px;
+  height: 18px;
+  margin-right: var(--s-2);
+  background: linear-gradient(
+    180deg,
+    transparent,
+    rgba(222, 232, 246, 0.13),
+    transparent
+  );
+}
+
+/*
+ * Narrower than a tool chip: these are frame controls, not app actions, and the
+ * hierarchy should say so. Square ends on the glyphs, so the marks stay crisp at
+ * 10px instead of rounding into blobs.
+ */
+.win-btn {
+  width: 26px;
+  height: 26px;
+}
+
+.win-btn svg {
+  shape-rendering: crispEdges;
+  stroke-linecap: square;
+}
+
+/*
+ * Close is the one destructive control in the chrome, so it is the one place a
+ * hover may carry colour. It uses the palette's own muted red rather than a
+ * borrowed system red.
+ */
+.win-btn.is-close:hover:not(:disabled) {
+  background: linear-gradient(
+      180deg,
+      rgba(160, 130, 120, 0.32),
+      rgba(160, 130, 120, 0.14)
+    ),
+    rgba(160, 130, 120, 0.1);
+  border-color: rgba(160, 130, 120, 0.42);
+  color: var(--ink-strong);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 230, 224, 0.16),
+    0 1px 4px rgba(0, 0, 0, 0.4);
+}
+
 /* A hairline divider between control clusters and the address well. */
 .tool-cluster::before {
   content: "";
@@ -783,6 +903,13 @@ body {
 .icon-btn:disabled {
   opacity: 0.28;
   cursor: default;
+}
+
+/* A toggle that is currently holding something open, rather than merely hovered. */
+.icon-btn.is-on {
+  background: rgba(222, 232, 246, 0.1);
+  border-color: rgba(222, 232, 246, 0.2);
+  color: var(--ink-strong);
 }
 
 /* Sheen that crosses the chip on hover. */
@@ -859,7 +986,7 @@ body {
   transform: translate(0, -50%) scale(1);
 }
 
-/* Address well â€” inset rather than raised, so it reads as carved into glass. */
+/* Address well — inset rather than raised, so it reads as carved into glass. */
 .address {
   flex: 1;
   min-width: 0;
@@ -899,12 +1026,22 @@ body {
 }
 
 /* =========================================================
-   Panes â€” empty regions the native views are composited into
+   Panes — empty regions the native views are composited into
    ========================================================= */
 .panes {
   position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
+  /*
+   * Named rather than left implicit. An implicit row is `auto`, which sizes to
+   * its content, and for as long as a pane was an empty measured region there
+   * was no content to size to. A new tab put the command center in that region,
+   * and the row grew to it — pushing the shell past the bottom of the window and
+   * giving the whole document a scrollbar, with the last of the panel unreachable
+   * below the edge. `minmax(0, 1fr)` pins the row to the height the workspace
+   * actually granted, which is what lets the panel's own body scroll inside it.
+   */
+  grid-template-rows: minmax(0, 1fr);
   min-height: 0;
 }
 
@@ -913,10 +1050,34 @@ body {
   gap: var(--frame);
 }
 
+/*
+ * The agent panel takes a real column so the pane genuinely gives up width.
+ * It cannot be an overlay: a page is a native view the compositor draws above
+ * the DOM, so a sheet positioned over a pane renders behind the page. Narrowing
+ * the pane instead makes the ResizeObserver report a smaller rect, and the
+ * native view follows.
+ */
+.panes.has-agent {
+  grid-template-columns: minmax(0, 1fr) var(--agent-width);
+  gap: var(--frame);
+}
+
+.panes.has-agent.is-split {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) var(--agent-width);
+}
+
+/*
+ * A column, not a two-row grid. The pane head only exists while the workspace
+ * is split, so a fixed `auto minmax(0, 1fr)` track list put the unsplit pane in
+ * the `auto` row — and since a pane is deliberately empty, that row collapsed to
+ * zero height and the native view was composited into a zero-height rectangle.
+ * Flex lets the head size to its content when present and the pane take the rest
+ * either way.
+ */
 .pane-slot {
   position: relative;
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  display: flex;
+  flex-direction: column;
   min-width: 0;
   background: var(--bg);
   border-radius: var(--r-md);
@@ -957,8 +1118,35 @@ body {
  * carries the rounding.
  */
 .pane {
+  flex: 1 1 auto;
   min-width: 0;
   min-height: 0;
+}
+
+/*
+ * A pane showing a new tab is squeezed to nothing rather than hidden. The
+ * ResizeObserver reports the zero rect, the main process shrinks the native view
+ * away, and the command center below is then the only thing in the slot. Merely
+ * hiding it would leave a live view composited over the top.
+ */
+.pane.is-collapsed {
+  flex: 0 0 0;
+  height: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/*
+ * What a new tab is: the command center, taking the area the collapsed pane gave
+ * up. A flex child rather than an overlay, so the pane head keeps its row while
+ * the workspace is split.
+ */
+.pane-newtab {
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
 }
 
 .pane-slot:has(.pane.is-active) {
@@ -1093,6 +1281,17 @@ body {
 .set-control {
   display: flex;
   justify-content: flex-end;
+}
+
+/*
+ * A settled fact where a control would otherwise sit. Sized and coloured like a
+ * .text-btn at rest but with no hover and no cursor, so a row that has nothing
+ * left to do does not look like one that does.
+ */
+.set-note {
+  font-size: 12px;
+  color: var(--ink-faint);
+  white-space: nowrap;
 }
 
 .set-foot {
@@ -1286,12 +1485,652 @@ input[type="range"]:disabled {
 }
 
 /* The liquid tab morph is an affordance, so it keeps a short transition even
-   with motion off â€” it just stops overshooting. */
+   with motion off — it just stops overshooting. */
 :root.motion-off *,
 :root.motion-off *::before,
 :root.motion-off *::after {
   transition-timing-function: linear !important;
   transition-duration: 90ms !important;
+}
+
+/* =========================================================
+   Agent panel
+   ========================================================= */
+.agent {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  min-width: 0;
+  border-radius: var(--r-md);
+  animation: panel-in var(--d-slow) var(--ease);
+}
+
+.agent > * {
+  position: relative;
+  z-index: 1;
+}
+
+.agent-head-tools {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+/*
+ * Status is text first. A run that needs a decision must not be distinguishable
+ * from a run that is merely busy by colour alone.
+ */
+.agent-status {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--ink-muted);
+}
+
+.agent-status[data-status="awaiting-approval"] {
+  color: var(--accent-warm);
+}
+
+.agent-status[data-status="failed"] {
+  color: var(--bad);
+}
+
+.agent-log {
+  padding: var(--s-4) var(--s-5);
+}
+
+.agent-empty {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--ink-muted);
+}
+
+.agent-steps {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: var(--s-3);
+}
+
+.agent-step {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: var(--s-2);
+  align-items: baseline;
+}
+
+.agent-step-time {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  color: var(--ink-faint);
+}
+
+.agent-step-body {
+  min-width: 0;
+}
+
+.agent-step-label {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ink-strong);
+}
+
+.agent-step[data-tone="quiet"] .agent-step-label {
+  color: var(--ink-muted);
+}
+
+.agent-step[data-tone="bad"] .agent-step-label {
+  color: var(--bad);
+}
+
+.agent-step-detail {
+  margin: var(--s-2) 0 0;
+  padding: var(--s-2) var(--s-3);
+  max-height: 160px;
+  overflow: auto;
+  border-radius: var(--r-xs);
+  background: rgba(222, 232, 246, 0.04);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: var(--ink-muted);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/*
+ * The approval card. This is the one surface in the app whose whole job is to
+ * stop the user, so it gets a warm rim the rest of the chrome never uses.
+ */
+.agent-approve {
+  padding: var(--s-4) var(--s-5);
+  border-top: 1px solid rgba(222, 232, 246, 0.08);
+  box-shadow: inset 2px 0 0 var(--accent-warm);
+}
+
+.agent-approve-summary {
+  margin: var(--s-2) 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink-strong);
+}
+
+.agent-approve-reason {
+  margin: var(--s-2) 0 var(--s-3);
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--ink-muted);
+}
+
+.agent-approve-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--s-2);
+}
+
+.agent-btn {
+  padding: 5px var(--s-4);
+  border: 1px solid rgba(222, 232, 246, 0.14);
+  border-radius: var(--r-xs);
+  background: rgba(222, 232, 246, 0.05);
+  color: var(--ink-strong);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  cursor: pointer;
+  transition:
+    background var(--d-fast) var(--ease),
+    border-color var(--d-fast) var(--ease);
+}
+
+.agent-btn:hover {
+  background: rgba(222, 232, 246, 0.1);
+  border-color: rgba(222, 232, 246, 0.22);
+}
+
+.agent-btn.is-deny:hover {
+  border-color: var(--bad);
+  color: var(--bad);
+}
+
+.agent-composer {
+  display: grid;
+  gap: var(--s-3);
+}
+
+.agent-notice {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--ink-muted);
+}
+
+.agent-notice.is-bad {
+  color: var(--bad);
+}
+
+/*
+ * Summary on the left, action on the right. Run together on one line the button
+ * reads as the end of the sentence rather than as something you can press.
+ */
+.agent-config-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-3);
+}
+
+.agent-config-row .text-btn {
+  flex: 0 0 auto;
+}
+
+/* The key form. `grid-column: 1 / -1` puts the failure line on its own row. */
+.agent-key {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.agent-key .agent-notice {
+  grid-column: 1 / -1;
+}
+
+/*
+ * A single line, unlike the task composer. A key is pasted, not composed, and a
+ * two-row box would invite someone to type prose into a credential field.
+ */
+.agent-key-input {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+
+.agent-context {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+
+/* A chip is off by default: sharing a tab is a choice the user makes. */
+.agent-chip {
+  padding: 3px var(--s-3);
+  border: 1px solid rgba(222, 232, 246, 0.12);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink-faint);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    color var(--d-fast) var(--ease),
+    border-color var(--d-fast) var(--ease),
+    background var(--d-fast) var(--ease);
+}
+
+.agent-chip:hover {
+  color: var(--ink-muted);
+  border-color: rgba(222, 232, 246, 0.2);
+}
+
+.agent-chip.is-on {
+  background: rgba(222, 232, 246, 0.08);
+  border-color: rgba(222, 232, 246, 0.26);
+  color: var(--ink-strong);
+}
+
+.agent-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: var(--s-2);
+}
+
+.agent-input {
+  width: 100%;
+  padding: var(--s-3);
+  border: 1px solid rgba(222, 232, 246, 0.1);
+  border-radius: var(--r-sm);
+  background: rgba(8, 9, 12, 0.5);
+  color: var(--ink-strong);
+  font-family: var(--font-ui);
+  font-size: 12.5px;
+  line-height: 1.5;
+  resize: none;
+  transition: border-color var(--d-fast) var(--ease);
+}
+
+.agent-input:focus {
+  outline: none;
+  border-color: rgba(222, 232, 246, 0.24);
+}
+
+.agent-input::placeholder {
+  color: var(--ink-faint);
+}
+
+.agent-send {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid rgba(222, 232, 246, 0.14);
+  border-radius: var(--r-xs);
+  background: rgba(222, 232, 246, 0.06);
+  color: var(--ink-strong);
+  cursor: pointer;
+  transition:
+    background var(--d-fast) var(--ease),
+    opacity var(--d-fast) var(--ease);
+}
+
+.agent-send:hover:not(:disabled) {
+  background: rgba(222, 232, 246, 0.12);
+}
+
+.agent-send:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* =========================================================
+   Agent command center
+   ========================================================= */
+
+/*
+ * A sheet over the companion panel, not another column. The panel already took
+ * its width from the page, and taking more to show a settings surface would
+ * slide the page out from under the reader. `.agent > *` makes every direct
+ * child relative, so this selector has to out-specify it to lift back out.
+ */
+.agent > .cc {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  border-radius: var(--r-md);
+  /* Opaque enough that the transcript behind it does not read as content. */
+  background: rgba(10, 11, 14, 0.965);
+  /*
+   * A fade, not the `panel-in` slide the panels use. This sheet is pinned to its
+   * parent's edges, so translating it on the way in pushes it past the window
+   * and gives the whole document a horizontal scrollbar for the length of the
+   * animation.
+   */
+  animation: sheet-in var(--d-base) var(--ease);
+}
+
+@keyframes sheet-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/*
+ * The same surface as a new tab's whole content. It fills the slot instead of
+ * covering something, so it takes no sheet backdrop and no lift — a pane is
+ * already a lit, rounded card and a second one inside it would read as a dialog
+ * the user has to get out of.
+ */
+.cc.is-page {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  animation: sheet-in var(--d-base) var(--ease);
+}
+
+/*
+ * A pane is as wide as the window, and form rows dragged out to that width are
+ * unreadable. Both the head and the body are capped to one measure and centred
+ * together, so the heading still sits above the fields it names.
+ */
+.cc.is-page > .set-head,
+.cc.is-page > .cc-body {
+  width: 100%;
+  max-width: 46rem;
+  margin-inline: auto;
+}
+
+.cc-body {
+  display: grid;
+  align-content: start;
+  gap: var(--s-5);
+  padding: var(--s-4) var(--s-5) var(--s-5);
+}
+
+.cc-section {
+  display: grid;
+  gap: var(--s-3);
+  padding-bottom: var(--s-4);
+  border-bottom: 1px solid rgba(222, 232, 246, 0.06);
+}
+
+.cc-section:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.cc-title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-3);
+  margin: 0;
+  font-weight: 400;
+  font-size: 13px;
+  letter-spacing: -0.01em;
+  color: var(--ink-strong);
+}
+
+.cc-count {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-faint);
+}
+
+.cc-hint {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--ink-muted);
+}
+
+.cc-form {
+  display: grid;
+  gap: var(--s-3);
+}
+
+.cc-pair {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+  gap: var(--s-3);
+}
+
+.cc-field {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.cc-field-label {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.cc-field-hint {
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--ink-faint);
+}
+
+.cc-input,
+.cc-select {
+  width: 100%;
+  padding: 6px var(--s-3);
+  border: 1px solid rgba(222, 232, 246, 0.1);
+  border-radius: var(--r-xs);
+  background: rgba(8, 9, 12, 0.6);
+  color: var(--ink-strong);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  transition: border-color var(--d-fast) var(--ease);
+}
+
+.cc-input:focus,
+.cc-select:focus {
+  outline: none;
+  border-color: rgba(222, 232, 246, 0.24);
+}
+
+.cc-input::placeholder {
+  color: var(--ink-faint);
+}
+
+/* The native menu is drawn by the OS, so it needs a background of its own. */
+.cc-select option {
+  background: #101216;
+  color: var(--ink-strong);
+}
+
+.cc-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--s-3);
+}
+
+/* The summary takes the slack so the buttons stay together on the right. */
+.cc-actions .cc-hint {
+  margin-right: auto;
+}
+
+.cc-delete {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: auto;
+}
+
+.cc-new {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  justify-self: start;
+}
+
+.cc-roster {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: var(--s-2);
+}
+
+.cc-agent {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px var(--s-3);
+  width: 100%;
+  padding: var(--s-3);
+  border: 1px solid rgba(222, 232, 246, 0.08);
+  border-radius: var(--r-sm);
+  background: rgba(222, 232, 246, 0.02);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background var(--d-fast) var(--ease),
+    border-color var(--d-fast) var(--ease);
+}
+
+.cc-agent:hover {
+  background: rgba(222, 232, 246, 0.06);
+  border-color: rgba(222, 232, 246, 0.16);
+}
+
+/* The selected agent is the one the composer talks to, so it carries the rim. */
+.cc-agent.is-selected {
+  border-color: rgba(222, 232, 246, 0.28);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.cc-agent.is-editing {
+  background: rgba(222, 232, 246, 0.07);
+}
+
+.cc-agent-name {
+  font-size: 12.5px;
+  color: var(--ink-strong);
+}
+
+.cc-agent-role {
+  grid-column: 2;
+  grid-row: 1;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.cc-agent-route {
+  grid-column: 1;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
+ * Readiness is a word before it is a colour. A user who cannot tell the hues
+ * apart still reads "Needs a key".
+ */
+.cc-agent-state {
+  grid-column: 2;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  white-space: nowrap;
+  color: var(--ink-muted);
+}
+
+.cc-agent-state[data-readiness="needs-key"] {
+  color: var(--accent-warm);
+}
+
+.cc-agent-state[data-readiness="no-encryption"] {
+  color: var(--bad);
+}
+
+.cc-providers {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: var(--s-3);
+}
+
+.cc-provider {
+  display: grid;
+  gap: var(--s-2);
+}
+
+.cc-provider-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-3);
+}
+
+.cc-provider-name {
+  font-size: 12.5px;
+  color: var(--ink-strong);
+}
+
+.cc-provider-state {
+  flex: 1 1 auto;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-faint);
+}
+
+.cc-provider-state[data-configured="true"] {
+  color: var(--ink-muted);
+}
+
+/* The one-line description of what a provider is. Quieter than the row above. */
+.cc-provider-summary {
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--ink-faint);
+}
+
+/*
+ * The per-agent key sits between the routing fields and the save row, separated
+ * by a rule: it is the one control in the editor that writes a secret, and it
+ * should not read as just another field.
+ */
+.cc-agent-key {
+  display: grid;
+  gap: var(--s-2);
+  padding-top: var(--s-3);
+  border-top: 1px solid rgba(222, 232, 246, 0.06);
 }
 
 /* Focus is always visible and never conveyed by colour alone. */
@@ -1304,6 +2143,7 @@ input[type="range"]:disabled {
 @media (max-width: 1100px) {
   :root {
     --frame: 6px;
+    --agent-width: 320px;
   }
 
   .shell {
@@ -1314,4 +2154,1482 @@ input[type="range"]:disabled {
     width: 32px;
     height: 32px;
   }
+}
+
+/* =========================================================
+   Migration wizard
+
+   A sheet over the whole workspace, not a floating dialog. Migration is a
+   decision the window is asking for, and a modal that leaves a live page
+   visible behind it reads as an interruption of browsing rather than as the
+   thing the launch is currently about.
+
+   It cannot be an overlay over a live pane either: a page is a native view the
+   compositor draws above the DOM. `.panes.is-migrating` collapses the pane
+   slots so the ResizeObserver reports a zero rect and the native view shrinks
+   away, leaving this sheet as the only thing in the region.
+   ========================================================= */
+.panes.is-migrating .pane-slot {
+  height: 0;
+  min-height: 0;
+  overflow: hidden;
+  box-shadow: none;
+}
+
+.mig {
+  position: absolute;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  border-radius: var(--r-md);
+  /* Opaque enough that nothing behind it reads as content. */
+  background: rgba(10, 11, 14, 0.972);
+  animation: sheet-in var(--d-base) var(--ease);
+}
+
+.mig:focus {
+  outline: none;
+}
+
+.mig > * {
+  position: relative;
+  z-index: 1;
+}
+
+.mig-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s-4);
+  padding: var(--s-5) var(--s-5) var(--s-3);
+}
+
+.mig-head h2 {
+  margin: var(--s-2) 0 0;
+  font-weight: 300;
+  font-size: 22px;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+  color: var(--ink-strong);
+}
+
+/* Progress as a quiet index, not a marketing carousel. */
+.mig-rail {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-4);
+  margin: 0;
+  padding: 0 var(--s-5) var(--s-4);
+  list-style: none;
+  border-bottom: 1px solid rgba(222, 232, 246, 0.08);
+}
+
+.mig-rail-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-quiet);
+}
+
+.mig-rail-step.is-done {
+  color: var(--ink-faint);
+}
+
+/* Marked by tone *and* a filled dot, never by colour alone. */
+.mig-rail-step.is-current {
+  color: var(--ink-strong);
+}
+
+.mig-rail-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+}
+
+.mig-rail-step.is-current .mig-rail-dot,
+.mig-rail-step.is-done .mig-rail-dot {
+  background: currentColor;
+}
+
+.mig-body {
+  display: grid;
+  align-content: start;
+  gap: var(--s-4);
+  overflow-y: auto;
+  padding: var(--s-5);
+}
+
+.mig-lede {
+  margin: 0;
+  max-width: 68ch;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink);
+}
+
+.mig-facts {
+  margin: 0;
+  padding-left: var(--s-4);
+  display: grid;
+  gap: 5px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ink-muted);
+}
+
+/* ---- Path cards -------------------------------------------------------- */
+.mig-paths {
+  display: grid;
+  gap: var(--s-2);
+}
+
+.mig-path {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-3);
+  width: 100%;
+  padding: var(--s-3) var(--s-4);
+  text-align: left;
+  border: 1px solid rgba(222, 232, 246, 0.1);
+  border-radius: var(--r-sm);
+  background: rgba(222, 232, 246, 0.03);
+  color: var(--ink-strong);
+  font-family: var(--font-ui);
+  cursor: pointer;
+  transition:
+    background var(--d-fast) var(--ease),
+    border-color var(--d-fast) var(--ease);
+}
+
+.mig-path:hover {
+  background: rgba(222, 232, 246, 0.08);
+  border-color: rgba(222, 232, 246, 0.22);
+}
+
+.mig-path-icon {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  flex: 0 0 auto;
+  border-radius: var(--r-xs);
+  background: rgba(222, 232, 246, 0.06);
+  color: var(--ink-muted);
+}
+
+.mig-path-text {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.mig-path-title {
+  font-size: 13px;
+}
+
+.mig-path-hint {
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--ink-muted);
+}
+
+/* ---- Detected sources -------------------------------------------------- */
+.mig-sources {
+  display: grid;
+  gap: var(--s-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mig-source-name {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 12.5px;
+  color: var(--ink-strong);
+}
+
+.mig-profiles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+
+.mig-profile {
+  padding: 4px var(--s-3);
+  border: 1px solid rgba(222, 232, 246, 0.12);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink-muted);
+  font-family: var(--font-ui);
+  font-size: 11.5px;
+  cursor: pointer;
+  transition:
+    background var(--d-fast) var(--ease),
+    border-color var(--d-fast) var(--ease),
+    color var(--d-fast) var(--ease);
+}
+
+.mig-profile:hover {
+  color: var(--ink-strong);
+  border-color: rgba(222, 232, 246, 0.24);
+}
+
+.mig-profile.is-chosen {
+  background: rgba(232, 227, 213, 0.16);
+  border-color: rgba(232, 227, 213, 0.42);
+  color: var(--ink-strong);
+}
+
+/* ---- Category checks --------------------------------------------------- */
+.mig-categories {
+  display: grid;
+  gap: var(--s-2);
+}
+
+.mig-check {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-3);
+  width: 100%;
+  padding: var(--s-3);
+  text-align: left;
+  border: 1px solid rgba(222, 232, 246, 0.09);
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--ink-strong);
+  font-family: var(--font-ui);
+  cursor: pointer;
+  transition:
+    background var(--d-fast) var(--ease),
+    border-color var(--d-fast) var(--ease);
+}
+
+.mig-check:hover:not(:disabled) {
+  background: rgba(222, 232, 246, 0.05);
+  border-color: rgba(222, 232, 246, 0.18);
+}
+
+.mig-check:disabled {
+  opacity: 0.44;
+  cursor: default;
+}
+
+.mig-check-box {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  margin-top: 1px;
+  flex: 0 0 auto;
+  border: 1px solid rgba(222, 232, 246, 0.28);
+  border-radius: var(--r-xs);
+  background: rgba(6, 7, 9, 0.5);
+  color: var(--bg-deep);
+}
+
+.mig-check.is-on .mig-check-box {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.mig-check-text {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  font-size: 12.5px;
+}
+
+.mig-check-hint {
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--ink-muted);
+}
+
+/* ---- Prose blocks ------------------------------------------------------ */
+.mig-instructions {
+  margin: 0;
+  padding-left: var(--s-5);
+  display: grid;
+  gap: 6px;
+  max-width: 68ch;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--ink-muted);
+}
+
+.mig-note {
+  margin: 0;
+  max-width: 68ch;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--ink-muted);
+}
+
+.mig-notice {
+  margin: 0;
+  max-width: 68ch;
+  padding: var(--s-3);
+  border: 1px solid rgba(222, 232, 246, 0.1);
+  border-radius: var(--r-sm);
+  background: rgba(222, 232, 246, 0.035);
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--ink-muted);
+}
+
+.mig-notice.is-bad {
+  border-color: rgba(160, 130, 120, 0.45);
+  color: var(--bad);
+}
+
+.mig-empty {
+  margin: 0;
+  max-width: 68ch;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--ink-muted);
+}
+
+/* ---- Preview sections -------------------------------------------------- */
+.mig-section {
+  display: grid;
+  gap: var(--s-3);
+  padding-bottom: var(--s-4);
+  border-bottom: 1px solid rgba(222, 232, 246, 0.06);
+}
+
+.mig-section:last-of-type {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.mig-section h3,
+.mig-never h3,
+.mig-callout h3 {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-3);
+  margin: 0;
+  font-weight: 400;
+  font-size: 13px;
+  letter-spacing: -0.01em;
+  color: var(--ink-strong);
+}
+
+.mig-count {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-faint);
+}
+
+.mig-sample {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mig-sample li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+  gap: var(--s-3);
+  align-items: baseline;
+  padding: 4px var(--s-3);
+  border-radius: var(--r-xs);
+  background: rgba(222, 232, 246, 0.03);
+}
+
+.mig-sample-title {
+  font-size: 12px;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mig-sample-url {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mig-figures {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-5);
+  margin: 0;
+}
+
+.mig-figures dt {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.mig-figures dd {
+  margin: 3px 0 0;
+  font-size: 20px;
+  font-weight: 300;
+  color: var(--ink-strong);
+}
+
+/* ---- Warnings ---------------------------------------------------------- */
+.mig-warnings {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mig-warnings li {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr);
+  gap: var(--s-2);
+  align-items: start;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--ink-muted);
+}
+
+.mig-warnings svg {
+  margin-top: 2px;
+  color: var(--accent-warm);
+}
+
+/* ---- What is never imported ------------------------------------------- */
+.mig-never {
+  display: grid;
+  gap: var(--s-2);
+  padding: var(--s-4);
+  border: 1px solid rgba(222, 232, 246, 0.08);
+  border-radius: var(--r-sm);
+  background: rgba(222, 232, 246, 0.022);
+}
+
+.mig-never ul,
+.mig-callout ul {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding-left: var(--s-4);
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--ink-muted);
+}
+
+.mig-callout {
+  display: grid;
+  gap: var(--s-2);
+  padding: var(--s-4);
+  border: 1px solid rgba(232, 227, 213, 0.24);
+  border-radius: var(--r-sm);
+  background: rgba(232, 227, 213, 0.045);
+}
+
+.mig-confirm {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mig-confirm li {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  gap: var(--s-2);
+  align-items: start;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ink);
+}
+
+.mig-confirm svg {
+  margin-top: 3px;
+  color: var(--accent);
+}
+
+.mig-progress {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin: 0;
+  font-size: 12px;
+  color: var(--ink-muted);
+}
+
+.mig-progress svg {
+  animation: rail-spin 900ms linear infinite;
+}
+
+/* ---- Footer ------------------------------------------------------------ */
+.mig-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  padding: var(--s-3) var(--s-5) var(--s-4);
+  border-top: 1px solid rgba(222, 232, 246, 0.08);
+}
+
+/* "Start fresh instead" takes the left edge on every screen, so no state in
+   this flow is a dead end. */
+.mig-foot > .agent-btn:only-child {
+  margin-left: auto;
+}
+
+.mig-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--s-4);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mig,
+  .mig-progress svg {
+    animation: none;
+  }
+}
+
+:root.motion-off .mig,
+:root.motion-off .mig-progress svg {
+  animation: none;
+}
+
+@media (max-width: 1100px) {
+  .mig-sample li {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+  }
+
+  .mig-rail {
+    gap: var(--s-3);
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Downloads                                                                   */
+/* -------------------------------------------------------------------------- */
+
+.dl-empty {
+  margin: 0;
+  padding: var(--s-4) 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ink-muted);
+}
+
+.dl-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dl-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-3) 0;
+  border-bottom: 1px solid rgba(222, 232, 246, 0.05);
+}
+
+.dl-item:last-child {
+  border-bottom: 0;
+}
+
+/* minmax(0,...) above plus this is what lets a long name truncate rather than
+   forcing the grid wider than the panel. */
+.dl-main {
+  min-inline-size: 0;
+}
+
+.dl-name {
+  display: block;
+  overflow: hidden;
+  font-size: 13px;
+  color: var(--ink-strong);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dl-meta {
+  display: block;
+  margin-top: 2px;
+  font-size: 11.5px;
+  color: var(--ink-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * A failed download is marked by the word "Failed" in .dl-meta as well as by
+ * tone, so the state never rests on colour alone.
+ */
+.dl-item.is-failed .dl-name {
+  color: var(--ink-muted);
+}
+
+.dl-bar {
+  margin-top: var(--s-2);
+  block-size: 3px;
+  border-radius: 2px;
+  background: rgba(222, 232, 246, 0.09);
+  overflow: hidden;
+}
+
+.dl-fill {
+  display: block;
+  block-size: 100%;
+  border-radius: inherit;
+  background: var(--ink-strong);
+  transition: inline-size var(--d-fast) var(--ease);
+}
+
+/*
+ * A server that declares no length gets a travelling sliver rather than an empty
+ * bar, which would read as a stalled transfer.
+ */
+.dl-fill.is-indeterminate {
+  inline-size: 35%;
+  animation: dl-drift 1.4s var(--ease) infinite;
+}
+
+@keyframes dl-drift {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(340%);
+  }
+}
+
+.dl-actions {
+  display: flex;
+  gap: 2px;
+}
+
+/* The trigger's active marker. Paired with the button label, never alone. */
+.icon-btn .is-active {
+  color: var(--ink-strong);
+  animation: dl-pulse 1.8s var(--ease) infinite;
+}
+
+@keyframes dl-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+/*
+ * Honours the appearance panel's motion switch, and the OS setting behind it.
+ * The bar still fills and the marker still reads; only the movement stops.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .dl-fill.is-indeterminate,
+  .icon-btn .is-active {
+    animation: none;
+  }
+
+  .dl-fill.is-indeterminate {
+    inline-size: 100%;
+    opacity: 0.5;
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Tracker blocking                                                            */
+/* -------------------------------------------------------------------------- */
+
+.shield {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/*
+ * The count sits on the shield rather than beside it, so the control keeps the
+ * same footprint as every other icon in the cluster and the row does not reflow
+ * as a page loads.
+ */
+.shield-count {
+  position: absolute;
+  inset-block-start: -5px;
+  inset-inline-start: 9px;
+  min-inline-size: 13px;
+  padding: 0 3px;
+  border-radius: 7px;
+  background: var(--ink-strong);
+  color: var(--ground);
+  font-size: 9px;
+  font-weight: 600;
+  line-height: 13px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * An excepted site dims the shield. The state is never carried by tone alone:
+ * the count disappears, and the button's accessible label says protection is
+ * off for the site by name.
+ */
+.shield.is-off {
+  opacity: 0.4;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Reader mode                                                                 */
+/* -------------------------------------------------------------------------- */
+
+/*
+ * Fills the pane region rather than floating over it. The panes are collapsed
+ * while the reader is open, so this is not covering a page; it is standing where
+ * the page was.
+ */
+.reader {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--r-3);
+  overflow: hidden;
+}
+
+.rd-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--s-3) var(--s-4);
+  border-bottom: 1px solid rgba(222, 232, 246, 0.06);
+}
+
+.rd-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--s-6) var(--s-5) var(--s-7);
+}
+
+/*
+ * A measure, not a width. Long lines are the thing a reader view exists to fix,
+ * so the column is capped near 68 characters and centred whatever the window
+ * does.
+ */
+.rd-article {
+  max-inline-size: 34rem;
+  margin: 0 auto;
+}
+
+.rd-title {
+  margin: 0 0 var(--s-2);
+  font-size: 25px;
+  line-height: 1.25;
+  font-weight: 600;
+  color: var(--ink-strong);
+}
+
+.rd-meta {
+  margin: 0 0 var(--s-6);
+  font-size: 12px;
+  color: var(--ink-muted);
+}
+
+.rd-p {
+  margin: 0 0 var(--s-4);
+  font-size: 15px;
+  line-height: 1.7;
+  color: var(--ink);
+}
+
+.rd-h1 {
+  margin: var(--s-6) 0 var(--s-3);
+  font-size: 20px;
+  line-height: 1.3;
+  font-weight: 600;
+  color: var(--ink-strong);
+}
+
+.rd-h2 {
+  margin: var(--s-5) 0 var(--s-2);
+  font-size: 16px;
+  line-height: 1.35;
+  font-weight: 600;
+  color: var(--ink-strong);
+}
+
+.rd-quote {
+  margin: 0 0 var(--s-4);
+  padding-inline-start: var(--s-4);
+  border-inline-start: 2px solid rgba(222, 232, 246, 0.18);
+  font-size: 15px;
+  line-height: 1.7;
+  color: var(--ink-muted);
+}
+
+.rd-li {
+  margin: 0 0 var(--s-2) var(--s-4);
+  font-size: 15px;
+  line-height: 1.7;
+  color: var(--ink);
+  list-style: disc;
+}
+
+/* Code keeps its own wrapping; scrolls in place rather than widening the column. */
+.rd-code {
+  margin: 0 0 var(--s-4);
+  padding: var(--s-3);
+  border-radius: var(--r-2);
+  background: rgba(222, 232, 246, 0.04);
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--ink);
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.rd-truncated,
+.rd-empty {
+  margin: var(--s-5) 0 0;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--ink-muted);
+}
+
+.rd-empty {
+  margin: 0;
+  text-align: center;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Command palette                                                             */
+/* -------------------------------------------------------------------------- */
+
+/*
+ * The scrim sits over the chrome only. Pages are native views the compositor
+ * draws above the DOM, so this cannot dim them; it darkens the surround and the
+ * palette itself carries the contrast it needs.
+ */
+.palette-scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding-block-start: 12vh;
+  background: rgba(8, 8, 10, 0.45);
+}
+
+.palette {
+  inline-size: min(34rem, calc(100% - var(--s-6)));
+  max-block-size: 60vh;
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--r-3);
+  overflow: hidden;
+}
+
+.palette-input {
+  flex: 0 0 auto;
+  padding: var(--s-4) var(--s-5);
+  border: 0;
+  border-bottom: 1px solid rgba(222, 232, 246, 0.08);
+  background: transparent;
+  color: var(--ink-strong);
+  font-family: var(--font-ui);
+  font-size: 15px;
+  outline: none;
+}
+
+.palette-input::placeholder {
+  color: var(--ink-faint);
+}
+
+.palette-list {
+  margin: 0;
+  padding: var(--s-2) 0;
+  list-style: none;
+  overflow-y: auto;
+}
+
+.palette-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-2) var(--s-5);
+  cursor: pointer;
+}
+
+/*
+ * The selected row is marked by a filled background and an inline-start rule,
+ * not by tone alone, so the highlight survives a low-contrast display.
+ */
+.palette-row.is-selected {
+  background: rgba(222, 232, 246, 0.07);
+  box-shadow: inset 2px 0 0 var(--ink-strong);
+}
+
+.palette-title {
+  overflow: hidden;
+  font-size: 13.5px;
+  color: var(--ink-strong);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.palette-group {
+  font-size: 11px;
+  color: var(--ink-faint);
+}
+
+.palette-chord {
+  padding: 1px 5px;
+  border: 1px solid rgba(222, 232, 246, 0.12);
+  border-radius: var(--r-1);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--ink-muted);
+  white-space: nowrap;
+}
+
+.palette-empty {
+  margin: 0;
+  padding: var(--s-5);
+  font-size: 12.5px;
+  color: var(--ink-muted);
+  text-align: center;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Saved workspaces                                                            */
+/* -------------------------------------------------------------------------- */
+
+.ws-save {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-4) 0 var(--s-3);
+}
+
+.ws-input {
+  flex: 1;
+  min-inline-size: 0;
+  padding: var(--s-2) var(--s-3);
+  border: 1px solid rgba(222, 232, 246, 0.1);
+  border-radius: var(--r-2);
+  background: rgba(8, 8, 10, 0.35);
+  color: var(--ink-strong);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  outline: none;
+}
+
+.ws-input:focus {
+  border-color: rgba(222, 232, 246, 0.28);
+}
+
+.ws-input::placeholder {
+  color: var(--ink-faint);
+}
+
+.text-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.ws-list {
+  margin: var(--s-4) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ws-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-3) 0;
+  border-bottom: 1px solid rgba(222, 232, 246, 0.05);
+}
+
+.ws-item:last-child {
+  border-bottom: 0;
+}
+
+.ws-main {
+  min-inline-size: 0;
+}
+
+.ws-name {
+  display: block;
+  overflow: hidden;
+  font-size: 13px;
+  color: var(--ink-strong);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ws-meta {
+  display: block;
+  margin-top: 2px;
+  font-size: 11.5px;
+  color: var(--ink-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.ws-actions {
+  display: flex;
+  gap: 2px;
+}
+
+.ws-empty {
+  margin: var(--s-4) 0 0;
+  font-size: 12.5px;
+  color: var(--ink-muted);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Tab groups                                                                  */
+/* -------------------------------------------------------------------------- */
+
+/*
+ * The palette lives here, keyed by token. Stored state carries the token name
+ * only, so no colour value ever crosses the trust boundary or reaches a style
+ * attribute.
+ */
+.rail-tab[data-group-colour="slate"] {
+  --group-tone: #8ea3bf;
+}
+.rail-tab[data-group-colour="amber"] {
+  --group-tone: #d8a657;
+}
+.rail-tab[data-group-colour="rose"] {
+  --group-tone: #d98098;
+}
+.rail-tab[data-group-colour="violet"] {
+  --group-tone: #a992d6;
+}
+.rail-tab[data-group-colour="teal"] {
+  --group-tone: #6fc0b4;
+}
+.rail-tab[data-group-colour="lime"] {
+  --group-tone: #a8c877;
+}
+
+/*
+ * Membership is marked by a rule down the inline-start edge. Shape as well as
+ * tone: the group's name is also in the button's accessible label, so nothing
+ * about membership rests on colour perception alone.
+ */
+.rail-tab.is-grouped {
+  position: relative;
+}
+
+.rail-tab.is-grouped::before {
+  content: "";
+  position: absolute;
+  inset-block: 4px;
+  inset-inline-start: -3px;
+  inline-size: 2px;
+  border-radius: 1px;
+  background: var(--group-tone, var(--ink-muted));
+}
+
+/* -------------------------------------------------------------------------- */
+/* Tab groups panel                                                            */
+/* -------------------------------------------------------------------------- */
+
+.gr-list {
+  margin: var(--s-2) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.gr-item {
+  padding: var(--s-3) 0;
+  border-bottom: 1px solid rgba(222, 232, 246, 0.05);
+}
+
+.gr-item:last-child {
+  border-bottom: 0;
+}
+
+.gr-head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.gr-name {
+  min-inline-size: 0;
+  padding: var(--s-1) var(--s-2);
+  border: 1px solid transparent;
+  border-radius: var(--r-2);
+  background: transparent;
+  color: var(--ink-strong);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  outline: none;
+}
+
+/* The field only looks like a field once it is being used, so the list reads as
+   a list rather than as a form. */
+.gr-name:hover {
+  border-color: rgba(222, 232, 246, 0.1);
+}
+
+.gr-name:focus {
+  border-color: rgba(222, 232, 246, 0.28);
+  background: rgba(8, 8, 10, 0.35);
+}
+
+.gr-count {
+  font-size: 11.5px;
+  color: var(--ink-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.gr-swatches {
+  display: flex;
+  gap: var(--s-2);
+  margin: var(--s-2) 0 0 28px;
+}
+
+.gr-swatch {
+  inline-size: 14px;
+  block-size: 14px;
+  padding: 0;
+  border: 1px solid rgba(8, 8, 10, 0.4);
+  border-radius: 50%;
+  background: var(--group-tone, var(--ink-muted));
+  cursor: pointer;
+}
+
+/*
+ * The selected swatch carries a ring as well as being the only filled one at
+ * that position, so the choice is not signalled by colour alone.
+ */
+.gr-swatch.is-selected {
+  box-shadow: 0 0 0 2px var(--ground), 0 0 0 3px var(--ink-strong);
+}
+
+.gr-swatch:focus-visible {
+  outline: 2px solid var(--ink-strong);
+  outline-offset: 2px;
+}
+
+/* The swatch palette, keyed by the same tokens the rail uses. */
+.gr-swatch[data-group-colour="slate"] {
+  --group-tone: #8ea3bf;
+}
+.gr-swatch[data-group-colour="amber"] {
+  --group-tone: #d8a657;
+}
+.gr-swatch[data-group-colour="rose"] {
+  --group-tone: #d98098;
+}
+.gr-swatch[data-group-colour="violet"] {
+  --group-tone: #a992d6;
+}
+.gr-swatch[data-group-colour="teal"] {
+  --group-tone: #6fc0b4;
+}
+.gr-swatch[data-group-colour="lime"] {
+  --group-tone: #a8c877;
+}
+
+.gr-empty {
+  margin: var(--s-4) 0 0;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--ink-muted);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Bookmarks                                                                   */
+/* -------------------------------------------------------------------------- */
+
+.bm-search {
+  inline-size: 100%;
+  margin: var(--s-4) 0 var(--s-2);
+  padding: var(--s-2) var(--s-3);
+  border: 1px solid rgba(222, 232, 246, 0.1);
+  border-radius: var(--r-2);
+  background: rgba(8, 8, 10, 0.35);
+  color: var(--ink-strong);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  outline: none;
+}
+
+.bm-search:focus {
+  border-color: rgba(222, 232, 246, 0.28);
+}
+
+.bm-search::placeholder {
+  color: var(--ink-faint);
+}
+
+.bm-count {
+  margin: 0 0 var(--s-2);
+  font-size: 11.5px;
+  color: var(--ink-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.bm-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bm-item {
+  border-bottom: 1px solid rgba(222, 232, 246, 0.05);
+}
+
+.bm-item:last-child {
+  border-bottom: 0;
+}
+
+/* The whole row is the control, so the target is the width of the panel rather
+   than the width of the words. */
+.bm-open {
+  display: block;
+  inline-size: 100%;
+  padding: var(--s-3) var(--s-2);
+  border: 0;
+  border-radius: var(--r-2);
+  background: transparent;
+  text-align: start;
+  cursor: pointer;
+}
+
+.bm-open:hover,
+.bm-open:focus-visible {
+  background: rgba(222, 232, 246, 0.06);
+  outline: none;
+}
+
+.bm-open:focus-visible {
+  box-shadow: inset 2px 0 0 var(--ink-strong);
+}
+
+.bm-title,
+.bm-meta {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bm-title {
+  font-family: var(--font-ui);
+  font-size: 13px;
+  color: var(--ink-strong);
+}
+
+.bm-meta {
+  margin-top: 2px;
+  font-size: 11.5px;
+  color: var(--ink-muted);
+}
+
+.bm-empty {
+  margin: var(--s-4) 0 0;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--ink-muted);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Plans                                                                       */
+/* -------------------------------------------------------------------------- */
+
+.pl-plan {
+  padding: var(--s-4) 0;
+  border-bottom: 1px solid rgba(222, 232, 246, 0.05);
+}
+
+.pl-plan:last-child {
+  border-bottom: 0;
+}
+
+.pl-plan-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s-3);
+}
+
+.pl-goal {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink-strong);
+}
+
+.pl-plan-meta {
+  margin: 2px 0 0;
+  font-size: 11.5px;
+  color: var(--ink-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.pl-plan-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--ink-muted);
+}
+
+.pl-steps {
+  margin: var(--s-3) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+/*
+ * A step's state is carried by its inline-start rule as well as by the words
+ * beside it, so nothing here rests on colour alone.
+ */
+.pl-step {
+  padding: var(--s-2) 0 var(--s-2) var(--s-3);
+  border-inline-start: 2px solid rgba(222, 232, 246, 0.12);
+}
+
+.pl-step.is-running {
+  border-inline-start-color: var(--ink-strong);
+}
+
+.pl-step.is-done {
+  border-inline-start-color: #6fc0b4;
+}
+
+.pl-step.is-failed,
+.pl-step.is-blocked {
+  border-inline-start-color: #d98098;
+}
+
+.pl-step.is-needs-user {
+  border-inline-start-color: #d8a657;
+}
+
+.pl-step-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-3);
+}
+
+.pl-step-title {
+  font-size: 13px;
+  color: var(--ink-strong);
+}
+
+.pl-step-status {
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: var(--ink-muted);
+}
+
+.pl-step-meta {
+  margin: 2px 0 0;
+  font-size: 11px;
+  color: var(--ink-faint);
+}
+
+.pl-decide {
+  display: flex;
+  gap: var(--s-2);
+  margin-top: var(--s-2);
+}
+
+/* An artifact is a step's own output, so it reads as quoted material. */
+.pl-artifact {
+  margin: var(--s-2) 0 0;
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-2);
+  background: rgba(222, 232, 246, 0.04);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--ink);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.pl-empty {
+  margin: var(--s-4) 0 0;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--ink-muted);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Updates                                                                     */
+/* -------------------------------------------------------------------------- */
+
+.up-status {
+  margin: var(--s-4) 0 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink-strong);
+}
+
+/*
+ * Each blocker names a different fix, so they are a list rather than a sentence:
+ * a reader can see how many things are outstanding at a glance.
+ */
+.up-blockers {
+  margin: var(--s-3) 0 0;
+  padding-inline-start: var(--s-4);
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--ink-muted);
+}
+
+.up-progress {
+  inline-size: 100%;
+  block-size: 4px;
+  margin-top: var(--s-2);
+  border: 0;
+  border-radius: 2px;
+  background: rgba(222, 232, 246, 0.08);
+}
+
+.up-progress::-webkit-progress-bar {
+  border-radius: 2px;
+  background: rgba(222, 232, 246, 0.08);
+}
+
+.up-progress::-webkit-progress-value {
+  border-radius: 2px;
+  background: var(--ink-strong);
+}
+
+.up-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-3);
+  margin-top: var(--s-5);
 }

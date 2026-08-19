@@ -24,6 +24,14 @@ export interface AppearanceSettings {
   readonly shineSpeed: number;
   /** Master switch for non-essential motion across the chrome. */
   readonly motionEnabled: boolean;
+  /**
+   * Whether the shine reacts to sound the machine is playing.
+   *
+   * Subordinate to both switches above rather than independent of them. The
+   * reaction is motion, so `motionEnabled` off silences it, and it modulates
+   * the shine, so `shineEnabled` off leaves it nothing to modulate.
+   */
+  readonly audioReactive: boolean;
 }
 
 export const DEFAULT_APPEARANCE: AppearanceSettings = {
@@ -32,7 +40,8 @@ export const DEFAULT_APPEARANCE: AppearanceSettings = {
   // Cool near-white: reads as a specular highlight rather than as colour.
   shineColor: "#dbe6fa",
   shineSpeed: 55,
-  motionEnabled: true
+  motionEnabled: true,
+  audioReactive: true
 };
 
 /*
@@ -75,8 +84,26 @@ export function parseAppearance(raw: unknown): AppearanceSettings {
         ? color.toLowerCase()
         : DEFAULT_APPEARANCE.shineColor,
     shineSpeed: clampPercent(source["shineSpeed"], DEFAULT_APPEARANCE.shineSpeed),
-    motionEnabled: booleanOr(source["motionEnabled"], DEFAULT_APPEARANCE.motionEnabled)
+    motionEnabled: booleanOr(source["motionEnabled"], DEFAULT_APPEARANCE.motionEnabled),
+    audioReactive: booleanOr(source["audioReactive"], DEFAULT_APPEARANCE.audioReactive)
   };
+}
+
+/**
+ * Whether the audio reaction should actually run.
+ *
+ * Three conditions, and the last is not a setting. Reduced motion is a system
+ * preference, and a highlight that pulses with a beat is exactly the kind of
+ * movement someone sets it to avoid - so it is honoured here rather than left
+ * to the capture layer, which means the audio device is never opened for a user
+ * who has asked the machine to hold still.
+ */
+export function audioReactionActive(
+  settings: AppearanceSettings,
+  prefersReducedMotion: boolean
+): boolean {
+  if (prefersReducedMotion) return false;
+  return settings.audioReactive && settings.shineEnabled && settings.motionEnabled;
 }
 
 /** `#rrggbb` to the `r, g, b` triplet an rgba() custom property needs. */
