@@ -74,23 +74,31 @@ jobs:
           if [[ "$tag" == v*-* ]]; then
             echo "Prerelease tag $tag: unsigned artifacts permitted."
             echo "unsigned=1" >> "$GITHUB_OUTPUT"
-            echo "script=release:unsigned" >> "$GITHUB_OUTPUT"
           else
             echo "Tag ${tag:-none}: signing required."
             echo "unsigned=" >> "$GITHUB_OUTPUT"
-            echo "script=release" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Build and verify release artifacts
-        run: pnpm ${{ steps.mode.outputs.script }}
+      # Two steps rather than one with conditional env, because a workflow cannot
+      # leave an environment variable *undefined*. An absent secret arrives as
+      # the empty string, and electron-builder reads an empty CSC_LINK as a
+      # certificate path, resolves it to the project directory, and dies with
+      # "not a file". So the credentials exist only in the step that has some.
+      - name: Build and verify release artifacts (unsigned prerelease)
+        if: steps.mode.outputs.unsigned == '1'
+        run: pnpm release:unsigned
         env:
-          # Empty for a stable tag, which leaves the signing gate fully armed.
-          OPENSTRAWBERRY_ALLOW_UNSIGNED: ${{ steps.mode.outputs.unsigned }}
-          # An unsigned run must not let electron-builder go looking for an
-          # identity. Left on, it hunts the runner keychain, finds nothing, and
-          # dies mid-package with an error that names no cause. Off, it packages
-          # the app unsigned, which is what an unsigned prerelease asked for.
-          CSC_IDENTITY_AUTO_DISCOVERY: ${{ steps.mode.outputs.unsigned == '1' && 'false' || 'true' }}
+          OPENSTRAWBERRY_ALLOW_UNSIGNED: "1"
+          # Left on, electron-builder hunts the runner keychain for an identity,
+          # finds nothing, and fails mid-package. Off, it packages the app
+          # unsigned, which is what an unsigned prerelease asked for.
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+          GH_TOKEN: ""
+
+      - name: Build and verify release artifacts
+        if: steps.mode.outputs.unsigned != '1'
+        run: pnpm release
+        env:
           # Absent secrets leave these empty, and release:preflight then refuses
           # the build with a message naming what is missing. That refusal is the
           # intended behaviour of a repository with no certificate configured —
