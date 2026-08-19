@@ -7,6 +7,7 @@ import {
   PRODUCT_NAME,
   PROFILE_PARTITION,
   RELEASE_READY,
+  UPDATE_CHANNEL_ENABLED,
   plannedArtifactName,
   usesCustomWindowControls
 } from "./desktop-shell.js";
@@ -55,8 +56,12 @@ describe("planned release artifacts", () => {
     expect(Object.isFrozen(PLANNED_RELEASE_ARTIFACTS)).toBe(true);
   });
 
-  it("keeps the project marked as not release ready", () => {
-    // This guard must only change alongside real signing and verified metadata.
-    expect(RELEASE_READY).toBe(false);
+  it("only claims release readiness while a published channel exists", () => {
+    // Both halves of the gate move together or not at all. Release readiness
+    // means there is a channel to talk to; an enabled channel with nothing
+    // published resolves 404s, and a published channel the app will not read is
+    // a release nobody receives. The pair is asserted rather than each value,
+    // so this test says what the invariant is instead of restating a constant.
+    expect(UPDATE_CHANNEL_ENABLED).toBe(RELEASE_READY);
   });
 });

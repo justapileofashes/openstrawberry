@@ -122,6 +122,15 @@ jobs:
             release/*.AppImage
             release/*.deb
             release/*.rpm
+            # The updater's half of a release. latest*.yml is the metadata
+            # electron-updater reads to learn a version exists at all; the mac
+            # ZIP is the only format Squirrel.Mac can apply; the blockmaps let a
+            # Windows update fetch a delta instead of the whole installer.
+            # Publishing installers without these is publishing a channel that
+            # finds nothing.
+            release/latest*.yml
+            release/*.zip
+            release/*.blockmap
             release/SHA256SUMS.txt
             release/provenance.json
           if-no-files-found: error
@@ -147,7 +156,8 @@ jobs:
           mkdir -p dist-release
           find artifacts -type f \
             \( -name '*.exe' -o -name '*.dmg' -o -name '*.AppImage' \
-               -o -name '*.deb' -o -name '*.rpm' \) \
+               -o -name '*.deb' -o -name '*.rpm' -o -name '*.zip' \
+               -o -name '*.blockmap' -o -name 'latest*.yml' \) \
             -exec cp {} dist-release/ \;
           # Each runner hashed only what it built, so the published manifest is
           # the concatenation. Sorted for a stable, reviewable file.

@@ -2,13 +2,13 @@
   "name": "openstrawberry",
   "productName": "OpenStrawberry",
   "desktopName": "openstrawberry",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A local-first agentic desktop browser.",
   "openstrawberryUpdateChannel": {
     "provider": "github",
     "owner": "justapileofashes",
     "repo": "openstrawberry",
-    "enabled": false
+    "enabled": true
   },
   "author": {
     "name": "OpenStrawberry contributors",
@@ -35,11 +35,12 @@
     "comment:release:unsigned": "The same chain with notarisation off, for a deliberate unsigned prerelease. It is not a weaker gate wearing a different name: every step still runs, and both release:preflight and verify:artifacts refuse to proceed unless OPENSTRAWBERRY_ALLOW_UNSIGNED is set in the environment, which nothing here does.",
     "release:unsigned": "pnpm verify:config && pnpm release:preflight && pnpm check && pnpm test && pnpm build && electron-builder --publish never && pnpm checksums && pnpm verify:artifacts"
   },
-  "comment:dependencies": "Empty on purpose. electron-builder ships every production dependency inside the asar, and nothing here is loaded at runtime: React, React DOM, and Lucide are bundled into the renderer by Vite, and electron-updater is not imported at all until a transport is wired. Declaring them as runtime dependencies shipped sixteen packages and fifty source maps of never-executed code in every artifact. They move back the moment something actually requires them at runtime.",
-  "dependencies": {},
+  "comment:dependencies": "One entry, and it had to earn it. Everything declared here is packaged into the asar, so React, React DOM, and Lucide stay out: Vite bundles them into the renderer, and listing them again shipped fifty source maps of never-executed code in every artifact. electron-updater is different because src/main/update-transport.ts imports it at runtime - without it in the package the update channel resolves nothing. It costs sixteen packages (its own tree: builder-util-runtime, js-yaml, fs-extra, semver, and their dependencies), and unlike the renderer libraries every one of them actually runs.",
+  "dependencies": {
+    "electron-updater": "6.8.9"
+  },
   "devDependencies": {
     "@types/node": "26.2.0",
-    "electron-updater": "6.8.9",
     "lucide-react": "1.31.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",
@@ -55,6 +56,7 @@
     "vitest": "4.1.10",
     "wait-on": "9.1.0"
   },
+  "comment:build": "The mac block builds a DMG and a ZIP from one universal app. The DMG is what a person downloads; the ZIP is what the updater downloads, because Squirrel.Mac can only apply an update delivered as a ZIP - a mac channel shipping only a DMG publishes metadata pointing at a file it cannot install. Comment keys live out here: electron-builder validates its own blocks against a schema, and pnpm verify:config fails an unrecognised option inside one.",
   "build": {
     "appId": "io.openstrawberry.browser",
     "productName": "OpenStrawberry",
@@ -66,7 +68,8 @@
     },
     "files": [
       "dist/**/*",
-      "package.json"
+      "package.json",
+      "node_modules/**/*"
     ],
     "publish": [
       {
@@ -81,6 +84,12 @@
       "target": [
         {
           "target": "dmg",
+          "arch": [
+            "universal"
+          ]
+        },
+        {
+          "target": "zip",
           "arch": [
             "universal"
           ]

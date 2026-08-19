@@ -13,9 +13,9 @@ privacy-aware migration. Real Chromium browsing, not a mockup.
 
 Pick your platform:
 
-[![Download for macOS](https://img.shields.io/badge/Download-macOS-f3f1f4?style=for-the-badge&logo=apple&logoColor=white&labelColor=1a191d)](https://github.com/justapileofashes/openstrawberry/releases/download/v0.1.0-alpha.1/OpenStrawberry-mac-universal.dmg)
-[![Download for Windows](https://img.shields.io/badge/Download-Windows-f3f1f4?style=for-the-badge&logo=windows&logoColor=white&labelColor=1a191d)](https://github.com/justapileofashes/openstrawberry/releases/download/v0.1.0-alpha.1/OpenStrawberry-win-x64.exe)
-[![Download for Linux](https://img.shields.io/badge/Download-Linux-f3f1f4?style=for-the-badge&logo=linux&logoColor=white&labelColor=1a191d)](https://github.com/justapileofashes/openstrawberry/releases/download/v0.1.0-alpha.1/OpenStrawberry-linux-x86_64.AppImage)
+[![Download for macOS](https://img.shields.io/badge/Download-macOS-f3f1f4?style=for-the-badge&logo=apple&logoColor=white&labelColor=1a191d)](https://github.com/justapileofashes/openstrawberry/releases/download/v0.1.1-alpha.1/OpenStrawberry-mac-universal.dmg)
+[![Download for Windows](https://img.shields.io/badge/Download-Windows-f3f1f4?style=for-the-badge&logo=windows&logoColor=white&labelColor=1a191d)](https://github.com/justapileofashes/openstrawberry/releases/download/v0.1.1-alpha.1/OpenStrawberry-win-x64.exe)
+[![Download for Linux](https://img.shields.io/badge/Download-Linux-f3f1f4?style=for-the-badge&logo=linux&logoColor=white&labelColor=1a191d)](https://github.com/justapileofashes/openstrawberry/releases/download/v0.1.1-alpha.1/OpenStrawberry-linux-x86_64.AppImage)
 
 > **These installers are unsigned and unnotarised.** Windows SmartScreen and
 > macOS Gatekeeper will warn about them. They carry no provenance beyond their
@@ -28,11 +28,11 @@ Every artifact, including the Linux packages the button row does not cover:
 
 | Platform | Installer |
 |---|---|
-| macOS (Apple silicon and Intel) | [`OpenStrawberry-mac-universal.dmg`](https://github.com/justapileofashes/openstrawberry/releases/download/v0.1.0-alpha.1/OpenStrawberry-mac-universal.dmg) |
-| Windows 10 and 11, 64-bit | [`OpenStrawberry-win-x64.exe`](https://github.com/justapileofashes/openstrawberry/releases/download/v0.1.0-alpha.1/OpenStrawberry-win-x64.exe) |
-| Linux — runs anywhere | [`OpenStrawberry-linux-x86_64.AppImage`](https://github.com/justapileofashes/openstrawberry/releases/download/v0.1.0-alpha.1/OpenStrawberry-linux-x86_64.AppImage) |
-| Linux — Debian and Ubuntu | [`OpenStrawberry-linux-amd64.deb`](https://github.com/justapileofashes/openstrawberry/releases/download/v0.1.0-alpha.1/OpenStrawberry-linux-amd64.deb) |
-| Linux — Fedora and RHEL | [`OpenStrawberry-linux-x86_64.rpm`](https://github.com/justapileofashes/openstrawberry/releases/download/v0.1.0-alpha.1/OpenStrawberry-linux-x86_64.rpm) |
+| macOS (Apple silicon and Intel) | [`OpenStrawberry-mac-universal.dmg`](https://github.com/justapileofashes/openstrawberry/releases/download/v0.1.1-alpha.1/OpenStrawberry-mac-universal.dmg) |
+| Windows 10 and 11, 64-bit | [`OpenStrawberry-win-x64.exe`](https://github.com/justapileofashes/openstrawberry/releases/download/v0.1.1-alpha.1/OpenStrawberry-win-x64.exe) |
+| Linux — runs anywhere | [`OpenStrawberry-linux-x86_64.AppImage`](https://github.com/justapileofashes/openstrawberry/releases/download/v0.1.1-alpha.1/OpenStrawberry-linux-x86_64.AppImage) |
+| Linux — Debian and Ubuntu | [`OpenStrawberry-linux-amd64.deb`](https://github.com/justapileofashes/openstrawberry/releases/download/v0.1.1-alpha.1/OpenStrawberry-linux-amd64.deb) |
+| Linux — Fedora and RHEL | [`OpenStrawberry-linux-x86_64.rpm`](https://github.com/justapileofashes/openstrawberry/releases/download/v0.1.1-alpha.1/OpenStrawberry-linux-x86_64.rpm) |
 
 Or build it yourself — an unsigned local build is fine to run, and only
 distribution is gated:
@@ -44,10 +44,9 @@ pnpm install --frozen-lockfile && pnpm package
 ## Status
 
 There is **no stable release**. The installers below are an unsigned
-prerelease — see [Download](#download). The
-in-app update channel is disabled and stays disabled until signed artifacts and
-verified update metadata exist. Nothing in this repository should be treated as
-production software.
+prerelease — see [Download](#download). The in-app updater is on and will offer
+you further unsigned prereleases; it never checks or installs without being
+asked. Nothing in this repository should be treated as production software.
 
 | Area | State |
 |---|---|
@@ -59,7 +58,7 @@ production software.
 | HTTP providers and local CLI adapters | Built. A configured agent sends prompts to a provider and can start an allowlisted local program — see [`docs/SECURITY.md`](docs/SECURITY.md) for what each is permitted |
 | Review-first orchestration | Built. A plan is reviewed and approved before any step runs |
 | Browser fundamentals (downloads, tracker blocking, reader mode, media controls, tab groups, workspaces, command palette) | Built |
-| Updater | Gate and panel built; the channel is off and no transport is wired, both by design until releases are signed |
+| Updater | On, against GitHub Releases. Checking, downloading, and installing are three explicit user actions — nothing happens on launch and nothing installs itself. It updates to *unsigned* prereleases, and macOS cannot apply an unsigned update at all; see [`docs/UPDATES.md`](docs/UPDATES.md) |
 | Signed releases | Pipeline complete and enforced by tooling; blocked on signing credentials |
 
 See [`todo.md`](todo.md) for the working checklist.

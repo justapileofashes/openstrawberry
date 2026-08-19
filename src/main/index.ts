@@ -76,6 +76,11 @@ import { callProvider } from "./http-provider.js";
 import { callCli, type SpawnedProcess } from "./cli-provider.js";
 import { PlanRunner } from "./plan-runner.js";
 import { UpdateManager } from "./update-manager.js";
+import { isUpdateAllowed } from "../shared/updates.js";
+import {
+  createElectronUpdaterTransport,
+  type UpdateTransport
+} from "./update-transport.js";
 import { readDefaultBrowserState, requestDefaultBrowser } from "./default-browser.js";
 import {
   parsePlanDecisionPayload,
@@ -148,6 +153,8 @@ let workspaceStore: WorkspaceStore | null = null;
 let agentManager: AgentManager | null = null;
 let planRunner: PlanRunner | null = null;
 let updateManager: UpdateManager | null = null;
+/** Null in any build the gate refuses, which is the refusal, not a symptom. */
+let updateTransport: UpdateTransport | null = null;
 let migrationManager: MigrationManager | null = null;
 /** A link that arrived before the browser core existed. */
 let pendingLaunchUrl: string | null = launchTargetFromCommandLine(process.argv);
@@ -204,9 +211,44 @@ function requireUpdateManager(): UpdateManager {
       channelEnabled: UPDATE_CHANNEL_ENABLED
     },
     currentVersion: app.getVersion(),
-    publish: (state) => sendToRenderer(UPDATE_STATE_EVENT, state)
+    publish: (state) => sendToRenderer(UPDATE_STATE_EVENT, state),
+    transport: updateTransport
   });
   return updateManager;
+}
+
+/**
+ * Builds the update transport, or does not.
+ *
+ * Called once during startup, and only when the gate is already open. A build
+ * that must not update never loads `electron-updater` at all - the refusal is
+ * not a branch inside the updater, it is the updater never existing.
+ *
+ * Prereleases are allowed deliberately: while the published artifacts are
+ * prereleases, a channel that only accepted stable versions would find nothing
+ * for as long as that is true, and report it as being up to date.
+ */
+async function prepareUpdateTransport(): Promise<void> {
+  const environment = {
+    packaged: app.isPackaged,
+    releaseReady: RELEASE_READY,
+    channelEnabled: UPDATE_CHANNEL_ENABLED
+  };
+
+  if (!isUpdateAllowed(environment)) return;
+
+  try {
+    updateTransport = await createElectronUpdaterTransport({
+      allowPrerelease: true,
+      log: (message) => console.warn(`[updates] ${message}`)
+    });
+  } catch (error) {
+    // A transport that cannot be constructed leaves the manager with none,
+    // which it already handles as a refusal. Failing to load the updater must
+    // not take the application down with it.
+    console.warn(`[updates] transport unavailable: ${String(error)}`);
+    updateTransport = null;
+  }
 }
 
 /** Returns the live plan runner, or throws so the router can redact. */
@@ -1059,6 +1101,11 @@ if (!hasSingleInstanceLock) {
 
     registerIpcHandlers();
     createWindow();
+
+    // After the window, and never awaited before it. Preparing the transport
+    // only loads a module and subscribes to it - nothing is checked, fetched, or
+    // installed until a person asks - so it must not delay the first paint.
+    void prepareUpdateTransport();
 
     app.on("activate", () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();

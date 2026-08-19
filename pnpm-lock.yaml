@@ -7,6 +7,10 @@ settings:
 importers:
 
   .:
+    dependencies:
+      electron-updater:
+        specifier: 6.8.9
+        version: 6.8.9
     devDependencies:
       '@types/node':
         specifier: 26.2.0
@@ -32,9 +36,6 @@ importers:
       electron-builder:
         specifier: 26.15.3
         version: 26.15.3(electron-builder-squirrel-windows@26.15.3)
-      electron-updater:
-        specifier: 6.8.9
-        version: 6.8.9
       lucide-react:
         specifier: 1.31.0
         version: 1.31.0(react@19.2.8)

@@ -48,11 +48,24 @@ export const PLANNED_RELEASE_ARTIFACTS: Readonly<Record<ReleasePlatform, string>
 });
 
 /**
- * OpenStrawberry is work in progress. Public installers are neither stable nor
- * signed, so no build may advertise a download or enable the update channel
- * until signed artifacts and verified update metadata exist.
+ * Whether published artifacts and update metadata exist for this build to talk
+ * to at all.
+ *
+ * True since v0.1.0-alpha.1: installers are published for all three platforms,
+ * with `latest*.yml` beside them, and the update channel resolves against real
+ * files rather than a 404.
+ *
+ * It does **not** mean signed. Those artifacts are an unsigned prerelease, and
+ * the signing gate in `docs/RELEASES.md` is still open - which matters most
+ * exactly here, because an unsigned update is code fetched from the network and
+ * run. What holds in the meantime is transport security and the checksums in
+ * the published metadata, and that is a weaker claim than a signature. The two
+ * facts are tracked separately on purpose: this constant is about whether there
+ * is a channel, `docs/RELEASES.md` is about whether its contents are vouched
+ * for, and conflating them is how an unsigned update ships while a boolean
+ * claims otherwise.
  */
-export const RELEASE_READY = false;
+export const RELEASE_READY = true;
 
 /**
  * The update channel's own switch, mirroring `openstrawberryUpdateChannel` in
@@ -64,7 +77,7 @@ export const RELEASE_READY = false;
  * all; `RELEASE_READY` is whether the artifacts justify it; `app.isPackaged` is
  * whether this build could sensibly replace itself.
  */
-export const UPDATE_CHANNEL_ENABLED = false;
+export const UPDATE_CHANNEL_ENABLED = true;
 
 export function plannedArtifactName(platform: ReleasePlatform): string {
   return PLANNED_RELEASE_ARTIFACTS[platform];

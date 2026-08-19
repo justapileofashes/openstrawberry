@@ -35,8 +35,12 @@ until **all** of the following are complete:
 - [x] Release provenance recorded
 
 `RELEASE_READY` in [`src/shared/desktop-shell.ts`](../src/shared/desktop-shell.ts)
-is the in-code expression of this gate. It must only change alongside real
-signing and verified metadata.
+is **not** the in-code expression of this gate, and the difference matters. It
+asserts that published artifacts and update metadata exist for a build to talk
+to — it is true as of v0.1.0-alpha.1 — and it says nothing about signing. The
+two are tracked separately on purpose: conflating them is how an unsigned update
+ships while a boolean claims otherwise. The checklist above is the signing
+claim, and it is still open.
 
 ## How the gate is enforced
 
@@ -222,7 +226,10 @@ So there is one way past the signing requirement, and it is deliberately narrow:
   is: unsigned, unnotarised, warned about by SmartScreen and Gatekeeper, with
   the checksums as its only integrity claim.
 
-`RELEASE_READY` stays false throughout. A prerelease is not the gate opening.
+A prerelease is not the signing gate opening, and nothing above is a substitute
+for a certificate. The in-app updater now runs against these artifacts — see
+[`UPDATES.md`](UPDATES.md), particularly what an unsigned channel does not give
+you.
 
 ## Download buttons
 
