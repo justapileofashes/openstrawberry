@@ -200,23 +200,41 @@ not yet earned, and this section will say so until it is.
 Cross-platform packaging is not validated by building on one host. Each target
 is confirmed on its own runner before any claim of readiness.
 
-## The download page
+## Unsigned prereleases
 
-[`site/index.html`](../site/index.html) is a single static page, published to
-GitHub Pages by [`.github/workflows/pages.yml`](../.github/workflows/pages.yml).
-It detects the visitor's platform, lets them pick another, and shows the
-artifacts each one would receive.
+The gate above describes a *stable* release. A prerelease has to be able to
+exist before any certificate does, or the three-platform build path is first
+exercised on the day it matters most.
 
-It holds no download URL of its own. On load it asks
-`api.github.com/.../releases/latest` what has actually been published and builds
-its links from the assets that come back. Every failure path — no release, a
-draft, a prerelease, a release with no assets, a network error — leaves the
-buttons in their disabled state. That is what keeps the rule below true without
-depending on anyone remembering to edit the page: it cannot link an artifact
-GitHub did not report, and it needs no change when the gate finally opens.
+So there is one way past the signing requirement, and it is deliberately narrow:
 
-The artifact names in its catalogue mirror `PLANNED_RELEASE_ARTIFACTS`. A name
-that drifts costs a disabled button, never a broken link.
+- The build reads `OPENSTRAWBERRY_ALLOW_UNSIGNED`. It is never a default and is
+  never inferred from a missing credential — something has to set it.
+- The only thing that sets it is
+  [`.github/workflows/release.yml`](../.github/workflows/release.yml), and only
+  for a tag carrying a prerelease suffix — `v0.1.0-alpha.1`, never `v1.0.0`.
+  The tag is the authorisation, so an unsigned build cannot be produced under a
+  name that reads as stable.
+- It downgrades **signature verdicts only**. A missing, empty, misnamed, or
+  checksum-mismatched artifact still fails the run, and `pnpm verify:artifacts`
+  still prints every artifact as unsigned in plain words.
+- The resulting GitHub release is marked as a prerelease and opens with what it
+  is: unsigned, unnotarised, warned about by SmartScreen and Gatekeeper, with
+  the checksums as its only integrity claim.
+
+`RELEASE_READY` stays false throughout. A prerelease is not the gate opening.
+
+## Download buttons
+
+The per-OS buttons live in [`README.md`](../README.md), on the repository
+landing page. They are plain links to release assets — the visitor picks their
+platform by clicking it.
+
+They point at an explicit tag, not `releases/latest/download/...`. That path
+resolves only to the newest *stable* release, so while the current build is a
+prerelease it would 404 — which is the rule below. The cost is that the links
+name a version and are updated when a new one is published; the benefit is that
+they are never a link to a file that is not there.
 
 ## Rules
 

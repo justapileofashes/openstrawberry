@@ -34,9 +34,24 @@ const EXPECTED_BY_PLATFORM = {
 const failures = [];
 const notes = [];
 
+/**
+ * Set by a deliberate unsigned-prerelease run; see scripts/release-preflight.mjs
+ * for why the escape hatch exists and how narrow it is. It downgrades *only*
+ * signature verdicts. A missing, empty, misnamed, or checksum-mismatched
+ * artifact still fails the run, because none of those is a thing a prerelease
+ * is allowed to be either.
+ */
+const ALLOW_UNSIGNED = (process.env.OPENSTRAWBERRY_ALLOW_UNSIGNED ?? "").trim().length > 0;
+
 function fail(message) {
   failures.push(message);
   console.error(`  FAIL  ${message}`);
+}
+
+/** A signature verdict: fatal normally, a loud note in an unsigned prerelease. */
+function failSignature(message) {
+  if (ALLOW_UNSIGNED) note(`${message} — permitted, this is an UNSIGNED prerelease`);
+  else fail(message);
 }
 
 function pass(message) {
@@ -85,12 +100,12 @@ function verifyWindowsSignature(path) {
       { encoding: "utf8" }
     ).trim();
   } catch {
-    fail(`${path}: could not read the Authenticode signature`);
+    failSignature(`${path}: could not read the Authenticode signature`);
     return;
   }
 
   if (status === "Valid") pass(`${path}: Authenticode signature Valid`);
-  else fail(`${path}: Authenticode status is ${status}, not Valid`);
+  else failSignature(`${path}: Authenticode status is ${status}, not Valid`);
 }
 
 function verifyMacSignature(path) {
@@ -98,7 +113,7 @@ function verifyMacSignature(path) {
     execFileSync("codesign", ["--verify", "--deep", "--strict", path], { stdio: "pipe" });
     pass(`${path}: codesign verification passed`);
   } catch {
-    fail(`${path}: codesign verification failed`);
+    failSignature(`${path}: codesign verification failed`);
     return;
   }
 
@@ -110,7 +125,7 @@ function verifyMacSignature(path) {
     });
     pass(`${path}: Gatekeeper assessment passed (notarised)`);
   } catch {
-    fail(`${path}: Gatekeeper rejected the artifact — it is signed but not notarised`);
+    failSignature(`${path}: Gatekeeper rejected the artifact — it is signed but not notarised`);
   }
 }
 
@@ -202,6 +217,14 @@ async function main() {
       (notes.length > 0 ? ` ${notes.length} note(s) above.` : "") +
       "\n"
   );
+
+  if (ALLOW_UNSIGNED) {
+    console.log(
+      "These artifacts are UNSIGNED. They are present, correctly named, and match\n" +
+        "their checksums, and that is the whole of what has been verified. Publish\n" +
+        "them as a prerelease that says so, or not at all.\n"
+    );
+  }
 }
 
 await main();

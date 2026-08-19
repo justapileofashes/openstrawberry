@@ -64,6 +64,24 @@ function isSet(name) {
   return typeof value === "string" && value.trim().length > 0;
 }
 
+/**
+ * The one way past the signing requirement, and it is deliberately awkward.
+ *
+ * A prerelease has to be able to exist before any certificate does, or the
+ * three-platform build path is never exercised until the day it matters most.
+ * So there is an opt-in - but it is an explicit environment variable, never a
+ * default, never inferred from the absence of a credential, and the release
+ * workflow only sets it for a tag that is already marked as a prerelease.
+ *
+ * What it buys is narrow: signing may be skipped. Everything else the release
+ * run checks - artifacts present, non-empty, correctly named, and matching
+ * their published checksums - still holds, and `verify:artifacts` still reports
+ * every artifact as unsigned in plain words.
+ */
+function unsignedAllowed() {
+  return isSet("OPENSTRAWBERRY_ALLOW_UNSIGNED");
+}
+
 /** The first satisfied group, or null when none is. */
 function satisfied(groups) {
   return groups.find((group) => group.all.every(isSet)) ?? null;
@@ -107,6 +125,20 @@ function main() {
 
   const missing = requirements.filter((requirement) => satisfied(requirement.groups) === null);
 
+  if (missing.length > 0 && unsignedAllowed()) {
+    console.warn(
+      `\nRelease preflight: OPENSTRAWBERRY_ALLOW_UNSIGNED is set. Proceeding on ${platform} ` +
+        "without:\n"
+    );
+    for (const requirement of missing) console.warn(`  - ${requirement.what}`);
+    console.warn(
+      "\n  Every artifact from this build is UNSIGNED. It may be published only as a\n" +
+        "  prerelease that says so. It is not a stable release, it will warn on\n" +
+        "  SmartScreen and Gatekeeper, and its only integrity claim is its checksum.\n"
+    );
+    return;
+  }
+
   if (missing.length === 0) {
     for (const requirement of requirements) {
       const group = satisfied(requirement.groups);
@@ -124,9 +156,11 @@ function main() {
   }
 
   console.error(
-    "  An unsigned build carries no provenance and must not be distributed\n" +
-      "  (docs/RELEASES.md). To produce one for local testing instead, run:\n\n" +
-      "      pnpm package\n"
+    "  An unsigned build carries no provenance and must not be distributed as a\n" +
+      "  stable release (docs/RELEASES.md). To produce one for local testing, run:\n\n" +
+      "      pnpm package\n\n" +
+      "  To publish one deliberately as an unsigned prerelease, set\n" +
+      "  OPENSTRAWBERRY_ALLOW_UNSIGNED=1. Read what that means first.\n"
   );
 
   process.exit(1);

@@ -1,20 +1,50 @@
 # OpenStrawberry
 
-> **WORK IN PROGRESS — DO NOT DOWNLOAD YET.** OpenStrawberry is an active
-> development build. Public installers are not stable or signed. Wait for a
-> verified release announcement before installing anything.
+> **WORK IN PROGRESS.** OpenStrawberry is an active development build. The
+> installers below are an unsigned prerelease: they will warn on SmartScreen and
+> Gatekeeper, and they are not a stable release. Install them only if you are
+> comfortable with that.
 
 A local-first, open-source desktop browser with browser-native AI Companions,
 review-first multi-agent orchestration, per-agent encrypted credentials, and
 privacy-aware migration. Real Chromium browsing, not a mockup.
 
+## Download
+
+Pick your platform:
+
+[![Download for macOS](https://img.shields.io/badge/Download-macOS-f3f1f4?style=for-the-badge&logo=apple&logoColor=white&labelColor=1a191d)](https://github.com/justapileofashes/openstrawberry/releases/download/v0.1.0-alpha.1/OpenStrawberry-mac-universal.dmg)
+[![Download for Windows](https://img.shields.io/badge/Download-Windows-f3f1f4?style=for-the-badge&logo=windows&logoColor=white&labelColor=1a191d)](https://github.com/justapileofashes/openstrawberry/releases/download/v0.1.0-alpha.1/OpenStrawberry-win-x64.exe)
+[![Download for Linux](https://img.shields.io/badge/Download-Linux-f3f1f4?style=for-the-badge&logo=linux&logoColor=white&labelColor=1a191d)](https://github.com/justapileofashes/openstrawberry/releases/download/v0.1.0-alpha.1/OpenStrawberry-linux-x86_64.AppImage)
+
+> **These installers are unsigned and unnotarised.** Windows SmartScreen and
+> macOS Gatekeeper will warn about them. They carry no provenance beyond their
+> published checksums, and they are a development build rather than a stable
+> release. Verify what you downloaded against `SHA256SUMS.txt` on the
+> [release page](https://github.com/justapileofashes/openstrawberry/releases)
+> before running it.
+
+Every artifact, including the Linux packages the button row does not cover:
+
+| Platform | Installer |
+|---|---|
+| macOS (Apple silicon and Intel) | [`OpenStrawberry-mac-universal.dmg`](https://github.com/justapileofashes/openstrawberry/releases/download/v0.1.0-alpha.1/OpenStrawberry-mac-universal.dmg) |
+| Windows 10 and 11, 64-bit | [`OpenStrawberry-win-x64.exe`](https://github.com/justapileofashes/openstrawberry/releases/download/v0.1.0-alpha.1/OpenStrawberry-win-x64.exe) |
+| Linux — runs anywhere | [`OpenStrawberry-linux-x86_64.AppImage`](https://github.com/justapileofashes/openstrawberry/releases/download/v0.1.0-alpha.1/OpenStrawberry-linux-x86_64.AppImage) |
+| Linux — Debian and Ubuntu | [`OpenStrawberry-linux-amd64.deb`](https://github.com/justapileofashes/openstrawberry/releases/download/v0.1.0-alpha.1/OpenStrawberry-linux-amd64.deb) |
+| Linux — Fedora and RHEL | [`OpenStrawberry-linux-x86_64.rpm`](https://github.com/justapileofashes/openstrawberry/releases/download/v0.1.0-alpha.1/OpenStrawberry-linux-x86_64.rpm) |
+
+Or build it yourself — an unsigned local build is fine to run, and only
+distribution is gated:
+
+```bash
+pnpm install --frozen-lockfile && pnpm package
+```
+
 ## Status
 
-There is **no stable release**, and there are **no public downloads**. The
-[download page](https://justapileofashes.github.io/openstrawberry/) picks the
-right installer for your platform, and its buttons stay disabled — it reads the
-GitHub Releases API on load, so they enable themselves the moment a signed
-release exists, and never link a file that is not there. The
+There is **no stable release**. The installers below are an unsigned
+prerelease — see [Download](#download). The
 in-app update channel is disabled and stays disabled until signed artifacts and
 verified update metadata exist. Nothing in this repository should be treated as
 production software.

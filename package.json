@@ -31,7 +31,9 @@
     "verify:config": "node scripts/verify-config.mjs",
     "verify:artifacts": "node scripts/verify-artifacts.mjs",
     "release:preflight": "node scripts/release-preflight.mjs",
-    "release": "pnpm verify:config && pnpm release:preflight && pnpm check && pnpm test && pnpm build && electron-builder --publish never --config.mac.notarize=true && pnpm checksums && pnpm verify:artifacts"
+    "release": "pnpm verify:config && pnpm release:preflight && pnpm check && pnpm test && pnpm build && electron-builder --publish never --config.mac.notarize=true && pnpm checksums && pnpm verify:artifacts",
+    "comment:release:unsigned": "The same chain with notarisation off, for a deliberate unsigned prerelease. It is not a weaker gate wearing a different name: every step still runs, and both release:preflight and verify:artifacts refuse to proceed unless OPENSTRAWBERRY_ALLOW_UNSIGNED is set in the environment, which nothing here does.",
+    "release:unsigned": "pnpm verify:config && pnpm release:preflight && pnpm check && pnpm test && pnpm build && electron-builder --publish never && pnpm checksums && pnpm verify:artifacts"
   },
   "comment:dependencies": "Empty on purpose. electron-builder ships every production dependency inside the asar, and nothing here is loaded at runtime: React, React DOM, and Lucide are bundled into the renderer by Vite, and electron-updater is not imported at all until a transport is wired. Declaring them as runtime dependencies shipped sixteen packages and fifty source maps of never-executed code in every artifact. They move back the moment something actually requires them at runtime.",
   "dependencies": {},
