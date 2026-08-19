@@ -9,6 +9,7 @@
 import { app, shell } from "electron";
 import {
   DEFAULT_BROWSER_PROTOCOLS,
+  WINDOWS_DEFAULT_APPS_URL,
   canRequestDefaultBrowser,
   defaultBrowserMethod,
   defaultBrowserBlockers,
@@ -16,15 +17,6 @@ import {
   type DefaultBrowserEnvironment,
   type DefaultBrowserState
 } from "../shared/default-browser.js";
-
-/**
- * The Windows deep link to the Default Apps page.
- *
- * A fixed constant, never anything derived from a renderer payload: the request
- * channel takes no arguments at all, so there is no path by which this could
- * become an arbitrary URL the chrome asked the OS to open.
- */
-const WINDOWS_DEFAULT_APPS = "ms-settings:defaultapps";
 
 function environment(): DefaultBrowserEnvironment {
   return { platform: process.platform, packaged: app.isPackaged };
@@ -64,7 +56,7 @@ export async function requestDefaultBrowser(): Promise<DefaultBrowserState> {
   }
 
   if (defaultBrowserMethod(current.platform) === "system-settings") {
-    await shell.openExternal(WINDOWS_DEFAULT_APPS);
+    await shell.openExternal(WINDOWS_DEFAULT_APPS_URL);
     return { status: "pending" };
   }
 

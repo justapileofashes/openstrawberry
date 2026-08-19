@@ -35,6 +35,37 @@ export const DEFAULT_BROWSER_PROTOCOLS = ["http", "https"] as const;
 export type DefaultBrowserProtocol = (typeof DEFAULT_BROWSER_PROTOCOLS)[number];
 
 /**
+ * The name the Windows installer registers this application under.
+ *
+ * It must equal `OPENSTRAWBERRY_CLIENT` in `resources/installer.nsh`, which is
+ * the name `Software\RegisteredApplications` is indexed by. The two are checked
+ * against each other by `pnpm verify:config`, because nothing at runtime would
+ * notice them drifting apart: Settings answers an unrecognised name by opening
+ * the undifferentiated list, which is precisely what it did before either
+ * existed.
+ */
+export const WINDOWS_REGISTERED_APPLICATION = "OpenStrawberry";
+
+/**
+ * Where Windows sends a person to finish a choice it will not let us make.
+ *
+ * `registeredAppUser` is meant to open the named application's own page rather
+ * than the list of every application on the machine. Measured on Windows 11
+ * build 26200 it does not: the parameter is accepted and the generic Default
+ * apps page opens regardless. It is kept because it is the documented form, it
+ * costs nothing, and it degrades to exactly the behaviour we would otherwise
+ * have hardcoded - but nothing here should be described as a shortcut until it
+ * is seen to be one. See docs/RELEASES.md for what that measurement was part of.
+ *
+ * A constant, computed from a constant. The request channel takes no arguments
+ * at all, so there is no path by which a compromised renderer could steer this
+ * anywhere - the encode below guards the source file, not the IPC boundary.
+ */
+export const WINDOWS_DEFAULT_APPS_URL = `ms-settings:defaultapps?registeredAppUser=${encodeURIComponent(
+  WINDOWS_REGISTERED_APPLICATION
+)}`;
+
+/**
  * Why the request cannot be made at all.
  *
  * Codes rather than prose, and each names a different fix, so the panel can

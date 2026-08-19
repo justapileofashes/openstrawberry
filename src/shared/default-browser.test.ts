@@ -5,7 +5,9 @@ import {
   DEFAULT_BROWSER_PROTOCOLS,
   defaultBrowserBlockers,
   defaultBrowserMethod,
-  defaultBrowserState
+  defaultBrowserState,
+  WINDOWS_DEFAULT_APPS_URL,
+  WINDOWS_REGISTERED_APPLICATION
 } from "./default-browser.js";
 
 const PACKAGED = { platform: "darwin", packaged: true } as const;
@@ -89,5 +91,24 @@ describe("canPressSetDefault", () => {
 describe("DEFAULT_BROWSER_PROTOCOLS", () => {
   it("covers both schemes, because owning one of them is a broken default", () => {
     expect([...DEFAULT_BROWSER_PROTOCOLS]).toEqual(["http", "https"]);
+  });
+});
+
+describe("WINDOWS_DEFAULT_APPS_URL", () => {
+  it("names the registered application it was built from", () => {
+    // `pnpm verify:config` holds that name equal to the one the installer
+    // registers. Windows 11 build 26200 ignores the parameter and opens the
+    // generic page anyway - see the note on the constant - so this pins the
+    // shape of the link, not an outcome that was observed.
+    expect(WINDOWS_DEFAULT_APPS_URL).toBe(
+      `ms-settings:defaultapps?registeredAppUser=${WINDOWS_REGISTERED_APPLICATION}`
+    );
+  });
+
+  it("stays a settings link and cannot be read as a web URL", () => {
+    // shell.openExternal hands this to the OS. A constant is the whole defence:
+    // the request channel takes no arguments, so nothing can steer it.
+    expect(WINDOWS_DEFAULT_APPS_URL.startsWith("ms-settings:")).toBe(true);
+    expect(WINDOWS_DEFAULT_APPS_URL).not.toMatch(/[\s"'<>]/u);
   });
 });

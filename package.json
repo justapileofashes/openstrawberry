@@ -105,6 +105,7 @@
       }
     },
     "nsis": {
+      "include": "resources/installer.nsh",
       "oneClick": true,
       "perMachine": false,
       "allowToChangeInstallationDirectory": false,

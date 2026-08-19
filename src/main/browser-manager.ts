@@ -34,6 +34,7 @@ import {
   DEFAULT_SEARCH_TEMPLATE,
   displayHostname,
   isAllowedUrl,
+  isLocalDocumentUrl,
   isSafeFaviconUrl,
   normalizeAddressInput,
   resolveSearchTemplate
@@ -206,17 +207,31 @@ export class BrowserManager {
     return this.createTabWithId(`tab-${this.nextTabSequence++}`, paneId, url, options.activate);
   }
 
+  /**
+   * Opens a local document the operating system handed us.
+   *
+   * A separate entrance rather than a flag on `createTab`, because the callers
+   * are what makes this safe. Every other way a tab is born - the renderer, a
+   * restored session, a link in a page - goes through `createTab` and cannot
+   * reach `file:` at all. Only a command line can arrive here, and only after
+   * `launchTargetFromCommandLine` has resolved it against the disk.
+   */
+  public openLocalDocument(paneId: BrowserPaneId, url: string): BrowserSnapshot {
+    return this.createTabWithId(`tab-${this.nextTabSequence++}`, paneId, url, true, true);
+  }
+
   private createTabWithId(
     id: string,
     paneId: BrowserPaneId,
     url: string,
-    activate: boolean
+    activate: boolean,
+    fromOperatingSystem = false
   ): BrowserSnapshot {
     if (this.destroyed) return this.snapshot();
     if (this.tabs.size >= MAX_TABS) return this.snapshot();
     if (this.tabs.has(id)) return this.snapshot();
 
-    const target = isAllowedUrl(url) ? url : BLANK_PAGE;
+    const target = this.openableUrl(url, fromOperatingSystem);
 
     const view = new WebContentsView({
       webPreferences: {
@@ -588,21 +603,56 @@ export class BrowserManager {
     // The navigation policy is enforced on the guest itself, not just at the
     // address bar, so a page cannot script its way to a disallowed scheme.
     contents.on("will-navigate", (event, url) => {
-      if (!isAllowedUrl(url)) event.preventDefault();
+      if (!this.mayNavigate(contents, url)) event.preventDefault();
     });
 
     contents.on("will-redirect", (event, url) => {
-      if (!isAllowedUrl(url)) event.preventDefault();
+      if (!this.mayNavigate(contents, url)) event.preventDefault();
     });
 
     // Popups become real tabs when they are allowed, and are denied otherwise.
     contents.setWindowOpenHandler(({ url }) => {
-      if (isAllowedUrl(url)) {
+      if (this.mayNavigate(contents, url)) {
         const current = this.tabs.get(tabId);
-        this.createTab(current?.state.paneId ?? "primary", url, { activate: true });
+        const paneId = current?.state.paneId ?? "primary";
+        if (isAllowedUrl(url)) this.createTab(paneId, url, { activate: true });
+        else this.openLocalDocument(paneId, url);
       }
       return { action: "deny" };
     });
+  }
+
+  /**
+   * The scheme a tab may be opened at, given who asked for it.
+   *
+   * `BLANK_PAGE` rather than a refusal, because every caller of this expects a
+   * tab to exist afterwards; a tab showing nothing is recoverable, a missing
+   * tab is a chrome that has lost track of itself.
+   */
+  private openableUrl(url: string, fromOperatingSystem: boolean): string {
+    if (isAllowedUrl(url)) return url;
+    if (fromOperatingSystem && isLocalDocumentUrl(url)) return url;
+    return BLANK_PAGE;
+  }
+
+  /**
+   * Whether a guest may follow a navigation to `url`.
+   *
+   * The rule for `file:` is that it is reachable only from itself. A local
+   * document links to its neighbours - relative links are most of what a saved
+   * page or a generated documentation tree is made of, and an association that
+   * opens the first page but refuses the second honours the letter of what was
+   * registered and none of its point. A page from the network, meanwhile, can
+   * never steer a tab onto the disk, because the tab it is steering is not
+   * showing a local document.
+   *
+   * `getURL` is the live location of the guest rather than the tab state this
+   * class keeps, so a navigation cannot be smuggled through the gap between a
+   * redirect landing and the snapshot catching up.
+   */
+  private mayNavigate(contents: Electron.WebContents, url: string): boolean {
+    if (isAllowedUrl(url)) return true;
+    return isLocalDocumentUrl(url) && isLocalDocumentUrl(contents.getURL());
   }
 
   /**

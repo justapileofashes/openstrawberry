@@ -66,8 +66,9 @@ import {
   parseMigrationHandlePayload,
   parseMigrationPreviewPayload
 } from "../shared/migration.js";
-import { isAllowedUrl, urlFromCommandLine } from "../shared/navigation.js";
+import { isAllowedUrl, isLocalDocumentUrl } from "../shared/navigation.js";
 import { BrowserManager } from "./browser-manager.js";
+import { launchTargetFromCommandLine } from "./launch-target.js";
 import { DownloadManager } from "./download-manager.js";
 import { TrackerBlocker } from "./tracker-blocker.js";
 import { extractReaderDocument } from "./reader.js";
@@ -149,7 +150,7 @@ let planRunner: PlanRunner | null = null;
 let updateManager: UpdateManager | null = null;
 let migrationManager: MigrationManager | null = null;
 /** A link that arrived before the browser core existed. */
-let pendingLaunchUrl: string | null = urlFromCommandLine(process.argv);
+let pendingLaunchUrl: string | null = launchTargetFromCommandLine(process.argv);
 
 function denyAllPermissions(target: Electron.Session): void {
   target.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
@@ -600,11 +601,11 @@ function createWindow(): void {
       // Migration being unavailable leaves the shipped default in place.
     }
 
-    // A link that launched the app opens alongside the restored session rather
-    // than replacing it.
+    // A link or document that launched the app opens alongside the restored
+    // session rather than replacing it.
     const launchUrl = pendingLaunchUrl;
     pendingLaunchUrl = null;
-    if (launchUrl !== null) manager.createTab(manager.snapshot().activePaneId, launchUrl);
+    if (launchUrl !== null) openLaunchTarget(manager, launchUrl);
   });
 }
 
@@ -1015,6 +1016,19 @@ function registerIpcHandlers(): void {
   );
 }
 
+/**
+ * Opens whatever the desktop asked for, by the entrance that scheme deserves.
+ *
+ * A local document goes through `openLocalDocument`, which is the only path in
+ * the browser that can reach `file:` at all - see the comment on that method for
+ * why the distinction is the safety property rather than a formality.
+ */
+function openLaunchTarget(manager: BrowserManager, url: string): void {
+  const paneId = manager.snapshot().activePaneId;
+  if (isLocalDocumentUrl(url)) manager.openLocalDocument(paneId, url);
+  else manager.createTab(paneId, url);
+}
+
 /** Brings the existing window forward and opens a requested link in it. */
 function handleReactivation(argv: readonly string[]): void {
   const target = mainWindow;
@@ -1023,8 +1037,8 @@ function handleReactivation(argv: readonly string[]): void {
   if (target.isMinimized()) target.restore();
   target.focus();
 
-  const url = urlFromCommandLine(argv);
-  if (url !== null) browserManager?.createTab(browserManager.snapshot().activePaneId, url);
+  const url = launchTargetFromCommandLine(argv);
+  if (url !== null && browserManager !== null) openLaunchTarget(browserManager, url);
 }
 
 if (!hasSingleInstanceLock) {

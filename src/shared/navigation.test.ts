@@ -5,7 +5,10 @@ import {
   DEFAULT_SEARCH_TEMPLATE,
   displayHostname,
   isAllowedUrl,
+  isLocalDocumentUrl,
   isSafeFaviconUrl,
+  LOCAL_DOCUMENT_EXTENSIONS,
+  localDocumentArgument,
   MAX_ADDRESS_LENGTH,
   normalizeAddressInput,
   resolveSearchTemplate,
@@ -201,6 +204,76 @@ describe("urlFromCommandLine", () => {
 
   it("handles an empty argument list", () => {
     expect(urlFromCommandLine([])).toBeNull();
+  });
+});
+
+describe("isLocalDocumentUrl", () => {
+  it("stays out of isAllowedUrl, so nothing else in the browser widens with it", () => {
+    // The whole safety property. The address bar, will-navigate, and session
+    // restore all ask isAllowedUrl, and none of them may reach the disk.
+    const document = "file:///C:/Users/ashton/notes.html";
+    expect(isLocalDocumentUrl(document)).toBe(true);
+    expect(isAllowedUrl(document)).toBe(false);
+  });
+
+  it("opens the document types the installer registers, and no others", () => {
+    for (const extension of LOCAL_DOCUMENT_EXTENSIONS) {
+      expect(isLocalDocumentUrl(`file:///C:/tmp/page${extension}`)).toBe(true);
+    }
+    // Perfectly valid file: URLs that the registration never claimed.
+    expect(isLocalDocumentUrl("file:///C:/Users/ashton/.ssh/id_ed25519")).toBe(false);
+    expect(isLocalDocumentUrl("file:///C:/Windows/System32/config/SAM")).toBe(false);
+    expect(isLocalDocumentUrl("file:///C:/")).toBe(false);
+  });
+
+  it("refuses a UNC path, which is a network fetch wearing a local scheme", () => {
+    expect(isLocalDocumentUrl("file://attacker.example/share/page.html")).toBe(false);
+  });
+
+  it("judges the real end of the path, not an extension buried in it", () => {
+    expect(isLocalDocumentUrl("file:///C:/tmp/page.html.exe")).toBe(false);
+    expect(isLocalDocumentUrl("file:///C:/tmp/.html")).toBe(true);
+  });
+
+  it("reads the path rather than the query, which is not part of the filename", () => {
+    // The document here really is page.html. A query on a file: URL is inert,
+    // and refusing it would refuse a legitimate relative link from one local
+    // page to another.
+    expect(isLocalDocumentUrl("file:///C:/tmp/page.html?x=1")).toBe(true);
+    expect(isLocalDocumentUrl("file:///C:/tmp/archive.zip?name=x.html")).toBe(false);
+  });
+
+  it("refuses an undecodable or null-bearing path rather than guessing", () => {
+    expect(isLocalDocumentUrl("file:///C:/tmp/%ZZ.html")).toBe(false);
+    expect(isLocalDocumentUrl("file:///C:/tmp/page%00.html")).toBe(false);
+  });
+
+  it("refuses every other scheme, including ones that embed a filename", () => {
+    expect(isLocalDocumentUrl("https://example.com/page.html")).toBe(false);
+    expect(isLocalDocumentUrl("javascript:alert(1)//page.html")).toBe(false);
+    expect(isLocalDocumentUrl(BLANK_PAGE)).toBe(false);
+  });
+});
+
+describe("localDocumentArgument", () => {
+  it("finds the document a double-click passes on the command line", () => {
+    expect(localDocumentArgument(["OpenStrawberry.exe", "C:\\Users\\ashton\\notes.html"])).toBe(
+      "C:\\Users\\ashton\\notes.html"
+    );
+  });
+
+  it("never reads a switch as a path", () => {
+    // Electron and Chromium both pass switches that can end in anything.
+    expect(localDocumentArgument(["exe", "--trace-file=/tmp/x.html"])).toBeNull();
+  });
+
+  it("leaves anything carrying a scheme to urlFromCommandLine", () => {
+    expect(localDocumentArgument(["exe", "https://example.com/page.html"])).toBeNull();
+    expect(localDocumentArgument(["exe", "file:///C:/tmp/page.html"])).toBeNull();
+  });
+
+  it("ignores a path that is not a document type", () => {
+    expect(localDocumentArgument(["exe", "C:\\Users\\ashton\\secrets.txt"])).toBeNull();
   });
 });
 

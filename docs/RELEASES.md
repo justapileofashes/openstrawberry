@@ -45,7 +45,7 @@ it, and `pnpm release` chains them:
 
 | Step | Script | What it refuses |
 |---|---|---|
-| `pnpm verify:config` | `scripts/verify-config.mjs` | A packaging option the installed electron-builder does not recognise, on any platform — including the ones the current host cannot build |
+| `pnpm verify:config` | `scripts/verify-config.mjs` | A packaging option the installed electron-builder does not recognise, on any platform — including the ones the current host cannot build; and an installer script that has stopped registering the app with Windows, writes to a registry root a per-user install cannot reach, or leaves a key behind on uninstall |
 | `pnpm release:preflight` | `scripts/release-preflight.mjs` | Starting a release build on a host that cannot sign, naming the missing credential |
 | `pnpm checksums` | `scripts/checksums.mjs` | — writes `SHA256SUMS.txt` and `provenance.json` |
 | `pnpm verify:artifacts` | `scripts/verify-artifacts.mjs` | A missing, empty, unsigned, un-notarised, or checksum-mismatched artifact |
@@ -97,6 +97,7 @@ Honest status, not aspiration:
 |---|---|
 | Windows unpacked launch and clean exit | Validated on Windows 11: launches, holds its window, hands off a second launch to the single-instance lock, exits cleanly with no orphaned processes |
 | Windows NSIS artifact | Built locally and **unsigned**; not installed or published. The verifier refuses it |
+| Windows application registration | Compiled into the installer and checked by `pnpm verify:config`; **not yet confirmed by running an install**, which is the only way to see the keys land |
 | Packaged renderer CSP | Verified in `dist/renderer/index.html`: production policy, no source maps |
 | Linux AppImage / DEB / RPM | Not yet built; requires a Linux runner |
 | macOS DMG | Not yet built; requires a native macOS runner |
@@ -131,6 +132,70 @@ host:
 indexed; Windows resolves search from installed shortcuts. Running the NSIS
 installer creates the Start-menu and desktop shortcuts that make the app
 searchable and pinnable.
+
+### Windows application registration
+
+Add/Remove Programs was never the gap. electron-builder writes that entry, so
+Settings > Apps > Installed apps has always listed OpenStrawberry. What was
+missing is a separate set of keys — the ones that make Windows treat the app as
+an application it *knows about*. Without them the app had no ProgID for an
+association to name, was not registered as a web browser at all, and was unknown
+to the Run dialog.
+
+[`resources/installer.nsh`](../resources/installer.nsh) writes four
+registrations, all to `SHELL_CONTEXT` so a per-user install reaches them without
+elevation. Each is load-bearing on its own:
+
+| Key | What it buys |
+|---|---|
+| `Software\Classes\OpenStrawberryHTML` | The ProgID an association points *at*. An association with no ProgID to name has nothing to record |
+| `Software\Clients\StartMenuInternet\OpenStrawberry` | Classifies the app as a web browser rather than a program that happens to accept a URL. Only clients listed here are offered under "Web browser" |
+| `Software\RegisteredApplications` | The index Windows reads to find the Capabilities key |
+| `App Paths\OpenStrawberry.exe` | `start openstrawberry` and the Run dialog resolve the executable without a full path |
+
+`http` and `https` are claimed together — the same pair `DEFAULT_BROWSER_PROTOCOLS`
+names, and they must stay in step. The document types are claimed to match
+`LOCAL_DOCUMENT_EXTENSIONS`, and `pnpm verify:config` fails the release if those
+two lists drift: an extension registered here that the app will not render means
+someone picks OpenStrawberry for their `.html` files and gets an empty tab on
+every double-click.
+
+The legacy `InstallInfo` subkey is deliberately not written. Chrome, Firefox, and
+every Chromium fork write it, so it was tested by hand — it changed nothing, and
+its commands are switches this application does not implement.
+
+The ProgID name is fixed forever. Windows seals the person's default-browser
+choice against it with a hash an installer cannot forge, so renaming the ProgID
+silently unsets their default months later.
+
+The uninstaller removes all four — but only on a real uninstall. An update runs
+the old uninstaller before the new installer rewrites everything, and tearing
+the registration down in between is pointless when the update succeeds and
+harmful when it does not.
+
+#### What this does not yet achieve
+
+**OpenStrawberry still does not appear in Settings > Default apps.** Measured on
+Windows 11 build 26200, with every key below present and correct:
+
+| Checked | Result |
+|---|---|
+| All four registrations, read back after a real install | Present, correct values |
+| `AssocQueryStringW` on the ProgID | Resolves to the executable, friendly name, and open command |
+| `shell:AppsFolder` | Lists OpenStrawberry under AUMID `io.openstrawberry.browser` |
+| `start openstrawberry` via App Paths | Launches |
+| Settings > Default apps, searched for the app | *"We couldn't find anything to show here"* |
+
+Two hypotheses were tested and both were wrong: adding the `InstallInfo` subkey
+changed nothing, and neither did adding file associations. The registration now
+matches a working per-user Chromium browser on the same machine key-for-key and
+Windows still will not list it. The remaining untested explanation is that the
+list is built from a per-user index that rebuilds at sign-in, which no amount of
+`SHChangeNotify` reaches.
+
+Nothing above is wasted — the ProgID, the browser client entry, and App Paths are
+each independently required and independently verified. But the headline claim is
+not yet earned, and this section will say so until it is.
 
 Cross-platform packaging is not validated by building on one host. Each target
 is confirmed on its own runner before any claim of readiness.
