@@ -70,7 +70,8 @@ shell command.
 
 ## Status
 
-See [`../todo.md`](../todo.md) for the working checklist and
+The current published build is **v0.1.1-alpha.1**, an unsigned prerelease. See
+[`../todo.md`](../todo.md) for the working checklist and
 [`RELEASES.md`](RELEASES.md) for release posture.
 
 | Milestone | State |
@@ -78,13 +79,13 @@ See [`../todo.md`](../todo.md) for the working checklist and
 | M0 Scaffold | Complete |
 | M1 Trust boundary | Complete |
 | M2 Real browsing | Complete |
-| M3 Obsidian Relay chrome | Substantially complete; fonts not yet bundled |
-| M4 Browser fundamentals | Not started |
-| M5 Migration and password staging | Not started |
-| M6 Agents and orchestration | Not started |
-| M7 Updater | Not started |
-| M8 Icons and packaging | Not started |
-| M9 Release readiness | Blocked on signing credentials |
+| M3 Obsidian Relay chrome | Substantially complete; local webfonts not bundled, and responsive behaviour below the 1024px minimum width outstanding |
+| M4 Browser fundamentals | Complete — downloads, tracker blocking, reader mode, media controls, tab groups, workspaces, command palette |
+| M5 Migration and password staging | Complete in code; not yet exercised end to end against real exports on every platform |
+| M6 Agents and orchestration | Complete — encrypted per-agent credentials, HTTP and CLI adapters, review-first plan graph, and a runner that drives it |
+| M7 Updater | Complete — the gate is open in a packaged build and a real `electron-updater` transport is wired behind it |
+| M8 Icons and packaging | Complete — all five artifacts build and verify on their own runners; neither the DMG nor the Linux packages have been launched on their platforms |
+| M9 Release readiness | Unsigned prereleases published; the signing gate is still blocked on certificates |
 
 Implemented work and planned work are distinguished deliberately. Nothing above
 is marked complete before `pnpm check`, `pnpm test`, and `pnpm build` pass and

@@ -43,10 +43,11 @@ pnpm install --frozen-lockfile && pnpm package
 
 ## Status
 
-There is **no stable release**. The installers below are an unsigned
-prerelease — see [Download](#download). The in-app updater is on and will offer
-you further unsigned prereleases; it never checks or installs without being
-asked. Nothing in this repository should be treated as production software.
+There is **no stable release**. The current published version is
+**v0.1.1-alpha.1**, an unsigned prerelease — see [Download](#download). The
+in-app updater is on and will offer you further unsigned prereleases; it never
+checks or installs without being asked. Nothing in this repository should be
+treated as production software.
 
 | Area | State |
 |---|---|
@@ -58,7 +59,8 @@ asked. Nothing in this repository should be treated as production software.
 | HTTP providers and local CLI adapters | Built. A configured agent sends prompts to a provider and can start an allowlisted local program — see [`docs/SECURITY.md`](docs/SECURITY.md) for what each is permitted |
 | Review-first orchestration | Built. A plan is reviewed and approved before any step runs |
 | Browser fundamentals (downloads, tracker blocking, reader mode, media controls, tab groups, workspaces, command palette) | Built |
-| Updater | On, against GitHub Releases. Checking, downloading, and installing are three explicit user actions — nothing happens on launch and nothing installs itself. It updates to *unsigned* prereleases, and macOS cannot apply an unsigned update at all; see [`docs/UPDATES.md`](docs/UPDATES.md) |
+| Updater | On, against GitHub Releases, with a real `electron-updater` transport behind the gate. Checking, downloading, and installing are three explicit user actions — nothing happens on launch and nothing installs itself. It updates to *unsigned* prereleases, and macOS cannot apply an unsigned update at all; see [`docs/UPDATES.md`](docs/UPDATES.md) |
+| Three-platform packaging | All five artifacts build and verify on their own runners. Neither the DMG nor the Linux packages have been launched on their platforms |
 | Signed releases | Pipeline complete and enforced by tooling; blocked on signing credentials |
 
 See [`todo.md`](todo.md) for the working checklist.
@@ -111,11 +113,12 @@ pnpm install --frozen-lockfile && pnpm check && pnpm test && pnpm build
 
 ## Documentation
 
-- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — trust boundaries and runtime ownership
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — trust boundaries, capability surface, and runtime ownership
 - [`docs/SECURITY.md`](docs/SECURITY.md) — security controls and residual risks
-- [`docs/RELEASES.md`](docs/RELEASES.md) — signed release policy and artifact rules
+- [`docs/MIGRATION_PRIVACY.md`](docs/MIGRATION_PRIVACY.md) — exactly what migration reads, refuses to read, and writes
+- [`docs/RELEASES.md`](docs/RELEASES.md) — signing gate, artifact rules, and the unsigned-prerelease exception
 - [`docs/UPDATES.md`](docs/UPDATES.md) — updater state machine and activation gate
-- [`docs/OPENSTRAWBERRY_PLAN.md`](docs/OPENSTRAWBERRY_PLAN.md) — product plan
+- [`docs/OPENSTRAWBERRY_PLAN.md`](docs/OPENSTRAWBERRY_PLAN.md) — product plan and milestone status
 
 ## Design
 

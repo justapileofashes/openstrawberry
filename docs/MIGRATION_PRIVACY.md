@@ -46,7 +46,7 @@ Migration follows the same ownership model as the rest of the application; see
 | Layer | Owns |
 |---|---|
 | Main | The source registry, all filesystem reads, native file dialogs, parsing, encryption, persistence, and error redaction |
-| Preload | Eleven named functions on `window.openstrawberry.migration`, each bound to one fixed channel |
+| Preload | Twelve named functions on `window.openstrawberry.migration`, each bound to one fixed channel |
 | Renderer | The wizard: choices, review, confirmation, progress, cancellation, and every error and empty state |
 | Shared | Types, limits, runtime validators, and the IPC payload parsers |
 

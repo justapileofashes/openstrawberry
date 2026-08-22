@@ -1,6 +1,7 @@
 # Updates
 
-The in-app updater is **on**, against GitHub Releases, since v0.1.0-alpha.1.
+The in-app updater is **on**, against GitHub Releases, since v0.1.0-alpha.1, and
+has run against a real `electron-updater` transport since v0.1.1-alpha.1.
 
 It updates to unsigned prereleases, because that is what is published. Read
 [what that costs](#what-an-unsigned-channel-does-not-give-you) before assuming
@@ -15,7 +16,7 @@ The update panel surfaces exactly these states:
 |---|---|
 | `disabled` | No verified update channel. Reachable in any unpackaged build. |
 | `checking` | A user-initiated check is in flight. |
-| `available` | A newer signed version exists. Nothing has been downloaded. |
+| `available` | A newer version exists. Nothing has been downloaded, and nothing about it is signed. |
 | `downloading` | The user explicitly started a download. Progress is visible. |
 | `downloaded` | The update is staged and waiting for an explicit restart. |
 | `error` | The check or download failed. The message is redacted. |

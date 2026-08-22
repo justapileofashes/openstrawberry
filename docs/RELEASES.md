@@ -1,46 +1,63 @@
 # Releases
 
-**There is no stable release, and there are no public downloads.**
+**There is no stable release. What is published is an unsigned prerelease.**
 
-OpenStrawberry is an active development build. No artifact produced from this
-repository today is signed, notarised, or verified, and none may be presented as
-a public download.
+OpenStrawberry is an active development build. The current published version is
+**v0.1.1-alpha.1**: five installers, built and verified on their own runners,
+and **not signed or notarised**. They may be presented as a prerelease download
+— which the README does — and may never be presented as a stable one. No
+artifact produced from this repository today carries a signature.
 
-## Planned artifacts
+The narrow path that lets an unsigned build be published at all is described in
+[Unsigned prereleases](#unsigned-prereleases). It is not the signing gate
+opening.
 
-These names are documented so packaging and release tooling agree on them.
-Naming an artifact here does not mean it exists or is signed.
+## Artifacts
 
-| Platform | Planned artifact |
-|---|---|
-| macOS | `OpenStrawberry-mac-universal.dmg` |
-| Windows | `OpenStrawberry-win-x64.exe` |
-| Linux | `OpenStrawberry-linux-x86_64.AppImage` |
-| Linux | `OpenStrawberry-linux-amd64.deb` |
-| Linux | `OpenStrawberry-linux-x86_64.rpm` |
+These names are fixed so packaging, release tooling, and
+[`src/shared/desktop-shell.ts`](../src/shared/desktop-shell.ts) agree on them.
+
+| Platform | Artifact | State at v0.1.1-alpha.1 |
+|---|---|---|
+| macOS | `OpenStrawberry-mac-universal.dmg` | Published, unsigned |
+| Windows | `OpenStrawberry-win-x64.exe` | Published, unsigned |
+| Linux | `OpenStrawberry-linux-x86_64.AppImage` | Published, unsigned |
+| Linux | `OpenStrawberry-linux-amd64.deb` | Published, unsigned |
+| Linux | `OpenStrawberry-linux-x86_64.rpm` | Published, unsigned |
+
+A release publishes more than these five; the updater's half of it —
+`latest*.yml`, the mac ZIP, and the blockmaps — is listed in
+[`UPDATES.md`](UPDATES.md). `SHA256SUMS.txt` and a `provenance-*.json` per
+runner are published alongside.
 
 The Windows target is a one-click, per-user NSIS installer.
 `allowToChangeInstallationDirectory` stays disabled.
 
 ## Release gate
 
-A release may not be announced, and download affordances may not be enabled,
-until **all** of the following are complete:
+A **stable** release may not be announced until **all** of the following are
+complete. A prerelease is the one documented exception, and it is described
+below.
 
 - [ ] Windows Authenticode signing — *enforced, awaiting a certificate*
 - [ ] macOS Developer ID signing and notarisation — *enforced, awaiting a certificate*
-- [ ] Linux artifact verification on a Linux runner — *automated, not yet run*
-- [ ] macOS DMG validated on a native macOS runner — *automated, not yet run*
+- [x] Linux artifacts built and verified on a Linux runner — *run at v0.1.1-alpha.1*
+- [x] macOS DMG built and verified on a native macOS runner — *run at v0.1.1-alpha.1*
 - [x] SHA-256 checksums published for every artifact
 - [x] Release provenance recorded
+
+The two boxes now ticked are narrower than they look. They say the artifact was
+produced and verified on its own platform's runner — present, non-empty,
+correctly named, checksum-matching. They do not say anyone has installed or
+launched it there; see [Current platform validation](#current-platform-validation).
 
 `RELEASE_READY` in [`src/shared/desktop-shell.ts`](../src/shared/desktop-shell.ts)
 is **not** the in-code expression of this gate, and the difference matters. It
 asserts that published artifacts and update metadata exist for a build to talk
-to — it is true as of v0.1.0-alpha.1 — and it says nothing about signing. The
-two are tracked separately on purpose: conflating them is how an unsigned update
-ships while a boolean claims otherwise. The checklist above is the signing
-claim, and it is still open.
+to — true since v0.1.0-alpha.1 — and it says nothing about signing. The two are
+tracked separately on purpose: conflating them is how an unsigned update ships
+while a boolean claims otherwise. The signing rows above are the signing claim,
+and they are still open.
 
 ## How the gate is enforced
 
@@ -100,11 +117,11 @@ Honest status, not aspiration:
 | Target | State |
 |---|---|
 | Windows unpacked launch and clean exit | Validated on Windows 11: launches, holds its window, hands off a second launch to the single-instance lock, exits cleanly with no orphaned processes |
-| Windows NSIS artifact | Built locally and **unsigned**; not installed or published. The verifier refuses it |
-| Windows application registration | Compiled into the installer and checked by `pnpm verify:config`; **not yet confirmed by running an install**, which is the only way to see the keys land |
-| Packaged renderer CSP | Verified in `dist/renderer/index.html`: production policy, no source maps |
-| Linux AppImage / DEB / RPM | Not yet built; requires a Linux runner |
-| macOS DMG | Not yet built; requires a native macOS runner |
+| Windows NSIS artifact | Built on a Windows runner and **unsigned**; published as a prerelease. Not installed by anyone here |
+| Windows application registration | Compiled into the installer, checked by `pnpm verify:config`, and read back after a real install — the keys land. What it still does not achieve is listed below |
+| Packaged renderer CSP | Verified in `dist/renderer/index.html` and again from inside the asar of `release/win-unpacked`: production policy, no source maps |
+| Linux AppImage / DEB / RPM | Built and verified on `ubuntu-latest` at v0.1.1-alpha.1. **Not launched** on a Linux desktop; the desktop entry, `StartupWMClass`, and icon set are unexercised |
+| macOS DMG and ZIP | Built and verified on `macos-latest` at v0.1.1-alpha.1. **Not launched** on macOS, and unsigned, so Gatekeeper will refuse it without an explicit override |
 
 electron-builder logs `signing with signtool.exe` while packaging on Windows
 even when no certificate is configured. That line does not mean the artifact is
@@ -237,11 +254,13 @@ The per-OS buttons live in [`README.md`](../README.md), on the repository
 landing page. They are plain links to release assets — the visitor picks their
 platform by clicking it.
 
-They point at an explicit tag, not `releases/latest/download/...`. That path
-resolves only to the newest *stable* release, so while the current build is a
-prerelease it would 404 — which is the rule below. The cost is that the links
-name a version and are updated when a new one is published; the benefit is that
-they are never a link to a file that is not there.
+They point at an explicit tag — `v0.1.1-alpha.1` today — not
+`releases/latest/download/...`. That path resolves only to the newest *stable*
+release, so while the current build is a prerelease it would 404, which is the
+rule below. The cost is that the links name a version and must be updated when a
+new one is published; the benefit is that they are never a link to a file that is
+not there. **Publishing a new prerelease means editing five links and a table in
+[`README.md`](../README.md).**
 
 ## Rules
 
