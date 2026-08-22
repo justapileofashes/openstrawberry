@@ -1,0 +1,128 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: #08080a;
+      color: #f0ece2;
+      font-family: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+      font-size: 14px;
+      line-height: 1.5;
+      letter-spacing: -0.005em;
+      -webkit-font-smoothing: antialiased;
+    }
+    a { color: #e8e3d5; }
+    a:hover { color: #faf6ec; }
+    input, select, button { font-family: inherit; }
+    .ph { color: #5c574f; }
+  </style>
+</helmet>
+
+<div style="min-height: 880px; display: flex; align-items: flex-start; justify-content: center; padding: 24px; background: radial-gradient(120% 80% at 50% 0%, #14141a 0%, #08080a 62%);">
+
+  <section style="width: 560px; display: grid; grid-template-rows: auto 1fr auto; border: 1px solid rgba(222, 232, 246, 0.12); border-radius: 10px; background: rgba(14, 16, 20, 0.96); box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5);">
+
+    <header style="display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 16px 16px 12px;">
+      <div>
+        <h2 style="margin: 0; font-size: 16px; font-weight: 600; color: #faf6ec; letter-spacing: -0.01em;">Configure New Provider</h2>
+        <p style="margin: 4px 0 0; font-size: 11.5px; line-height: 1.45; color: #a09a8e;">Add a new LLM provider configuration with API key and model settings.</p>
+      </div>
+      <button type="button" aria-label="Close provider configuration" style="width: 30px; height: 30px; display: grid; place-items: center; flex: none; border: 1px solid transparent; border-radius: 7px; background: transparent; color: #a09a8e; cursor: pointer;">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg>
+      </button>
+    </header>
+
+    <div style="display: grid; gap: 12px; padding: 0 16px 16px;">
+
+      <div style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 12px;">
+        <label style="display: grid; gap: 5px; min-width: 0;">
+          <span style="font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; font-size: 9.5px; letter-spacing: 0.12em; text-transform: uppercase; color: #5c574f;">Provider Type<span style="margin-left: 3px; color: #e8e3d5;">*</span></span>
+          <div style="position: relative;">
+            <div style="width: 100%; padding: 6px 28px 6px 12px; border: 1px solid rgba(222, 232, 246, 0.1); border-radius: 4px; background: rgba(8, 9, 12, 0.6); color: #faf6ec; font-size: 12px; line-height: 18px;">OpenAI-compatible</div>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#5c574f" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); pointer-events: none;" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>
+          </div>
+        </label>
+
+        <label style="display: grid; gap: 5px; min-width: 0;">
+          <span style="font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; font-size: 9.5px; letter-spacing: 0.12em; text-transform: uppercase; color: #5c574f;">Provider Name</span>
+          <div style="width: 100%; padding: 6px 12px; border: 1px solid rgba(222, 232, 246, 0.1); border-radius: 4px; background: rgba(8, 9, 12, 0.6); color: #faf6ec; font-size: 12px; line-height: 18px;">Lab box</div>
+        </label>
+      </div>
+
+      <p style="margin: 0; font-size: 11px; line-height: 1.4; color: #5c574f;">A configurable HTTPS base URL, model ID, and per-agent key for compatible services.</p>
+
+      <label style="display: grid; gap: 5px; min-width: 0;">
+        <span style="font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; font-size: 9.5px; letter-spacing: 0.12em; text-transform: uppercase; color: #5c574f;">Base URL<span style="margin-left: 3px; color: #e8e3d5;">*</span></span>
+        <div style="width: 100%; padding: 6px 12px; border: 1px solid rgba(222, 232, 246, 0.1); border-radius: 4px; background: rgba(8, 9, 12, 0.6); color: #faf6ec; font-size: 12px; line-height: 18px;">https://lab.internal/v1</div>
+        <span style="font-size: 11px; line-height: 1.4; color: #5c574f;">HTTPS only. This is where the key below is sent.</span>
+      </label>
+
+      <label style="display: grid; gap: 5px; min-width: 0;">
+        <span style="font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; font-size: 9.5px; letter-spacing: 0.12em; text-transform: uppercase; color: #5c574f;">API Key<span style="margin-left: 3px; color: #e8e3d5;">*</span></span>
+        <div style="width: 100%; padding: 6px 12px; border: 1px solid rgba(222, 232, 246, 0.1); border-radius: 4px; background: rgba(8, 9, 12, 0.6); color: #faf6ec; font-size: 12px; line-height: 18px; letter-spacing: 0.18em;">••••••••••••</div>
+        <span style="font-size: 11px; line-height: 1.4; color: #5c574f;">Encrypted by your operating system and stored locally. Saved as the shared key for this provider.</span>
+      </label>
+
+      <label style="display: grid; gap: 5px; min-width: 0;">
+        <span style="font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; font-size: 9.5px; letter-spacing: 0.12em; text-transform: uppercase; color: #5c574f;">Model<span style="margin-left: 3px; color: #e8e3d5;">*</span></span>
+        <div style="width: 100%; padding: 6px 12px; border: 1px solid rgba(222, 232, 246, 0.1); border-radius: 4px; background: rgba(8, 9, 12, 0.6); color: #faf6ec; font-size: 12px; line-height: 18px;">llama-3.3</div>
+      </label>
+
+      <hr style="width: 100%; height: 1px; margin: 8px 0 0; border: 0; background: rgba(222, 232, 246, 0.08);">
+      <h3 style="margin: 0; font-size: 12.5px; font-weight: 600; color: #faf6ec;">Model Configuration</h3>
+
+      <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: #faf6ec;">
+        <input type="checkbox" style="width: 14px; height: 14px; accent-color: #e8e3d5; margin: 0;">
+        <span>Supports Images</span>
+      </label>
+      <p style="margin: -6px 0 0; font-size: 11px; line-height: 1.4; color: #5c574f;">Declares what this model accepts. Nothing in OpenStrawberry sends an image to a provider yet, so today this records the answer rather than acting on it.</p>
+
+      <div style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 12px;">
+        <label style="display: grid; gap: 5px; min-width: 0;">
+          <span style="font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; font-size: 9.5px; letter-spacing: 0.12em; text-transform: uppercase; color: #5c574f;">Context Window Size</span>
+          <div style="width: 100%; padding: 6px 12px; border: 1px solid rgba(222, 232, 246, 0.1); border-radius: 4px; background: rgba(8, 9, 12, 0.6); color: #faf6ec; font-size: 12px; line-height: 18px;">32768</div>
+          <span style="font-size: 11px; line-height: 1.4; color: #5c574f;">In tokens. Blank leaves the shipped limit in place.</span>
+        </label>
+
+        <label style="display: grid; gap: 5px; min-width: 0;">
+          <span style="font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; font-size: 9.5px; letter-spacing: 0.12em; text-transform: uppercase; color: #5c574f;">Temperature (0–2)</span>
+          <div style="width: 100%; padding: 6px 12px; border: 1px solid rgba(222, 232, 246, 0.1); border-radius: 4px; background: rgba(8, 9, 12, 0.6); color: #faf6ec; font-size: 12px; line-height: 18px;">0.3</div>
+          <span style="font-size: 11px; line-height: 1.4; color: #5c574f;">Controls response randomness. Blank sends none at all.</span>
+        </label>
+      </div>
+    </div>
+
+    <footer style="display: grid; gap: 8px; padding: 12px 16px 16px; border-top: 1px solid rgba(222, 232, 246, 0.08);">
+      <!-- Colour carries the outcome, and so does the wording: the line says what
+           happened rather than relying on being read as green. -->
+      <p role="alert" style="margin: 0; font-size: 11.5px; line-height: 1.45; color: #a08278;">The stored key was rejected.</p>
+      <div style="display: flex; align-items: center; justify-content: flex-end; gap: 12px;">
+        <button type="button" style="padding: 0; border: 0; background: transparent; color: #a09a8e; font-size: 12px; cursor: pointer;">Cancel</button>
+        <button type="button" style="padding: 5px 16px; border: 1px solid rgba(222, 232, 246, 0.16); border-radius: 4px; background: transparent; color: #f0ece2; font-size: 12px; cursor: pointer;">Test</button>
+        <button type="button" style="padding: 5px 16px; border: 1px solid rgba(222, 232, 246, 0.14); border-radius: 4px; background: rgba(222, 232, 246, 0.05); color: #faf6ec; font-size: 12px; cursor: pointer;">Apply</button>
+      </div>
+    </footer>
+  </section>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

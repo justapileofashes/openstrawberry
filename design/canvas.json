@@ -1,0 +1,27 @@
+{
+  "artboards": [
+    { "file": "RouteRow.dc.html", "title": "Where it opens from", "x": 0, "y": 0, "w": 668, "h": 568 },
+    { "file": "Main.dc.html", "title": "Default — new provider", "x": 0, "y": 660, "w": 608, "h": 928 },
+    { "file": "Preset.dc.html", "title": "Preset — key already stored", "x": 668, "y": 660, "w": 608, "h": 928 },
+    { "file": "Cli.dc.html", "title": "CLI provider", "x": 1336, "y": 660, "w": 608, "h": 928 },
+    { "file": "TestPassed.dc.html", "title": "Test passed", "x": 0, "y": 1680, "w": 608, "h": 928 },
+    { "file": "TestFailed.dc.html", "title": "Test failed", "x": 668, "y": 1680, "w": 608, "h": 928 }
+  ],
+  "annotations": [
+    {
+      "id": "note-order",
+      "x": 2020,
+      "y": 660,
+      "w": 300,
+      "text": "The three shapes the dialog takes.\n\nEverything above the rule decides which machine answers; everything below it describes the model. A provider that cannot act on a setting keeps the field and dims it, rather than dropping it — an absent field reads as a missing feature instead of one this route does not have."
+    },
+    {
+      "id": "note-test",
+      "x": 1336,
+      "y": 1680,
+      "w": 300,
+      "text": "Test reports a code and a duration, never the provider's own reply.\n\nColour carries the outcome and so does the wording, so the line still reads correctly in greyscale or to anyone who cannot separate the two tones."
+    }
+  ],
+  "launch": { "view": "canvas" }
+}
