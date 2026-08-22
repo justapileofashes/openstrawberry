@@ -95,7 +95,15 @@ describe("SecretStore", () => {
       provider: "anthropic",
       model: "claude-sonnet-5",
       baseUrl: null,
-      command: null
+      command: null,
+      // Written as four explicit nulls rather than omitted, so the file states
+      // "nothing was configured" instead of leaving it to be inferred.
+      tuning: {
+        providerLabel: null,
+        supportsImages: null,
+        contextWindow: null,
+        temperature: null
+      }
     });
   });
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { BLANK_PAGE } from "../shared/desktop-shell.js";
-import { emptyConfigStatus } from "../shared/agents.js";
+import { emptyConfigStatus, emptyTuning } from "../shared/agents.js";
 import type {
   AgentConfigStatus,
   AgentRunState,
@@ -55,7 +55,8 @@ function agentSnapshot(overrides: Partial<AgentSnapshot> = {}): AgentSnapshot {
         provider: null,
         model: null,
         baseUrl: null,
-        command: null
+        command: null,
+        tuning: emptyTuning()
       }
     ],
     activeCompanionId: null,

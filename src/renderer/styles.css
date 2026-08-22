@@ -108,6 +108,15 @@
   --frame: 14px;
   --agent-width: 380px;
 
+  --top-bar-h: 46px;
+  --icon-btn: 30px;
+  /*
+   * How much chrome is left below a top-bar icon button: the bar's own slack
+   * around the button, plus the frame gutter before the panes begin. A hover
+   * bubble has to live entirely inside this lane — see `.bubble`.
+   */
+  --bubble-lane: calc((var(--top-bar-h) - var(--icon-btn)) / 2 + var(--frame));
+
   /* Shine defaults. Overwritten at runtime from user settings. */
   --shine-rgb: 219, 230, 250;
   --shine-intensity: 34;
@@ -120,6 +129,21 @@
 
   /* Overshoot easing: the little rebound that makes the tab morph feel liquid. */
   --ease-liquid: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  /* ---- scrollbars ------------------------------------------------------
+     A gutter of fixed width holding a pill that is inset from it by a
+     transparent border. Hover widens the pill by shrinking that border, so
+     the gutter itself never changes size and nothing in the panel reflows
+     when the pointer arrives.
+     -------------------------------------------------------------------- */
+  --scroll-size: 10px;
+  --scroll-inset: 3px;
+  --scroll-inset-hover: 2px;
+  --scroll-thumb-min: 32px;
+  --scroll-thumb: rgba(222, 232, 246, 0.1);
+  --scroll-thumb-hover: rgba(222, 232, 246, 0.2);
+  /* Drag warms to the accent: colour is meaning, and something is being held. */
+  --scroll-thumb-active: rgba(232, 227, 213, 0.34);
 
   /* type */
   --font-ui: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -154,6 +178,87 @@ body {
 ::selection {
   background: rgba(232, 227, 213, 0.22);
   color: var(--ink-strong);
+}
+
+/* =========================================================
+   Scrollbars
+
+   Applied to everything in the chrome rather than to a list of panels, so a
+   scroll region added later is styled without being remembered. The track is
+   left transparent: a panel is glass with an ambient pool drifting behind it,
+   and a filled track would paint a grey stripe over the one part of the
+   surface that is meant to be see-through. What is left at rest is a 4px
+   hairline that reads as part of the glass edge.
+
+   Firefox gets the two properties it supports; the pseudo-element rules are
+   inert there. Chromium takes both, and `scrollbar-width: thin` would halve
+   the gutter out from under `--scroll-size`, so it is scoped away from it.
+   ========================================================= */
+@supports not selector(::-webkit-scrollbar) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--scroll-thumb) transparent;
+  }
+}
+
+*::-webkit-scrollbar {
+  width: var(--scroll-size);
+  height: var(--scroll-size);
+}
+
+*::-webkit-scrollbar-track,
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/*
+ * The minimum is per axis. Setting both on one rule gives a vertical thumb a
+ * 32px min-width inside a 10px gutter, which Chromium resolves by widening the
+ * bar — so each axis is constrained only along its own length.
+ */
+*::-webkit-scrollbar-thumb:vertical {
+  min-height: var(--scroll-thumb-min);
+}
+
+*::-webkit-scrollbar-thumb:horizontal {
+  min-width: var(--scroll-thumb-min);
+}
+
+*::-webkit-scrollbar-thumb {
+  border: var(--scroll-inset) solid transparent;
+  border-radius: 999px;
+  background-color: var(--scroll-thumb);
+  /*
+   * The border is what insets the pill, so the paint has to stop at the
+   * padding box — otherwise the background fills the border too and the thumb
+   * is the full width of the gutter with no inset at all.
+   */
+  background-clip: padding-box;
+  transition:
+    background-color var(--d-fast) var(--ease),
+    border-width var(--d-fast) var(--ease);
+}
+
+/*
+ * Hovering anywhere in a scroll region wakes its bar, not just hovering the
+ * 4px pill itself — by the time the pointer has found a 4px target the affordance
+ * has already failed. A hovered child leaves the scroller hovered too, which is
+ * what makes the bare `:hover` here reach the right element.
+ */
+*:hover::-webkit-scrollbar-thumb {
+  border-width: var(--scroll-inset-hover);
+  background-color: var(--scroll-thumb-hover);
+}
+
+*::-webkit-scrollbar-thumb:active {
+  border-width: var(--scroll-inset-hover);
+  background-color: var(--scroll-thumb-active);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *::-webkit-scrollbar-thumb {
+    transition: none;
+  }
 }
 
 /* =========================================================
@@ -722,14 +827,46 @@ body {
   transform: scale(1);
 }
 
+/* =========================================================
+   Tide — the loading state
+
+   The chip fills with light from below, a bright surface line rising through
+   it, then dissolves at the top and starts again. Nothing rotates, so there is
+   no arc to stretch or snap the way the old spun roundrect did.
+
+   The fill is one gradient twice the chip's height, moved by
+   `background-position` rather than by transforming the layer. That keeps the
+   pseudo-element itself still, so its own `border-radius` clips the liquid to
+   the chip's shape — no `overflow: hidden` on the tab, which would have cut off
+   the active tab's rail tick where it sits outside the chip at -9px.
+   ========================================================= */
 .rail-tab.is-loading::after {
   content: "";
   position: absolute;
-  inset: -2px;
+  /* -1px reaches the border box, so the fill lines up with the chip's edge. */
+  inset: -1px;
   border-radius: var(--r-md);
-  border: 1.5px solid transparent;
-  border-top-color: var(--accent);
-  animation: rail-spin 0.85s linear infinite;
+  background: linear-gradient(
+    180deg,
+    transparent 0 50%,
+    rgba(244, 240, 230, 0.85) 50%,
+    rgba(244, 240, 230, 0.85) calc(50% + 1.2px),
+    rgba(232, 227, 213, 0.17) calc(50% + 1.2px),
+    rgba(232, 227, 213, 0.04) 100%
+  );
+  background-size: 100% 200%;
+  background-position: 0 0;
+  animation: rail-tide 1.7s var(--ease-mid) infinite;
+  pointer-events: none;
+}
+
+/*
+ * The mark rides above the water rather than under it, so a site's favicon
+ * stays readable the whole way up. It is a grid item, so z-index alone orders
+ * it against the positioned fill.
+ */
+.rail-tab.is-loading .rail-mark {
+  z-index: 1;
 }
 
 .rail-audio {
@@ -748,7 +885,7 @@ body {
    ========================================================= */
 .workspace {
   display: grid;
-  grid-template-rows: 46px minmax(0, 1fr);
+  grid-template-rows: var(--top-bar-h) minmax(0, 1fr);
   gap: var(--frame);
   min-width: 0;
 }
@@ -864,8 +1001,8 @@ body {
 
 .icon-btn {
   position: relative;
-  width: 30px;
-  height: 30px;
+  width: var(--icon-btn);
+  height: var(--icon-btn);
   display: grid;
   place-items: center;
   border: 1px solid transparent;
@@ -938,12 +1075,26 @@ body {
   display: inline-flex;
 }
 
+/*
+ * A bubble may not reach past the bottom of the chrome. A page is a native view
+ * the compositor draws above the DOM, so a bubble that hangs into a pane is not
+ * merely clipped — the page paints straight over it and the label vanishes.
+ *
+ * So it is anchored by its *bottom* edge to the last line of chrome below the
+ * button (`--bubble-lane`) and grows upward from there, rather than hanging down
+ * from the button by a fixed offset. The text may then take whatever height it
+ * likes without ever crossing into a pane. The sizing below keeps that height
+ * inside the lane, so in practice it still reads as sitting under the button.
+ */
 .bubble {
   position: absolute;
-  top: calc(100% + 8px);
+  /* A hairline short of the lane's end, so fractional device pixels cannot
+     round the bottom edge down onto the page. */
+  top: calc(100% + var(--bubble-lane) - 1px);
   left: 50%;
   z-index: 70;
-  padding: 5px 9px;
+  padding: 3px 8px;
+  line-height: 13px;
   border-radius: var(--r-sm);
   background: linear-gradient(
       180deg,
@@ -958,12 +1109,12 @@ body {
     inset 0 1px 0 rgba(240, 246, 255, 0.12),
     var(--shadow-lg);
   color: var(--ink);
-  font-size: 11.5px;
+  font-size: 11px;
   letter-spacing: -0.005em;
   white-space: nowrap;
   pointer-events: none;
   opacity: 0;
-  transform: translate(-50%, -6px) scale(0.96);
+  transform: translate(-50%, calc(-100% - 6px)) scale(0.96);
   transition:
     opacity var(--d-base) var(--ease),
     transform var(--d-base) var(--ease);
@@ -975,10 +1126,95 @@ body {
   transform: translate(-6px, -50%) scale(0.96);
 }
 
+/*
+ * The two bubbles that cannot be drawn here at all.
+ *
+ * A rail entry has 56px of chrome and a pane immediately to its right; a pane
+ * head has a page directly beneath it. Their bubbles are painted by a window the
+ * trusted process holds above the chrome — see src/main/bubble-layer.ts.
+ *
+ * The element still exists, still in this stylesheet's own layout, and is simply
+ * never painted: the chrome measures it and the window is placed and sized to
+ * what it measures. That keeps placement here, in the one file that knows what
+ * the chrome looks like, rather than splitting it across a process boundary.
+ *
+ * Everything about the box is therefore static. A transform mid-flight or a
+ * transition still settling would be measured as it was at that instant, and the
+ * window would be built to the wrong size.
+ */
+.bubble.is-detached {
+  visibility: hidden;
+  opacity: 0;
+  transition: none;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/*
+ * Free of the lane, because this one is not drawn in this document: it hangs
+ * below its control the way hover text usually does, over whatever is there.
+ */
+.bubble.is-detached,
+.bubble-host:hover .bubble.is-detached,
+.bubble-host:focus-within .bubble.is-detached {
+  top: calc(100% + 6px);
+  transform: translate(-50%, 0);
+}
+
+/* The rail's own flyout, restated because the rule above outranks the one the
+   attached bubbles use. */
+.tab-rail .bubble.is-detached,
+.tab-rail .bubble-host:hover .bubble.is-detached,
+.tab-rail .bubble-host:focus-within .bubble.is-detached {
+  top: 50%;
+  transform: translate(0, -50%);
+}
+
+/*
+ * The same bubble as it is drawn in its own window.
+ *
+ * It keeps its own size in the window's top-left corner rather than filling the
+ * window, because the window is deliberately the larger of the two — see
+ * BUBBLE_WINDOW_MARGIN. The width bound has to match the measured copy exactly
+ * or a long tab title would be cut at a different letter here than the chrome
+ * planned for.
+ *
+ * The blur and the drop shadow go, because neither can render: a window has
+ * nothing of its own behind it to blur, and a shadow outside the box would fall
+ * outside the window. The background makes up the difference.
+ */
+.bubble.is-native {
+  position: static;
+  display: inline-block;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+  transition: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  background: linear-gradient(
+      180deg,
+      rgba(226, 235, 248, 0.07),
+      rgba(226, 235, 248, 0.015)
+    ),
+    rgba(10, 12, 16, 0.94);
+  box-shadow: inset 0 1px 0 rgba(240, 246, 255, 0.12);
+}
+
+/* The bubble window's page. Everything outside the rounded corners is the
+   desktop, or whatever page the bubble is floating over. */
+body.bubble-surface {
+  background: transparent;
+}
+
 .bubble-host:hover .bubble,
 .bubble-host:focus-within .bubble {
   opacity: 1;
-  transform: translate(-50%, 0) scale(1);
+  transform: translate(-50%, -100%) scale(1);
 }
 
 .tab-rail .bubble-host:hover .bubble,
@@ -1440,6 +1676,21 @@ input[type="range"]:disabled {
   }
 }
 
+@keyframes rail-tide {
+  0% {
+    background-position: 0 0;
+    opacity: 1;
+  }
+  72% {
+    background-position: 0 92%;
+    opacity: 1;
+  }
+  100% {
+    background-position: 0 100%;
+    opacity: 0;
+  }
+}
+
 @keyframes screen-in {
   from {
     opacity: 0;
@@ -1457,9 +1708,19 @@ input[type="range"]:disabled {
  * structure, not movement.
  */
 @media (prefers-reduced-motion: reduce) {
-  .rail-tab.is-loading::after,
   .split-target,
   .settings {
+    animation: none;
+  }
+
+  /*
+   * Simply stopping the tide would freeze it at whatever height it had reached,
+   * including empty or mid-fade. It is therefore held at a deliberate one —
+   * part filled, surface line plainly visible — so the state still reads as
+   * something in progress with the movement gone.
+   */
+  .rail-tab.is-loading::after {
+    background-position: 0 62%;
     animation: none;
   }
 
@@ -1474,9 +1735,14 @@ input[type="range"]:disabled {
   }
 }
 
-:root.motion-off .rail-tab.is-loading::after,
 :root.motion-off .split-target,
 :root.motion-off .settings {
+  animation: none;
+}
+
+/* The same held fill as under the OS preference — see the note above. */
+:root.motion-off .rail-tab.is-loading::after {
+  background-position: 0 62%;
   animation: none;
 }
 
@@ -1654,6 +1920,26 @@ input[type="range"]:disabled {
 .agent-btn.is-deny:hover {
   border-color: var(--bad);
   color: var(--bad);
+}
+
+/*
+ * The same fade `.text-btn` uses, so a disabled button reads as unavailable in
+ * both shapes. Without it a refused Apply looks identical to a live one and the
+ * only feedback for pressing it is that nothing happens.
+ */
+.agent-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.agent-btn:disabled:hover {
+  background: rgba(222, 232, 246, 0.05);
+  border-color: rgba(222, 232, 246, 0.14);
+}
+
+.agent-btn.is-quiet:disabled:hover {
+  background: transparent;
+  border-color: rgba(222, 232, 246, 0.16);
 }
 
 .agent-composer {
@@ -1962,6 +2248,29 @@ input[type="range"]:disabled {
   color: var(--ink-faint);
 }
 
+/*
+ * A field the route cannot act on stays on screen and dims, rather than being
+ * removed. An absent field reads as something this app is missing; a dimmed one
+ * reads as a setting this provider does not have — which is the true statement.
+ * The same fade the buttons use, so "unavailable" looks like one thing.
+ */
+.cc-input:disabled,
+.cc-select:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/*
+ * The label goes with its control. Dimming only the box would leave a full
+ * strength name over a field that cannot be typed into.
+ */
+.cc-field:has(> .cc-input:disabled) .cc-field-label,
+.cc-field:has(> .cc-input:disabled) .cc-field-hint,
+.cc-field:has(> .cc-select:disabled) .cc-field-label,
+.cc-check:has(input:disabled) {
+  opacity: 0.4;
+}
+
 /* The native menu is drawn by the OS, so it needs a background of its own. */
 .cc-select option {
   background: #101216;
@@ -2131,6 +2440,198 @@ input[type="range"]:disabled {
   gap: var(--s-2);
   padding-top: var(--s-3);
   border-top: 1px solid rgba(222, 232, 246, 0.06);
+}
+
+/*
+ * The route row: one line saying where a provider points, and the way in to
+ * change it. It reads as a statement rather than a field, because the fields
+ * are behind the button.
+ */
+.cc-route {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  padding: var(--s-3);
+  border: 1px solid rgba(222, 232, 246, 0.08);
+  border-radius: var(--r-xs);
+  background: rgba(8, 9, 12, 0.4);
+}
+
+.cc-route-text {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.cc-route-label {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+/*
+ * The summary can be long — a provider, a model, and a host — and it must not
+ * push the button off the row, so it truncates rather than wrapping.
+ */
+.cc-route-summary {
+  overflow: hidden;
+  font-size: 12px;
+  color: var(--ink-strong);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
+ * A secondary button: same shape as the primary, without the fill. Used where
+ * an action is offered rather than urged — configuring a route, or trying one.
+ */
+.agent-btn.is-quiet {
+  background: transparent;
+  border-color: rgba(222, 232, 246, 0.16);
+  color: var(--ink);
+}
+
+.agent-btn.is-quiet:hover:not(:disabled) {
+  border-color: rgba(222, 232, 246, 0.3);
+  color: var(--ink-strong);
+}
+
+/* ------------------------------------------------------------------------- */
+/* Provider configuration dialog                                              */
+/* ------------------------------------------------------------------------- */
+
+/*
+ * A real scrim, unlike the command center's own sheet.
+ *
+ * This dialog covers a surface the user was already reading, and the fields
+ * behind it are the ones it is about to replace — leaving them legible would
+ * put two versions of the same configuration on screen at once.
+ */
+.cc-dialog-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: var(--s-4);
+  background: rgba(4, 5, 7, 0.62);
+}
+
+.cc-dialog {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  width: min(560px, 100%);
+  max-height: min(88vh, 760px);
+  border: 1px solid rgba(222, 232, 246, 0.12);
+  border-radius: var(--r-md);
+  background: rgba(14, 16, 20, 0.96);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5);
+}
+
+.cc-dialog-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s-3);
+  padding: var(--s-4) var(--s-4) var(--s-3);
+}
+
+.cc-dialog-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--ink-strong);
+}
+
+.cc-dialog-lede {
+  margin: 4px 0 0;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--ink-muted);
+}
+
+/* The body scrolls; the header and the three buttons do not. */
+.cc-dialog-body {
+  display: grid;
+  gap: var(--s-3);
+  overflow-y: auto;
+  padding: 0 var(--s-4) var(--s-4);
+}
+
+.cc-dialog-rule {
+  width: 100%;
+  height: 1px;
+  margin: var(--s-2) 0 0;
+  border: 0;
+  background: rgba(222, 232, 246, 0.08);
+}
+
+.cc-dialog-section {
+  margin: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink-strong);
+}
+
+.cc-check {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-size: 12px;
+  color: var(--ink-strong);
+}
+
+.cc-check input {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--accent);
+}
+
+/* Tied to the checkbox above it, so it loses the grid gap between them. */
+.cc-check-hint {
+  margin: -6px 0 0;
+}
+
+.cc-dialog-foot {
+  display: grid;
+  gap: var(--s-2);
+  padding: var(--s-3) var(--s-4) var(--s-4);
+  border-top: 1px solid rgba(222, 232, 246, 0.08);
+}
+
+.cc-dialog-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--s-3);
+}
+
+/*
+ * The test result. Colour carries the outcome, and so does the wording — the
+ * line says what happened rather than relying on being green.
+ */
+.cc-test-result {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--ink-muted);
+}
+
+.cc-test-result.is-passed {
+  color: var(--good);
+}
+
+.cc-test-result.is-failed {
+  color: var(--bad);
+}
+
+/* The asterisk marks a field the provider insists on. */
+.cc-required {
+  margin-left: 3px;
+  color: var(--accent);
 }
 
 /* Focus is always visible and never conveyed by colour alone. */

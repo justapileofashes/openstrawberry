@@ -1,3 +1,4 @@
+import { resolve } from "node:path";
 import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 
@@ -55,7 +56,18 @@ export default defineConfig({
     outDir: "../../dist/renderer",
     emptyOutDir: true,
     target: "chrome138",
-    sourcemap: false
+    sourcemap: false,
+    /*
+     * Two documents, because there are two windows. `bubble.html` is the hover
+     * text the trusted process draws above the pages — see src/main/bubble-layer.ts
+     * for why that cannot be part of the chrome's own document.
+     */
+    rollupOptions: {
+      input: {
+        index: resolve(import.meta.dirname, "src/renderer/index.html"),
+        bubble: resolve(import.meta.dirname, "src/renderer/bubble.html")
+      }
+    }
   },
   server: {
     host: "127.0.0.1",

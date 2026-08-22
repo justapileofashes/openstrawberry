@@ -23,15 +23,19 @@
  *      sent to it. The chrome renders wording it holds itself.
  */
 import {
-  buildChatRequest,
+  buildChatTurn,
   dialectFor,
   errorForStatus,
+  MAX_PROMPT_LENGTH,
   MAX_RESPONSE_BYTES,
-  parseChatReply,
+  parseChatOutcome,
   REQUEST_TIMEOUT_MS,
+  type ChatMessage,
+  type ChatOutcome,
   type ProviderResult
 } from "../shared/provider-request.js";
 import type { ProviderId } from "../shared/agents.js";
+import type { McpToolDescriptor } from "../shared/mcp.js";
 import { readBoundedStream } from "./favicon.js";
 
 /** The fetch this module uses. Injected so the whole path is testable. */
@@ -57,8 +61,32 @@ export interface ProviderCallOptions {
   /** Null when the provider authenticates itself, such as a local runtime. */
   readonly credential: string | null;
   readonly prompt: string;
+  /** The route's configured temperature, or null to send none at all. */
+  readonly temperature?: number | null;
   readonly fetch: FetchPort;
   /** Lets a cancelled run abandon a request in flight. */
+  readonly signal?: AbortSignal;
+}
+
+/**
+ * One turn of a conversation that may involve tools.
+ *
+ * The same call as `callProvider`, with the prompt replaced by a transcript and
+ * a tool list. It is a separate entry point rather than a flag because the two
+ * return different things: a turn can legitimately come back with no prose at
+ * all, having asked for a tool instead, and a caller of `callProvider` would be
+ * right to treat that as a failure.
+ */
+export interface ProviderTurnOptions {
+  readonly provider: ProviderId;
+  readonly model: string;
+  readonly baseUrl: string | null;
+  readonly credential: string | null;
+  readonly messages: readonly ChatMessage[];
+  readonly tools?: readonly McpToolDescriptor[];
+  readonly system?: string | null;
+  readonly temperature?: number | null;
+  readonly fetch: FetchPort;
   readonly signal?: AbortSignal;
 }
 
@@ -100,6 +128,35 @@ function withAuthorisation(
  * body, so a caller can put the result straight into a run log.
  */
 export async function callProvider(options: ProviderCallOptions): Promise<ProviderResult> {
+  const outcome = await callProviderTurn({
+    provider: options.provider,
+    model: options.model,
+    baseUrl: options.baseUrl,
+    credential: options.credential,
+    messages: [{ role: "user", text: options.prompt.slice(0, MAX_PROMPT_LENGTH) }],
+    fetch: options.fetch,
+    ...(options.temperature === undefined ? {} : { temperature: options.temperature }),
+    ...(options.signal === undefined ? {} : { signal: options.signal })
+  });
+
+  if (!outcome.ok) return outcome;
+
+  // This caller asked a question. A turn that only asked for a tool is no
+  // answer to it, and reporting it as a silent success would be worse than
+  // reporting that the reply could not be read.
+  return outcome.reply.text.length > 0
+    ? { ok: true, text: outcome.reply.text }
+    : { ok: false, code: "malformed-reply" };
+}
+
+/**
+ * Calls a provider for one turn, which may come back asking for tools.
+ *
+ * Same guarantees as `callProvider`: never throws, never returns anything
+ * derived from the provider's error body, and never lets the credential out of
+ * this function.
+ */
+export async function callProviderTurn(options: ProviderTurnOptions): Promise<ChatOutcome> {
   const dialect = dialectFor(options.provider);
   if (dialect === null) return { ok: false, code: "unsupported-provider" };
 
@@ -110,12 +167,15 @@ export async function callProvider(options: ProviderCallOptions): Promise<Provid
     return { ok: false, code: "no-credential" };
   }
 
-  const request = buildChatRequest(
-    options.provider,
-    options.model,
-    options.baseUrl,
-    options.prompt
-  );
+  const request = buildChatTurn({
+    provider: options.provider,
+    model: options.model,
+    baseUrl: options.baseUrl,
+    messages: options.messages,
+    ...(options.tools === undefined ? {} : { tools: options.tools }),
+    ...(options.system === undefined ? {} : { system: options.system }),
+    ...(options.temperature === undefined ? {} : { temperature: options.temperature })
+  });
   if (request === null) return { ok: false, code: "bad-endpoint" };
 
   const controller = new AbortController();
@@ -161,7 +221,7 @@ export async function callProvider(options: ProviderCallOptions): Promise<Provid
       return { ok: false, code: "malformed-reply" };
     }
 
-    return parseChatReply(request.dialect, parsed);
+    return parseChatOutcome(request.dialect, parsed);
   } finally {
     clearTimeout(timer);
     options.signal?.removeEventListener("abort", onCancel);

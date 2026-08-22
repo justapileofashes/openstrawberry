@@ -73,6 +73,35 @@ export const MAX_BASE_URL_LENGTH = 512;
 export const MAX_COMMAND_LENGTH = 512;
 
 /**
+ * Bounds the name a user gives one provider configuration.
+ *
+ * The same bound as an agent's name, and for the same reason: it is a label a
+ * human reads in a list, not a field anything routes on.
+ */
+export const MAX_PROVIDER_LABEL_LENGTH = 48;
+
+/**
+ * Bounds a declared context window, in tokens.
+ *
+ * The floor is low enough for the smallest model anyone would point this at and
+ * high enough that a typo of zero is rejected rather than silently starving the
+ * transcript. The ceiling is well past any shipping model, so it bounds the
+ * arithmetic without pretending to know what will exist next year.
+ */
+export const MIN_CONTEXT_WINDOW = 1_024;
+export const MAX_CONTEXT_WINDOW = 10_000_000;
+
+/**
+ * The sampling temperature range every provider here accepts.
+ *
+ * Anthropic tops out at 1 and OpenAI at 2. The wider bound is taken because a
+ * value this app refuses is a value the user cannot try, while a value the
+ * provider refuses comes back as that provider's own error — which is the
+ * honest place for the disagreement to surface.
+ */
+export const MAX_TEMPERATURE = 2;
+
+/**
  * How many agents the command center will hold.
  *
  * A cap rather than an unbounded roster: every agent is persisted, parsed on
@@ -215,13 +244,32 @@ export interface ProviderDescriptor {
    * the provider simply not working with no way to find out why.
    */
   readonly defaultCommand: string | null;
+  /**
+   * Whether this provider's usual models accept images.
+   *
+   * A prefill for the configuration form, not a fact about the model the user
+   * eventually names — which is why the value is editable once a provider is
+   * chosen. A preset that serves whatever its operator loaded cannot know, and
+   * says so by defaulting to false rather than by guessing true.
+   */
+  readonly supportsImages: boolean;
+  /**
+   * The context window to prefill, in tokens, or null when this app has no
+   * business claiming one.
+   *
+   * Null for a CLI, which manages its own context, and for a compatible
+   * endpoint, whose window belongs to whatever model its operator loaded.
+   */
+  readonly defaultContextWindow: number | null;
 }
 
 /** Shared shape for the HTTP presets, whose only differences are name and model. */
 function httpPreset(
   id: ProviderId,
   label: string,
-  defaultModel: string
+  defaultModel: string,
+  defaultContextWindow: number,
+  supportsImages = true
 ): ProviderDescriptor {
   return {
     id,
@@ -232,7 +280,9 @@ function httpPreset(
     requiresModel: false,
     requiresCredential: true,
     requiresBaseUrl: false,
-    defaultCommand: null
+    defaultCommand: null,
+    supportsImages,
+    defaultContextWindow
   };
 }
 
@@ -247,7 +297,11 @@ function routerPreset(id: ProviderId, label: string): ProviderDescriptor {
     requiresModel: false,
     requiresCredential: true,
     requiresBaseUrl: false,
-    defaultCommand: null
+    defaultCommand: null,
+    supportsImages: true,
+    // A router fronts many models with many windows. The prefill is the one its
+    // own default model has; anything else the user names is theirs to state.
+    defaultContextWindow: 200_000
   };
 }
 
@@ -272,14 +326,18 @@ function cliPreset(
     requiresModel: false,
     requiresCredential: false,
     requiresBaseUrl: false,
-    defaultCommand
+    defaultCommand,
+    // A CLI holds its own conversation and manages its own context. Declaring a
+    // window here would be this app asserting something it does not control.
+    supportsImages: false,
+    defaultContextWindow: null
   };
 }
 
 export const PROVIDERS: readonly ProviderDescriptor[] = [
-  httpPreset("anthropic", "Anthropic", DEFAULT_MODEL),
-  httpPreset("openai", "OpenAI", "gpt-5"),
-  httpPreset("google", "Google", "gemini-2.5-pro"),
+  httpPreset("anthropic", "Anthropic", DEFAULT_MODEL, 200_000),
+  httpPreset("openai", "OpenAI", "gpt-5", 400_000),
+  httpPreset("google", "Google", "gemini-2.5-pro", 1_048_576),
   routerPreset("openrouter", "OpenRouter"),
   routerPreset("omniroute", "OmniRoute"),
   {
@@ -292,10 +350,14 @@ export const PROVIDERS: readonly ProviderDescriptor[] = [
     requiresModel: true,
     requiresCredential: true,
     requiresBaseUrl: true,
-    defaultCommand: null
+    defaultCommand: null,
+    // Whatever the operator loaded. This app knows neither the model nor its
+    // window, so both start unclaimed and the user states them.
+    supportsImages: false,
+    defaultContextWindow: null
   },
-  httpPreset("moonshot", "Moonshot AI", "moonshot-v1-32k"),
-  httpPreset("qwen", "Qwen", "qwen-max"),
+  httpPreset("moonshot", "Moonshot AI", "moonshot-v1-32k", 32_768, false),
+  httpPreset("qwen", "Qwen", "qwen-max", 32_768),
   {
     id: "ollama",
     label: "Ollama",
@@ -305,7 +367,11 @@ export const PROVIDERS: readonly ProviderDescriptor[] = [
     requiresModel: false,
     requiresCredential: false,
     requiresBaseUrl: false,
-    defaultCommand: null
+    defaultCommand: null,
+    // A local runtime serves whichever model was pulled. Text is the safe
+    // assumption; a vision model is something the user turns on.
+    supportsImages: false,
+    defaultContextWindow: 128_000
   },
   cliPreset("claude-code", "Claude Code", "claude"),
   cliPreset("codex", "Codex", "codex"),
@@ -404,6 +470,72 @@ export function requireBaseUrl(value: unknown, field: string): string {
  */
 export function defaultCommandFor(provider: string): string | null {
   return providerDescriptor(provider)?.defaultCommand ?? null;
+}
+
+/* ------------------------------------------------------------------------- */
+/* Model configuration                                                        */
+/* ------------------------------------------------------------------------- */
+
+/**
+ * The model settings a route carries beyond "which provider, which model".
+ *
+ * Every field is nullable, and null always means the same thing: nothing has
+ * been said, so take the provider's own answer. That is what makes the shape
+ * safe to add to a contract that already has stored data behind it — a profile
+ * or a roster written before these existed reads as four unstated settings and
+ * behaves exactly as it did.
+ *
+ * `providerLabel` is a name for the configuration rather than for the provider:
+ * two routes can both be "OpenAI-compatible" and point at different machines,
+ * and the list of them is unreadable if they are both called that.
+ */
+export interface ModelTuning {
+  /** What to call this configuration. Null takes the provider's own name. */
+  readonly providerLabel: string | null;
+  /** Whether this route may be sent images. Null takes the preset's answer. */
+  readonly supportsImages: boolean | null;
+  /** The context window in tokens. Null takes the preset's, which may be none. */
+  readonly contextWindow: number | null;
+  /** Sampling temperature. Null sends none and leaves the provider's default. */
+  readonly temperature: number | null;
+}
+
+/** Four unstated settings: what a route with no configuration of its own has. */
+export function emptyTuning(): ModelTuning {
+  return {
+    providerLabel: null,
+    supportsImages: null,
+    contextWindow: null,
+    temperature: null
+  };
+}
+
+/**
+ * A route's tuning with every null resolved against its provider.
+ *
+ * One function rather than `?? descriptor.x` at each call site, so the form,
+ * the summary line, and the request builder cannot disagree about what an
+ * unstated setting resolved to.
+ */
+export function resolveTuning(
+  provider: string,
+  tuning: ModelTuning
+): {
+  readonly providerLabel: string;
+  readonly supportsImages: boolean;
+  readonly contextWindow: number | null;
+  readonly temperature: number | null;
+} {
+  const descriptor = providerDescriptor(provider);
+
+  return {
+    providerLabel: tuning.providerLabel ?? descriptor?.label ?? provider,
+    supportsImages: tuning.supportsImages ?? descriptor?.supportsImages ?? false,
+    contextWindow: tuning.contextWindow ?? descriptor?.defaultContextWindow ?? null,
+    // Deliberately no descriptor fallback. An unstated temperature means the
+    // request carries none at all, which is not the same as one this app chose.
+    temperature: tuning.temperature
+  };
 }
 
 /**
@@ -530,6 +662,12 @@ export interface AgentCompanion {
    * expects it. Null takes the provider's default command.
    */
   readonly command: string | null;
+  /**
+   * This agent's model settings, all four of which mean "take the provider's
+   * answer" when null. Ignored while `provider` is null: an agent that follows
+   * the orchestrator follows its tuning too, rather than keeping half of one.
+   */
+  readonly tuning: ModelTuning;
 }
 
 /** What the chrome may know about one provider: whether a shared key is stored. */
@@ -574,6 +712,8 @@ export interface AgentConfigStatus {
   readonly baseUrl: string | null;
   /** The orchestrator's program, when its provider is a local CLI. */
   readonly command: string | null;
+  /** The orchestrator's model settings — the ones a following agent inherits. */
+  readonly tuning: ModelTuning;
   readonly encryption: EncryptionState;
   /** Every shipped provider, so the command center needs no table of its own. */
   readonly providers: readonly ProviderStatus[];
@@ -668,6 +808,7 @@ export function emptyConfigStatus(): AgentConfigStatus {
     model: DEFAULT_MODEL,
     baseUrl: null,
     command: null,
+    tuning: emptyTuning(),
     encryption: "unavailable",
     providers: PROVIDERS.map((descriptor) => ({ ...descriptor, configured: false })),
     agentCredentials: []
@@ -711,6 +852,12 @@ export function resolvedProvider(
   readonly baseUrl: string | null;
   /** The program that would run, for a CLI provider. Null for an HTTP one. */
   readonly command: string | null;
+  /**
+   * The model settings this route would run under, with every unstated one
+   * already resolved against its provider. A caller building a request reads
+   * this rather than reaching for the descriptor itself.
+   */
+  readonly tuning: ReturnType<typeof resolveTuning>;
   readonly inherited: boolean;
 } {
   if (companion === null || companion.provider === null) {
@@ -719,6 +866,9 @@ export function resolvedProvider(
       model: config.model,
       baseUrl: config.baseUrl,
       command: config.command ?? defaultCommandFor(config.provider),
+      // An agent that follows the orchestrator follows all of it. Mixing its own
+      // temperature into an inherited route would make "follows" mean two things.
+      tuning: resolveTuning(config.provider, config.tuning),
       inherited: true
     };
   }
@@ -728,6 +878,7 @@ export function resolvedProvider(
     model: companion.model ?? defaultModelFor(companion.provider),
     baseUrl: companion.baseUrl,
     command: companion.command ?? defaultCommandFor(companion.provider),
+    tuning: resolveTuning(companion.provider, companion.tuning),
     inherited: false
   };
 }
@@ -758,6 +909,15 @@ export interface AgentProfile {
   readonly baseUrl: string | null;
   /** Null unless the provider is a CLI whose program is somewhere unusual. */
   readonly command: string | null;
+  /**
+   * The orchestrator's model settings.
+   *
+   * Stored inside the profile rather than as four more top-level keys, so a file
+   * written before they existed parses into `emptyTuning()` in one place instead
+   * of four — and so the version number does not have to move for a change that
+   * loses nothing.
+   */
+  readonly tuning: ModelTuning;
 }
 
 export function emptyAgentProfile(): AgentProfile {
@@ -766,8 +926,67 @@ export function emptyAgentProfile(): AgentProfile {
     provider: DEFAULT_PROVIDER,
     model: DEFAULT_MODEL,
     baseUrl: null,
-    command: null
+    command: null,
+    tuning: emptyTuning()
   };
+}
+
+/**
+ * Reads model settings out of a stored object, tolerating every absence.
+ *
+ * Used for both the profile file and the roster file. Anything malformed
+ * degrades to unstated rather than throwing, because the alternative — a
+ * hand-edited temperature wedging the orchestrator on startup — is worse than
+ * quietly falling back to the provider's own default.
+ */
+export function parseModelTuning(raw: unknown, field: string): ModelTuning {
+  if (raw === null || raw === undefined) return emptyTuning();
+
+  const root = requirePlainObject(raw, field);
+  const label = root["providerLabel"];
+  const images = root["supportsImages"];
+  const contextWindow = root["contextWindow"];
+  const temperature = root["temperature"];
+
+  return {
+    providerLabel:
+      typeof label === "string" && label.trim().length > 0
+        ? requireString(label.trim(), `${field} name`, MAX_PROVIDER_LABEL_LENGTH)
+        : null,
+    supportsImages: typeof images === "boolean" ? images : null,
+    contextWindow:
+      typeof contextWindow === "number"
+        ? requireInteger(
+            contextWindow,
+            `${field} context window`,
+            MIN_CONTEXT_WINDOW,
+            MAX_CONTEXT_WINDOW
+          )
+        : null,
+    temperature:
+      typeof temperature === "number" ? requireTemperature(temperature, field) : null
+  };
+}
+
+/**
+ * Validates a temperature.
+ *
+ * Rejects rather than clamps. A clamped value is one the user asked for and did
+ * not get, with nothing on screen saying so; a rejection reaches the form, which
+ * is where the number was typed.
+ */
+export function requireTemperature(raw: unknown, field: string): number {
+  if (typeof raw !== "number" || !Number.isFinite(raw)) {
+    throw new IpcValidationError(`${field} temperature must be a number.`);
+  }
+  if (raw < 0 || raw > MAX_TEMPERATURE) {
+    throw new IpcValidationError(
+      `${field} temperature must be between 0 and ${MAX_TEMPERATURE}.`
+    );
+  }
+  // Two decimals is the granularity every provider here documents, and rounding
+  // keeps a float that arrived as 0.30000000000000004 from being stored as one.
+  return Math.round(raw * 100) / 100;
 }
 
 /**
@@ -815,7 +1034,10 @@ export function parseAgentProfile(raw: unknown): AgentProfile {
       command:
         typeof command === "string"
           ? requireCommand(command, "Agent profile command")
-          : null
+          : null,
+      // Absent for every file written before model settings existed, which reads
+      // as four unstated settings — exactly what that file meant.
+      tuning: parseModelTuning(root["tuning"], "Agent profile")
     };
   } catch {
     return emptyAgentProfile();
@@ -857,6 +1079,28 @@ export function emptyAgentState(): PersistedAgentState {
 }
 
 /**
+ * Step kinds whose detail is dropped before anything is written to disk.
+ *
+ * These are the ones an agent's browser access produces, and their detail is
+ * the one thing in a run that can be a page's own text: a `read_page` result is
+ * the article, a `page_links` result is every address on it, and a `snapshot` is
+ * every control and field value on it. Keeping that in live state is what lets
+ * the panel show a user what their agent actually saw; writing it to
+ * `agents.json` would put the contents of a signed-in page into plain JSON on
+ * disk, where it would outlive the run, the window, and any memory of having
+ * asked.
+ *
+ * `error` is on the list for the same reason and only that reason: a failed
+ * tool result is the one error whose body is not this application's own wording.
+ * Every other error step already carries no detail at all, so nothing is lost by
+ * refusing to write one.
+ *
+ * The label survives, so a restored run still says which tools were used and
+ * on what. Only the body goes.
+ */
+const TRANSIENT_DETAIL_KINDS: readonly AgentStepKind[] = ["tool-call", "tool-result", "error"];
+
+/**
  * Reduces live state to the bounded subset worth persisting.
  *
  * Note what has no field here and so cannot be written: a credential, a
@@ -870,7 +1114,9 @@ export function toPersistedAgentState(snapshot: AgentSnapshot): PersistedAgentSt
     runs: boundRuns(snapshot.runs).map((run) => ({
       ...run,
       status: restoredStatus(run.status),
-      steps: boundSteps(run.steps)
+      steps: boundSteps(run.steps).map((step) =>
+        TRANSIENT_DETAIL_KINDS.includes(step.kind) ? { ...step, detail: null } : step
+      )
     }))
   };
 }
@@ -938,7 +1184,8 @@ function parseCompanion(raw: unknown): AgentCompanion {
     // A stored command names a program that would be executed, so a file on disk
     // is validated exactly as strictly as an IPC payload.
     command:
-      typeof command === "string" ? requireCommand(command, "Companion command") : null
+      typeof command === "string" ? requireCommand(command, "Companion command") : null,
+    tuning: parseModelTuning(companion["tuning"], "Companion")
   };
 }
 
@@ -1177,6 +1424,7 @@ export interface SetOrchestratorPayload {
   readonly model: string;
   readonly baseUrl: string | null;
   readonly command: string | null;
+  readonly tuning: ModelTuning;
 }
 
 export function parseSetOrchestratorPayload(raw: unknown): SetOrchestratorPayload {
@@ -1187,8 +1435,80 @@ export function parseSetOrchestratorPayload(raw: unknown): SetOrchestratorPayloa
     provider,
     model: parseModel(root["model"], provider, "Model"),
     baseUrl: parseEndpoint(root["baseUrl"], provider, "Base URL"),
-    command: parseProgram(root["command"], provider, "Command")
+    command: parseProgram(root["command"], provider, "Command"),
+    tuning: parseTuningPayload(root["tuning"], provider, "Orchestrator")
   };
+}
+
+/**
+ * Reads model settings from a renderer, against the provider they belong to.
+ *
+ * Stricter than `parseModelTuning`, which forgives a file: a malformed number
+ * from the chrome is a bug in the chrome, and swallowing it would leave the user
+ * with a temperature they typed, a form that accepted it, and a request that
+ * never carried it.
+ *
+ * The settings a provider cannot use are dropped rather than stored. A CLI runs
+ * a program that manages its own sampling, so a temperature saved against one
+ * would be a setting sitting in config with nothing that reads it.
+ */
+function parseTuningPayload(
+  raw: unknown,
+  provider: ProviderId,
+  field: string
+): ModelTuning {
+  if (raw === null || raw === undefined) return emptyTuning();
+
+  const root = requirePlainObject(raw, `${field} model configuration`);
+  const label = root["providerLabel"];
+  const images = root["supportsImages"];
+  const contextWindow = root["contextWindow"];
+  const temperature = root["temperature"];
+  const isCli = providerDescriptor(provider)?.transport === "cli";
+
+  const named =
+    label === null || label === undefined || label === ""
+      ? null
+      : requireString(
+          String(label).trim(),
+          `${field} provider name`,
+          MAX_PROVIDER_LABEL_LENGTH
+        );
+
+  if (isCli) {
+    // A name still means something for a CLI — it is what the route is called in
+    // a list. Nothing else here does.
+    return { ...emptyTuning(), providerLabel: named === "" ? null : named };
+  }
+
+  return {
+    providerLabel: named === "" ? null : named,
+    supportsImages:
+      images === null || images === undefined
+        ? null
+        : requireBoolean(images, `${field} image support`),
+    contextWindow:
+      contextWindow === null || contextWindow === undefined || contextWindow === ""
+        ? null
+        : requireInteger(
+            contextWindow,
+            `${field} context window`,
+            MIN_CONTEXT_WINDOW,
+            MAX_CONTEXT_WINDOW
+          ),
+    temperature:
+      temperature === null || temperature === undefined || temperature === ""
+        ? null
+        : requireTemperature(temperature, field)
+  };
+}
+
+/** A boolean and nothing coercible to one, matching every other validator here. */
+function requireBoolean(raw: unknown, field: string): boolean {
+  if (typeof raw !== "boolean") {
+    throw new IpcValidationError(`${field} must be true or false.`);
+  }
+  return raw;
 }
 
 /**
@@ -1268,6 +1588,8 @@ export interface CompanionDraftPayload {
   readonly baseUrl: string | null;
   /** Set only for a CLI provider whose program is somewhere unusual. */
   readonly command: string | null;
+  /** Unstated throughout for an agent that follows the orchestrator. */
+  readonly tuning: ModelTuning;
 }
 
 function parseCompanionDraft(root: Record<string, unknown>): CompanionDraftPayload {
@@ -1306,7 +1628,11 @@ function parseCompanionDraft(root: Record<string, unknown>): CompanionDraftPaylo
         ? null
         : parseEndpoint(root["baseUrl"], provider, "Agent base URL"),
     command:
-      provider === null ? null : parseProgram(root["command"], provider, "Agent command")
+      provider === null ? null : parseProgram(root["command"], provider, "Agent command"),
+    // An agent that follows the orchestrator inherits its settings whole, so it
+    // stores none of its own — the same rule that already drops its endpoint.
+    tuning:
+      provider === null ? emptyTuning() : parseTuningPayload(root["tuning"], provider, "Agent")
   };
 }
 
@@ -1323,6 +1649,48 @@ export function parseUpdateCompanionPayload(raw: unknown): UpdateCompanionPayloa
   return {
     companionId: requireIdentifier(root["companionId"], "Agent ID"),
     ...parseCompanionDraft(root)
+  };
+}
+
+/**
+ * A configuration the renderer wants tried before it is applied.
+ *
+ * Shaped like a route rather than like an agent, because that is what is being
+ * tested: the form's current provider, model, endpoint, and program, plus which
+ * scope's key should authenticate the attempt. There is no key on this type, and
+ * there is no channel that would return one.
+ */
+export interface ProviderTestPayload {
+  readonly provider: ProviderId;
+  readonly model: string | null;
+  readonly baseUrl: string | null;
+  readonly command: string | null;
+  readonly tuning: ModelTuning;
+  /** Whose key to try: one agent's own, or null for the shared one. */
+  readonly companionId: string | null;
+}
+
+export function parseProviderTestPayload(raw: unknown): ProviderTestPayload {
+  const root = requirePlainObject(raw, "Provider test payload");
+  const provider = requireOneOf(root["provider"], PROVIDER_IDS, "Provider");
+  const model = root["model"];
+  const companionId = root["companionId"];
+
+  return {
+    provider,
+    // Blank is "the provider's default", exactly as it is when saving — a test
+    // must exercise the route the form would produce, not a stricter one.
+    model:
+      model === null || model === undefined || model === ""
+        ? null
+        : requireModelId(model, "Model"),
+    baseUrl: parseEndpoint(root["baseUrl"], provider, "Base URL"),
+    command: parseProgram(root["command"], provider, "Command"),
+    tuning: parseTuningPayload(root["tuning"], provider, "Provider test"),
+    companionId:
+      companionId === null || companionId === undefined
+        ? null
+        : requireIdentifier(companionId, "Agent ID")
   };
 }
 

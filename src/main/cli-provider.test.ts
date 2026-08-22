@@ -1,10 +1,16 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   ALLOWED_CLI_PROGRAMS,
+  CLI_INVOCATIONS,
   callCli,
   childEnvironment,
+  cliArguments,
   isAllowedCommand,
+  isPassableModel,
   programName,
+  supportsBrowserTools,
+  CLI_BROWSER_TIMEOUT_MS,
+  CLI_TIMEOUT_MS,
   type SpawnPort,
   type SpawnedProcess
 } from "./cli-provider.js";
@@ -153,6 +159,141 @@ describe("isAllowedCommand", () => {
   });
 });
 
+describe("cliArguments", () => {
+  it("asks a known tool for one turn with nothing else loaded", () => {
+    // The point of the flags: no MCP servers, no skills, no plugins, no hooks,
+    // no project memory, and no tools - which is also what keeps the call to a
+    // single turn, because a tool call is the only thing that would make the
+    // tool go round again with the whole context resent.
+    const args = cliArguments("/opt/homebrew/bin/claude", null);
+
+    expect(args).toContain("--print");
+    expect(args).toContain("--safe-mode");
+    expect(args).toContain("--strict-mcp-config");
+    expect(args).toContain("--tools=");
+  });
+
+  it("does not leave a coding CLI waiting for a person", () => {
+    // Started bare, Codex comes up interactive and sits there until the timeout.
+    expect(cliArguments("codex", null).at(0)).toBe("exec");
+  });
+
+  it("spawns a tool with no checked invocation exactly as it did before", () => {
+    // A guessed flag does not degrade a route, it breaks it: the tool exits
+    // non-zero before doing any work.
+    for (const command of ["gemini", "opencode", "qwen", "kimi", "antigravity"]) {
+      expect(cliArguments(command, "some-model"), command).toEqual([]);
+    }
+  });
+
+  it("passes a named model through, so a cheap one can sit behind a route", () => {
+    expect(cliArguments("claude", "haiku").slice(-2)).toEqual(["--model", "haiku"]);
+    expect(cliArguments("codex", "gpt-5").slice(-2)).toEqual(["--model", "gpt-5"]);
+  });
+
+  it("leaves the tool's own choice alone when no model is named", () => {
+    // A CLI ships no default model here, so empty is the ordinary case.
+    for (const model of [null, "", "   "]) {
+      expect(cliArguments("claude", model)).not.toContain("--model");
+    }
+  });
+
+  it("drops a model name rather than letting it be read as a flag", () => {
+    // Constrained at the IPC boundary too; checked again because a rule
+    // enforced only where it was written is one a later caller walks around.
+    for (const model of ["--dangerously-skip-permissions", "-p", "a b", "a;b", "$(x)"]) {
+      expect(cliArguments("claude", model), model).not.toContain("--model");
+    }
+  });
+
+  it("only names programs this app ships support for", () => {
+    for (const name of Object.keys(CLI_INVOCATIONS)) {
+      expect(ALLOWED_CLI_PROGRAMS, name).toContain(name);
+    }
+  });
+});
+
+describe("cliArguments with the browser attached", () => {
+  const CONFIG = "/data/openstrawberry/mcp-session-1.json";
+
+  it("names the session config after the flag that loads it", () => {
+    const args = cliArguments("claude", null, CONFIG);
+    expect(args.slice(-2)).toEqual(["--mcp-config", CONFIG]);
+  });
+
+  it("drops --safe-mode, which disables the MCP server on the same command line", () => {
+    // Checked against the installed CLI rather than reasoned about: with
+    // --safe-mode present, the endpoint this app hosts is never contacted.
+    const args = cliArguments("claude", null, CONFIG);
+    expect(args).not.toContain("--safe-mode");
+  });
+
+  it("states one at a time every refusal --safe-mode used to cover", () => {
+    const args = cliArguments("claude", null, CONFIG);
+
+    expect(args).toContain("--strict-mcp-config");
+    expect(args).toContain("--setting-sources=");
+    expect(args).toContain("--disable-slash-commands");
+    expect(args).toContain("--no-session-persistence");
+  });
+
+  it("still mounts no built-in tool, so the browser is all the run can touch", () => {
+    expect(cliArguments("claude", null, CONFIG)).toContain("--tools=");
+  });
+
+  it("pre-allows this server, because nobody is at a permission prompt", () => {
+    const args = cliArguments("claude", null, CONFIG);
+    const index = args.indexOf("--allowedTools");
+
+    expect(index).toBeGreaterThanOrEqual(0);
+    expect(args[index + 1]).toBe("mcp__openstrawberry");
+  });
+
+  it("still passes a model through", () => {
+    expect(cliArguments("claude", "haiku", CONFIG).slice(-2)).toEqual(["--model", "haiku"]);
+    expect(cliArguments("claude", "haiku", CONFIG)).toContain("--mcp-config");
+  });
+
+  it("ignores a config path for a program with no checked way to load one", () => {
+    // Codex reads its MCP servers from config.toml and takes no flag naming a
+    // file, so the only route would put the bearer token in argv.
+    expect(cliArguments("codex", null, CONFIG)).toEqual(cliArguments("codex", null));
+    expect(cliArguments("gemini", null, CONFIG)).toEqual([]);
+  });
+
+  it("falls back to the lean invocation when no session was opened", () => {
+    expect(cliArguments("claude", null, null)).toEqual(cliArguments("claude", null));
+  });
+});
+
+describe("supportsBrowserTools", () => {
+  it("answers for a program wherever it is installed", () => {
+    expect(supportsBrowserTools("claude")).toBe(true);
+    expect(supportsBrowserTools("/opt/homebrew/bin/claude")).toBe(true);
+    expect(supportsBrowserTools("C:\\tools\\claude.exe")).toBe(true);
+  });
+
+  it("says no for every program without a checked invocation", () => {
+    for (const command of ["codex", "gemini", "opencode", "qwen", "kimi", "antigravity", "nope"]) {
+      expect(supportsBrowserTools(command), command).toBe(false);
+    }
+  });
+});
+
+describe("isPassableModel", () => {
+  it("accepts the names the validator already allows", () => {
+    for (const model of ["haiku", "claude-opus-5", "gpt-5", "anthropic/claude-opus-5", "qwen2.5:7b"]) {
+      expect(isPassableModel(model), model).toBe(true);
+    }
+  });
+
+  it("refuses anything that could be read as a flag or a second argument", () => {
+    for (const model of ["-p", "--model", "", " haiku", "haiku extra", ".hidden"]) {
+      expect(isPassableModel(model), model).toBe(false);
+    }
+  });
+});
+
 describe("childEnvironment", () => {
   it("passes through only what a program needs to run", () => {
     const environment = childEnvironment({
@@ -218,7 +359,8 @@ describe("callCli", () => {
   });
 
   it("passes the prompt on stdin and never in argv", async () => {
-    // A command line is visible to any process listing on the machine.
+    // A command line is visible to any process listing on the machine. argv
+    // carries the fixed invocation and nothing the user typed.
     const child = new FakeChild();
     const captured: Spawned[] = [];
     const promise = callCli({
@@ -231,9 +373,97 @@ describe("callCli", () => {
     child.close(0);
     await promise;
 
-    expect(captured[0]?.args).toEqual([]);
     expect(JSON.stringify(captured[0]?.args)).not.toContain("private");
     expect(child.stdinText).toBe("a private question");
+  });
+
+  it("spawns with the lean invocation for the program named", async () => {
+    const child = new FakeChild();
+    const captured: Spawned[] = [];
+    const promise = callCli({ ...base, model: "haiku", spawn: spawnPort(child, captured) });
+
+    child.print("x");
+    child.close(0);
+    await promise;
+
+    expect(captured[0]?.args).toEqual(cliArguments("claude", "haiku"));
+  });
+
+  it("hands the session config to a tool that can load one", async () => {
+    const child = new FakeChild();
+    const captured: Spawned[] = [];
+    const promise = callCli({
+      ...base,
+      mcpConfigPath: "/data/mcp-session-1.json",
+      spawn: spawnPort(child, captured)
+    });
+
+    child.print("x");
+    child.close(0);
+    await promise;
+
+    expect(captured[0]?.args).toContain("--mcp-config");
+    expect(captured[0]?.args).toContain("/data/mcp-session-1.json");
+  });
+
+  it("never puts the token itself on the command line", async () => {
+    // The path is in argv; the bearer token is inside a file written owner-only.
+    // Rule 3 does not stop being true because the value is a session secret
+    // rather than a prompt.
+    const child = new FakeChild();
+    const captured: Spawned[] = [];
+    const promise = callCli({
+      ...base,
+      mcpConfigPath: "/data/mcp-session-1.json",
+      spawn: spawnPort(child, captured)
+    });
+
+    child.print("x");
+    child.close(0);
+    await promise;
+
+    expect(JSON.stringify(captured[0]?.args)).not.toContain("Bearer");
+    expect(JSON.stringify(captured[0]?.args)).not.toContain("Authorization");
+  });
+
+  it("drops a config path a program has no checked way to load", async () => {
+    const child = new FakeChild();
+    const captured: Spawned[] = [];
+    const promise = callCli({
+      ...base,
+      command: "codex",
+      mcpConfigPath: "/data/mcp-session-1.json",
+      spawn: spawnPort(child, captured)
+    });
+
+    child.print("x");
+    child.close(0);
+    await promise;
+
+    expect(JSON.stringify(captured[0]?.args)).not.toContain("mcp-session-1");
+  });
+
+  it("gives a run with tools a longer budget than a single turn", async () => {
+    // A loop that stops for a person's decision is not a hung one.
+    expect(CLI_BROWSER_TIMEOUT_MS).toBeGreaterThan(CLI_TIMEOUT_MS);
+
+    vi.useFakeTimers();
+    try {
+      const child = new FakeChild();
+      const promise = callCli({
+        ...base,
+        mcpConfigPath: "/data/mcp-session-1.json",
+        spawn: spawnPort(child)
+      });
+
+      vi.advanceTimersByTime(CLI_TIMEOUT_MS + 1000);
+      expect(child.killed).toBe(false);
+
+      vi.advanceTimersByTime(CLI_BROWSER_TIMEOUT_MS);
+      await expect(promise).resolves.toEqual({ ok: false, code: "timeout" });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("gives the child a rebuilt environment", async () => {

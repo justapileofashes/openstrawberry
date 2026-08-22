@@ -15,8 +15,10 @@ import type {
   AgentConfigStatus,
   AgentSkillSummary,
   AgentSnapshot,
-  ApprovalDecision
+  ApprovalDecision,
+  ModelTuning
 } from "./agents.js";
+import type { ProviderTestResult } from "./provider-request.js";
 import type {
   BookmarkPreviewResponse,
   HtmlSourceKind,
@@ -36,6 +38,7 @@ import type { BookmarkPage } from "./bookmarks.js";
 import type { Plan, PlanDraftPayload } from "./orchestration.js";
 import type { UpdateState } from "./updates.js";
 import type { DefaultBrowserState } from "./default-browser.js";
+import type { BubbleRect } from "./bubble.js";
 
 /** Channel names, shared so both sides of the boundary cannot drift apart. */
 export const IPC_CHANNELS = {
@@ -70,6 +73,7 @@ export const IPC_CHANNELS = {
   agentDeleteCompanion: "agent:delete-companion",
   agentSelectCompanion: "agent:select-companion",
   agentSetOrchestrator: "agent:set-orchestrator",
+  agentTestProvider: "agent:test-provider",
   migrationOverview: "migration:overview",
   migrationPreviewProfile: "migration:preview-profile",
   migrationPickBookmarks: "migration:pick-bookmarks",
@@ -119,7 +123,9 @@ export const IPC_CHANNELS = {
   updateDownload: "update:download",
   updateInstall: "update:install",
   defaultBrowserState: "default-browser:state",
-  defaultBrowserRequest: "default-browser:request"
+  defaultBrowserRequest: "default-browser:request",
+  bubbleShow: "bubble:show",
+  bubbleHide: "bubble:hide"
 } as const;
 
 /** Push channel the main process uses to broadcast browser state changes. */
@@ -291,8 +297,17 @@ export interface AgentBridge {
     provider: string,
     model: string,
     baseUrl?: string | null,
-    command?: string | null
+    command?: string | null,
+    tuning?: ModelTuning
   ) => Promise<AgentConfigStatus>;
+  /**
+   * Tries a configuration and reports whether it answered.
+   *
+   * Never throws, and never returns the provider's own error body — the result
+   * is one of this app's codes plus a short line the chrome wrote, so a failed
+   * test can be put on screen without putting remote text there.
+   */
+  readonly testProvider: (request: ProviderTestRequest) => Promise<ProviderTestResult>;
   /** Subscribes to pushed state. Returns an unsubscribe function. */
   readonly onState: (listener: (snapshot: AgentSnapshot) => void) => () => void;
 }
@@ -309,6 +324,29 @@ export interface CompanionDraft {
   readonly baseUrl: string | null;
   /** Set only for a CLI provider whose program is somewhere unusual. */
   readonly command: string | null;
+  /** Model settings. Every field null means "take the provider's answer". */
+  readonly tuning: ModelTuning;
+}
+
+/**
+ * A configuration offered up to be tried before it is saved.
+ *
+ * Deliberately not "the current configuration": the whole point of the button is
+ * to answer "would this work" for something the user has typed and not applied,
+ * so the route being tried is the one in the form.
+ *
+ * `companionId` names whose key to authenticate with — an agent's own if it has
+ * one, the shared key otherwise — and null means the shared key alone. No key
+ * crosses this boundary in either direction; the trusted process reads the
+ * stored one exactly as a run would.
+ */
+export interface ProviderTestRequest {
+  readonly provider: string;
+  readonly model: string | null;
+  readonly baseUrl: string | null;
+  readonly command: string | null;
+  readonly tuning: ModelTuning;
+  readonly companionId: string | null;
 }
 
 /**
@@ -518,6 +556,24 @@ export interface DefaultBrowserBridge {
   readonly request: () => Promise<DefaultBrowserState>;
 }
 
+/**
+ * Hover text drawn above the pages.
+ *
+ * Two verbs, and between them they can do exactly one thing: put a short string
+ * inside a rectangle of the chrome's own window. `show` names a place in the
+ * chrome's client coordinates rather than on the screen, and the trusted process
+ * clamps it to the window it owns — so this cannot be used to draw anywhere but
+ * over OpenStrawberry itself. The string is rendered as text and never as
+ * markup, which matters because a tab's title comes from the page.
+ *
+ * Only the controls that have nowhere else to go use this. A bubble that fits
+ * inside the chrome is drawn by the stylesheet and never crosses IPC at all.
+ */
+export interface BubbleBridge {
+  readonly show: (text: string, rect: BubbleRect) => Promise<void>;
+  readonly hide: () => Promise<void>;
+}
+
 export interface OpenStrawberryBridge {
   readonly shell: {
     /** Available synchronously so first paint does not wait on IPC. */
@@ -536,4 +592,5 @@ export interface OpenStrawberryBridge {
   readonly plans: PlanBridge;
   readonly updates: UpdateBridge;
   readonly defaultBrowser: DefaultBrowserBridge;
+  readonly bubbles: BubbleBridge;
 }

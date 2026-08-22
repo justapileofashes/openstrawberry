@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="Content-Security-Policy" content="%CONTENT_SECURITY_POLICY%" />
+    <title>OpenStrawberry</title>
+  </head>
+  <!--
+    One element, drawn in the corner of a window deliberately larger than it.
+    `bubble-surface` is what keeps the rest of that window invisible: everything
+    outside the bubble has to show whatever the window is floating over.
+  -->
+  <body class="bubble-surface">
+    <span class="bubble is-native" id="bubble" role="tooltip"></span>
+    <script type="module" src="./bubble.ts"></script>
+  </body>
+</html>

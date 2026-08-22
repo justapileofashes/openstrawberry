@@ -1,4 +1,4 @@
-import {
+﻿import {
   app,
   BrowserWindow,
   dialog,
@@ -35,6 +35,7 @@ import {
   parseCompanionIdPayload,
   parseCreateCompanionPayload,
   parseCredentialScopePayload,
+  parseProviderTestPayload,
   parseResolveApprovalPayload,
   parseRunIdPayload,
   parseSetCredentialPayload,
@@ -68,12 +69,16 @@ import {
 } from "../shared/migration.js";
 import { isAllowedUrl, isLocalDocumentUrl } from "../shared/navigation.js";
 import { BrowserManager } from "./browser-manager.js";
+import { BubbleLayer } from "./bubble-layer.js";
+import { parseBubblePayload } from "../shared/bubble.js";
 import { launchTargetFromCommandLine } from "./launch-target.js";
 import { DownloadManager } from "./download-manager.js";
 import { TrackerBlocker } from "./tracker-blocker.js";
 import { extractReaderDocument } from "./reader.js";
-import { callProvider } from "./http-provider.js";
-import { callCli, type SpawnedProcess } from "./cli-provider.js";
+import { callProvider, callProviderTurn } from "./http-provider.js";
+import { callCli, supportsBrowserTools, type SpawnedProcess } from "./cli-provider.js";
+import { BrowserMcpServer } from "./mcp-server.js";
+import { ScriptSandbox } from "./script-sandbox.js";
 import { PlanRunner } from "./plan-runner.js";
 import { UpdateManager } from "./update-manager.js";
 import { isUpdateAllowed } from "../shared/updates.js";
@@ -108,7 +113,11 @@ import {
   parseWorkspaceIdPayload
 } from "../shared/workspaces.js";
 import { MigrationManager, type MigrationDialogPort } from "./migration-manager.js";
-import { AgentManager, type BrowserPort } from "./agent-manager.js";
+import {
+  AgentManager,
+  PROVIDER_TEST_TIMEOUT_MS,
+  type BrowserPort
+} from "./agent-manager.js";
 import { SecretStore } from "./secret-store.js";
 import { createOsCipher } from "./os-cipher.js";
 import { buildAllowedUrlPrefixes } from "./ipc-security.js";
@@ -151,11 +160,20 @@ let trackerBlocker: TrackerBlocker | null = null;
  */
 let workspaceStore: WorkspaceStore | null = null;
 let agentManager: AgentManager | null = null;
+/** Bound to a socket only while a run that can use it is live. */
+let browserMcpServer: BrowserMcpServer | null = null;
+/** Opens a hidden renderer only while a script is actually running in one. */
+let scriptSandbox: ScriptSandbox | null = null;
 let planRunner: PlanRunner | null = null;
 let updateManager: UpdateManager | null = null;
 /** Null in any build the gate refuses, which is the refusal, not a symptom. */
 let updateTransport: UpdateTransport | null = null;
 let migrationManager: MigrationManager | null = null;
+/**
+ * Holds the one window that is drawn above the pages, for the hover text that
+ * has nowhere in the chrome to go. Opens its renderer on first hover.
+ */
+let bubbleLayer: BubbleLayer | null = null;
 /** A link that arrived before the browser core existed. */
 let pendingLaunchUrl: string | null = launchTargetFromCommandLine(process.argv);
 
@@ -296,6 +314,34 @@ function migrationDialogFor(window: BrowserWindow): MigrationDialogPort {
 }
 
 /**
+ * The fetch every provider call goes out on.
+ *
+ * `net.fetch` rather than the global one so the request honours the system
+ * proxy and certificate store the rest of the app uses, and so it is not the
+ * renderer's fetch under any circumstance. It is given its own session, not the
+ * browsing partition: a provider call is the application's, and must not carry
+ * cookies the user picked up while browsing, nor deposit any there.
+ */
+function providerFetch(
+  url: string,
+  init: {
+    readonly method: string;
+    readonly headers: Record<string, string>;
+    readonly body: string;
+    readonly redirect: "error";
+    readonly signal: AbortSignal;
+  }
+): Promise<Response> {
+  return net.fetch(url, {
+    method: init.method,
+    headers: init.headers,
+    body: init.body,
+    redirect: init.redirect,
+    signal: init.signal
+  });
+}
+
+/**
  * The narrow slice of the tab engine the agent runtime may use.
  *
  * Built here rather than handing over the manager itself, so the agent's reach
@@ -307,7 +353,12 @@ function browserPortFor(manager: BrowserManager): BrowserPort {
     createTab: (paneId, url) => manager.createTab(paneId, url),
     closeTab: (tabId) => manager.closeTab(tabId),
     navigate: (tabId, address) => manager.navigate(tabId, address),
-    contentsFor: (tabId) => manager.contentsFor(tabId)
+    goBack: (tabId) => manager.goBack(tabId),
+    goForward: (tabId) => manager.goForward(tabId),
+    reload: (tabId) => manager.reload(tabId),
+    contentsFor: (tabId) => manager.contentsFor(tabId),
+    generationFor: (tabId) => manager.navigationGenerationFor(tabId),
+    viewportFor: (tabId) => manager.drawnViewportFor(tabId)
   };
 }
 
@@ -396,6 +447,21 @@ function createWindow(): void {
     }
   });
 
+  /*
+   * The only thing this application draws above a page. Hover text for the tab
+   * rail cannot be part of the chrome's document — a rail entry is 56px wide
+   * with a native view immediately beside it — so it is a child window instead.
+   * See src/main/bubble-layer.ts; nothing else may follow it up there.
+   */
+  bubbleLayer = new BubbleLayer({
+    parent: window,
+    preloadPath: join(import.meta.dirname, "../preload/bubble.cjs"),
+    load: (bubble) =>
+      DEV_SERVER_URL
+        ? bubble.loadURL(new URL("bubble.html", DEV_SERVER_URL).toString())
+        : bubble.loadFile(join(import.meta.dirname, "../renderer/bubble.html"))
+  });
+
   const profileSession = session.fromPartition(PROFILE_PARTITION);
 
   const browser = new BrowserManager({
@@ -442,7 +508,7 @@ function createWindow(): void {
 
   /*
    * The OS keychain, as the credential store needs it. `createOsCipher` owns the
-   * judgement of when the platform's encryption is worth trusting — notably that
+   * judgement of when the platform's encryption is worth trusting â€” notably that
    * a keyringless Linux session does not count, however cheerfully
    * `safeStorage.isEncryptionAvailable()` answers.
    */
@@ -459,9 +525,36 @@ function createWindow(): void {
   // real keyring wrote is left alone, because that keyring may simply be locked.
   secrets.discardExposedCredential();
 
+  /*
+   * The browser, as something a separate process can reach.
+   *
+   * Constructed with the same narrow port the agent runtime already has, so an
+   * MCP tool call and an in-process agent step reach the tab engine by exactly
+   * one route. Nothing is bound at construction: the server opens its socket
+   * when the first run that can use it starts, and closes it when the last one
+   * ends.
+   */
+  /*
+   * Where a `run` script executes: a hidden renderer with no Node, no network,
+   * and nothing to call but the tools. Shared by both transports, because a
+   * script written by a local CLI and one written by a hosted model should get
+   * the same bounds, and because the sandbox holds no per-run state — the
+   * authority comes with each call.
+   */
+  const sandbox = new ScriptSandbox();
+  scriptSandbox = sandbox;
+
+  const mcp = new BrowserMcpServer({
+    browser: browserPortFor(browser),
+    configDir: app.getPath("userData"),
+    toolOptions: { scriptRunner: sandbox }
+  });
+  browserMcpServer = mcp;
+
   agentManager = new AgentManager({
     statePath: join(app.getPath("userData"), "agents.json"),
     browser: browserPortFor(browser),
+    scriptRunner: sandbox,
     secrets,
     publish: (snapshot: AgentSnapshot) => sendToRenderer(AGENT_STATE_EVENT, snapshot),
     /*
@@ -476,14 +569,19 @@ function createWindow(): void {
     provider: (request) =>
       callProvider({
         ...request,
-        fetch: (url, init) =>
-          net.fetch(url, {
-            method: init.method,
-            headers: init.headers,
-            body: init.body,
-            redirect: init.redirect,
-            signal: init.signal
-          })
+        fetch: (url, init) => providerFetch(url, init)
+      }),
+    /*
+     * The same transport, for a turn that carries tools. An agent on an API key
+     * has no separate process to give a socket to, so its browser access is a
+     * tool list on the request and a loop in this process - and it goes out over
+     * exactly the same fetch, with exactly the same refusal to follow a
+     * redirect, as a plain question does.
+     */
+    providerTurn: (request) =>
+      callProviderTurn({
+        ...request,
+        fetch: (url, init) => providerFetch(url, init)
       }),
     /*
      * Local tools. The working directory is a scratch folder under userData
@@ -497,7 +595,15 @@ function createWindow(): void {
         cwd: app.getPath("userData"),
         spawn: (command, args, spawnOptions) =>
           spawn(command, [...args], spawnOptions) as unknown as SpawnedProcess
-      })
+      }),
+    /*
+     * Handing a run the browser. Both halves are named here rather than assumed
+     * inside the runtime: which programs can take a session is the CLI adapter's
+     * knowledge, and opening one is the server's, so the runtime asks both
+     * rather than deciding either.
+     */
+    browserSessions: (request) => mcp.open(request),
+    supportsBrowserTools
   });
 
   /*
@@ -597,6 +703,20 @@ function createWindow(): void {
     agentManager = null;
     agents?.destroy();
 
+    // The socket goes after the runtime, not before: tearing the runtime down
+    // settles every outstanding gate, and a child still holding a tool call open
+    // should read that refusal rather than find the endpoint gone.
+    const mcp = browserMcpServer;
+    browserMcpServer = null;
+    mcp?.destroy();
+
+    // The sandbox goes with them: it removes its channel and drops the callers
+    // it was holding, so a script window outliving this point has nothing to
+    // call back into.
+    const sandbox = scriptSandbox;
+    scriptSandbox = null;
+    sandbox?.destroy();
+
     // Downloads persist their history before the session they belong to goes.
     const downloads = downloadManager;
     downloadManager = null;
@@ -610,6 +730,13 @@ function createWindow(): void {
     const manager = browserManager;
     browserManager = null;
     manager?.destroy();
+
+    // The bubble window is the parent's child, so it would go with it anyway.
+    // Dropping it here means it goes while the parent is still alive to detach
+    // the listeners it holds on it.
+    const bubbles = bubbleLayer;
+    bubbleLayer = null;
+    bubbles?.destroy();
   };
 
   window.once("close", releaseBrowserViews);
@@ -928,6 +1055,18 @@ function registerIpcHandlers(): void {
   registerTrustedQuery(IPC_CHANNELS.defaultBrowserState, () => readDefaultBrowserState());
   registerTrustedQuery(IPC_CHANNELS.defaultBrowserRequest, () => requestDefaultBrowser());
 
+  /*
+   * Hover text. Both verbs are silent when no layer exists — a bubble that
+   * cannot be drawn is not a failure worth reporting to the chrome, which would
+   * only be able to log it.
+   */
+  registerTrustedHandler(IPC_CHANNELS.bubbleShow, parseBubblePayload, (payload) => {
+    bubbleLayer?.show(payload);
+  });
+  registerTrustedQuery(IPC_CHANNELS.bubbleHide, () => {
+    bubbleLayer?.hide();
+  });
+
   registerTrustedQuery(IPC_CHANNELS.agentSnapshot, () => requireAgentManager().snapshot());
 
   registerTrustedHandler(IPC_CHANNELS.agentStartRun, parseStartRunPayload, (payload) =>
@@ -951,7 +1090,7 @@ function registerIpcHandlers(): void {
   /*
    * Write-only. The key goes in and a status comes back; there is no channel
    * that reads one out, so the trusted process is the only place it exists.
-   * A refusal to store — no OS encryption available — throws, and the chrome
+   * A refusal to store â€” no OS encryption available â€” throws, and the chrome
    * avoids that path by reading `config.encryption` before offering the form.
    */
   registerTrustedHandler(
@@ -997,9 +1136,32 @@ function registerIpcHandlers(): void {
   );
 
   /*
+   * Trying a configuration before it is applied.
+   *
+   * Nothing is stored by this channel and nothing is read out of storage
+   * through it: the credential is read on this side, used for one request, and
+   * dropped, and what goes back is one of this app's own codes. The timeout is
+   * the manager's rather than a run's, so a provider that hangs cannot leave a
+   * settings dialog waiting on the run-length budget.
+   */
+  registerTrustedHandler(
+    IPC_CHANNELS.agentTestProvider,
+    parseProviderTestPayload,
+    async (payload) => {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), PROVIDER_TEST_TIMEOUT_MS);
+      try {
+        return await requireAgentManager().testProvider(payload, controller.signal);
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+  );
+
+  /*
    * Migration. Every channel below goes through the same router as everything
    * else, so each one verifies the sender is the chrome, validates the payload
-   * with no coercion, and redacts any failure — which matters more here than
+   * with no coercion, and redacts any failure â€” which matters more here than
    * anywhere else, because a failure in this subsystem is the one most likely to
    * be carrying a local path.
    */

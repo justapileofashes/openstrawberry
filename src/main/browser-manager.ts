@@ -51,6 +51,15 @@ import {
 interface TabRuntime {
   readonly view: WebContentsView;
   state: BrowserTabState;
+  /**
+   * How many times this tab has navigated.
+   *
+   * Runtime only, and deliberately not part of `BrowserTabState`: it exists so
+   * the agent runtime can tell whether an element reference is still about the
+   * page it was taken from, and it has no business in the renderer's contract or
+   * in the session file.
+   */
+  navigationSequence: number;
 }
 
 interface PaneRuntime {
@@ -251,6 +260,7 @@ export class BrowserManager {
 
     const runtime: TabRuntime = {
       view,
+      navigationSequence: 0,
       state: {
         id,
         url: target,
@@ -528,6 +538,39 @@ export class BrowserManager {
   }
 
   /**
+   * How many times a tab has navigated, or zero for a tab that is not open.
+   *
+   * The agent runtime files each page capture under this number and refuses to
+   * act on references from any other, which is what stops an element reference
+   * outliving the page it described.
+   */
+  public navigationGenerationFor(tabId: string): number {
+    return this.tabs.get(tabId)?.navigationSequence ?? 0;
+  }
+
+  /**
+   * The area a tab is currently drawn at, or null when it is not drawn.
+   *
+   * Inactive panes are detached rather than hidden, so their views have no
+   * geometry at all — every rectangle inside one reads as zero. An agent asking
+   * to click in such a tab has to be refused rather than have its click land at
+   * the origin, and this is the question that tells the two apart.
+   */
+  public drawnViewportFor(tabId: string): { width: number; height: number } | null {
+    const tab = this.tabs.get(tabId);
+    if (tab === undefined) return null;
+    if (tab.view.webContents.isDestroyed()) return null;
+
+    // The attachment bookkeeping rather than a recomputation of it: this is the
+    // set the layout pass actually put on screen, so it is the one that answers
+    // whether an input event has anywhere to land.
+    if (!this.attachedTabIds.has(tabId)) return null;
+
+    const { width, height } = this.panes[tab.state.paneId].viewport;
+    return width > 0 && height > 0 ? { width, height } : null;
+  }
+
+  /**
    * The tab a WebContents belongs to, with the page it is currently showing.
    *
    * Exists for the tracker blocker, which sees requests identified by
@@ -579,10 +622,24 @@ export class BrowserManager {
     const contents = tab.view.webContents;
     const refresh = (): void => this.refreshState(tabId);
 
+    /*
+     * A navigation retires every element reference an agent holds for this tab.
+     * The counter is bumped here, on the guest's own events, rather than in the
+     * methods that ask for a navigation: a page that navigates itself — a link,
+     * a redirect, a single-page application changing route — does not go through
+     * those methods, and those are exactly the cases where a stale reference
+     * would still resolve and act on the wrong thing.
+     */
+    const navigated = (): void => {
+      const current = this.tabs.get(tabId);
+      if (current !== undefined) current.navigationSequence += 1;
+      refresh();
+    };
+
     contents.on("did-start-loading", refresh);
     contents.on("did-stop-loading", refresh);
-    contents.on("did-navigate", refresh);
-    contents.on("did-navigate-in-page", refresh);
+    contents.on("did-navigate", navigated);
+    contents.on("did-navigate-in-page", navigated);
     contents.on("page-title-updated", refresh);
     contents.on("audio-state-changed", refresh);
 

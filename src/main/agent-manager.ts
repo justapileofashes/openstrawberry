@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Owns agent runs in the trusted process.
  *
  * The shape deliberately mirrors `BrowserManager`: an options object carrying a
@@ -26,6 +26,7 @@ import {
   boundRuns,
   boundStepDetail,
   boundSteps,
+  emptyTuning,
   isTerminalStatus,
   MAX_AGENTS,
   parsePersistedAgentState,
@@ -40,20 +41,47 @@ import {
   type AgentSnapshot,
   type AgentStep,
   type AgentStepKind,
+  type ApprovalRequest,
   type CompanionDraftPayload,
   type CompanionIdPayload,
   type CredentialScopePayload,
+  type ProviderTestPayload,
   type ResolveApprovalPayload,
   type SetCredentialPayload,
   type SetOrchestratorPayload,
   type StartRunPayload,
   type UpdateCompanionPayload
 } from "../shared/agents.js";
+import {
+  BROWSER_TOOL_BRIEFING,
+  BROWSER_TOOLS,
+  interactionConsentReason,
+  interactionConsentSummary
+} from "../shared/browser-tools.js";
+import { SnapshotRegistry } from "./snapshot-registry.js";
 import type { BrowserPaneId, BrowserSnapshot } from "../shared/browser.js";
 import { displayHostname } from "../shared/navigation.js";
 import type { SecretStore } from "./secret-store.js";
-import type { ProviderErrorCode, ProviderResult } from "../shared/provider-request.js";
+import { MAX_PROMPT_LENGTH } from "../shared/provider-request.js";
+import type {
+  ChatMessage,
+  ChatOutcome,
+  ProviderErrorCode,
+  ProviderResult
+} from "../shared/provider-request.js";
+import type { ProviderTestResult } from "../shared/provider-request.js";
+import type { McpToolDescriptor } from "../shared/mcp.js";
 import type { ProviderId } from "../shared/agents.js";
+// The same allowlist the CLI transport enforces, so a route that tests clean is
+// one that would actually run rather than one this check happens to permit.
+import { isAllowedCommand } from "./cli-provider.js";
+import { runBrowserAgent, type BrowserAgentEvent } from "./browser-agent.js";
+import {
+  runNamedBrowserTool,
+  type BrowserToolOptions,
+  type BrowserToolSession,
+  type ScriptRunnerPort
+} from "./browser-tools.js";
 
 /**
  * Wording for each failure code.
@@ -83,8 +111,8 @@ const PROVIDER_ERROR_TEXT: Readonly<Record<ProviderErrorCode, string>> = {
 /**
  * Everything an agent may do to the browser.
  *
- * Narrow on purpose. `contentsFor` is the sharp edge — it hands out a live
- * `WebContents` — so it stays behind this port and is never reachable from the
+ * Narrow on purpose. `contentsFor` is the sharp edge â€” it hands out a live
+ * `WebContents` â€” so it stays behind this port and is never reachable from the
  * renderer, which only ever sees tab ids.
  */
 export interface BrowserPort {
@@ -92,8 +120,56 @@ export interface BrowserPort {
   readonly createTab: (paneId: BrowserPaneId, url: string) => BrowserSnapshot;
   readonly closeTab: (tabId: string) => BrowserSnapshot;
   readonly navigate: (tabId: string, address: string) => BrowserSnapshot;
+  readonly goBack: (tabId: string) => BrowserSnapshot;
+  readonly goForward: (tabId: string) => BrowserSnapshot;
+  readonly reload: (tabId: string) => BrowserSnapshot;
   /** Null when the tab is gone or its view has been destroyed. */
   readonly contentsFor: (tabId: string) => Electron.WebContents | null;
+  /**
+   * A counter the tab engine bumps on every navigation, in-page ones included.
+   *
+   * What makes an element reference expire. A reference taken before a
+   * navigation still resolves afterwards, to whatever now sits in that
+   * position â€” which is not a miss but a confident action on the wrong thing.
+   */
+  readonly generationFor: (tabId: string) => number;
+  /**
+   * The size the tab is currently drawn at, or null when it is not drawn.
+   *
+   * Inactive panes are detached, and a view that is not composited has no
+   * geometry, so every rectangle in it is zero and every click would land at the
+   * origin. Asking first turns that into a refusal the agent can act on.
+   */
+  readonly viewportFor: (tabId: string) => { readonly width: number; readonly height: number } | null;
+}
+
+/**
+ * Handing one run the browser, over a transport a separate process can reach.
+ *
+ * Injected, and optional. With no port no session is ever opened, which means no
+ * token is minted, no config file is written, and no socket is bound - so a
+ * build that has not wired this, and every test here, runs local tools exactly
+ * as they ran before.
+ *
+ * The `approve` callback is the run's own gate handed to the session, so consent
+ * is asked for in the run the user is looking at rather than somewhere the
+ * transport invented.
+ */
+export type BrowserSessionPort = (request: {
+  readonly agentName: string;
+  readonly tabIds: readonly string[];
+  readonly approve: (
+    toolName: string,
+    summary: string,
+    reason: string,
+    tabId: string | null
+  ) => Promise<boolean>;
+}) => Promise<BrowserSessionHandle | null>;
+
+export interface BrowserSessionHandle {
+  /** The file the child is pointed at. Removed by `close`. */
+  readonly configPath: string;
+  readonly close: () => void;
 }
 
 /**
@@ -109,8 +185,34 @@ export type ProviderPort = (request: {
   readonly baseUrl: string | null;
   readonly credential: string | null;
   readonly prompt: string;
+  /** The route's temperature, or null to leave the provider's own default. */
+  readonly temperature: number | null;
   readonly signal: AbortSignal;
 }) => Promise<ProviderResult>;
+
+/**
+ * Calling a model for one turn of a conversation that may use tools.
+ *
+ * Separate from `ProviderPort` because the two answer different questions. That
+ * one asks for prose and gets prose. This one hands over a transcript and a tool
+ * list, and a reply asking to call a tool is a successful answer to it rather
+ * than a failure to produce one.
+ *
+ * Optional, and absent means every HTTP route behaves exactly as it did before
+ * tools existed: one prompt, one block of text, no tool declarations sent and
+ * so nothing extra paid for.
+ */
+export type ProviderTurnPort = (request: {
+  readonly provider: ProviderId;
+  readonly model: string;
+  readonly baseUrl: string | null;
+  readonly credential: string | null;
+  readonly messages: readonly ChatMessage[];
+  readonly tools: readonly McpToolDescriptor[];
+  readonly system: string | null;
+  readonly temperature: number | null;
+  readonly signal: AbortSignal;
+}) => Promise<ChatOutcome>;
 
 /**
  * Running a local tool.
@@ -123,7 +225,20 @@ export type ProviderPort = (request: {
 export type CommandPort = (request: {
   readonly command: string;
   readonly prompt: string;
+  /**
+   * The model the agent was pinned to, or empty to leave the tool's own choice
+   * alone. A CLI ships no default model here, so empty is the ordinary case -
+   * and passing it on is what lets someone put a cheap model behind a route
+   * they call often.
+   */
+  readonly model: string;
   readonly signal: AbortSignal;
+  /**
+   * The MCP session config the tool should load, or null for a call with no
+   * tools. Null is the ordinary case: only a route that both supports the
+   * browser and was given a session ever carries one.
+   */
+  readonly mcpConfigPath: string | null;
 }) => Promise<ProviderResult>;
 
 export interface AgentManagerOptions {
@@ -133,8 +248,53 @@ export interface AgentManagerOptions {
   readonly publish: (snapshot: AgentSnapshot) => void;
   /** Absent means no model is ever called; the run reports that plainly. */
   readonly provider?: ProviderPort;
+  /**
+   * Absent means an agent on an API key answers from the task alone, exactly as
+   * it did before the browser was reachable.
+   */
+  readonly providerTurn?: ProviderTurnPort;
   /** Absent means no process is ever started, and the run says so. */
   readonly command?: CommandPort;
+  /** Absent means no local tool is ever handed the browser over a socket. */
+  readonly browserSessions?: BrowserSessionPort;
+  /** Whether a given program can be handed a session at all. */
+  readonly supportsBrowserTools?: (command: string) => boolean;
+  /**
+   * Where a `run` script executes. Absent means the tool reports that this build
+   * cannot run one, which is what every test and every headless context gets.
+   */
+  readonly scriptRunner?: ScriptRunnerPort;
+}
+
+/**
+ * How long a gate waits for an answer.
+ *
+ * It has to end somewhere: on the other side is a child process holding a tool
+ * call open, and a person who walked away should cost that run one refused
+ * action rather than the whole of its time budget. Three minutes is long enough
+ * to read a summary and decide, and well inside the browser-run budget, so an
+ * expiry is reported as a decision rather than as the run timing out.
+ */
+export const APPROVAL_TIMEOUT_MS = 180_000;
+
+/**
+ * What a connection test asks for.
+ *
+ * As short as a request can be while still being a real one. The point is to
+ * exercise the endpoint, the key, and the model name together â€” a request that
+ * a gateway would accept but a model would reject proves nothing â€” so it is a
+ * genuine completion, kept to a word so the user is not billed for curiosity.
+ */
+export const PROVIDER_TEST_PROMPT = "Reply with the single word: ok";
+
+/** How long a test waits before giving up, in place of the run-length budget. */
+export const PROVIDER_TEST_TIMEOUT_MS = 20_000;
+
+/** One outstanding gate: who to tell, and when to stop waiting. */
+interface PendingGate {
+  readonly runId: string;
+  readonly resolve: (allowed: boolean) => void;
+  readonly timer: ReturnType<typeof setTimeout>;
 }
 
 /** The companion seeded on first launch, so the panel is never empty. */
@@ -148,7 +308,8 @@ const DEFAULT_COMPANION: AgentCompanion = {
   provider: null,
   model: null,
   baseUrl: null,
-  command: null
+  command: null,
+  tuning: emptyTuning()
 };
 
 export class AgentManager {
@@ -157,9 +318,17 @@ export class AgentManager {
   private readonly secrets: SecretStore;
   private readonly publish: (snapshot: AgentSnapshot) => void;
   private readonly provider: ProviderPort | null;
+  private readonly providerTurn: ProviderTurnPort | null;
   private readonly command: CommandPort | null;
+  private readonly browserSessions: BrowserSessionPort | null;
+  private readonly supportsBrowserTools: (command: string) => boolean;
+  /** Passed to every tool call this runtime makes, so the set is one object. */
+  private readonly toolOptions: BrowserToolOptions;
   /** One controller per live run, so cancelling abandons a request in flight. */
   private readonly inFlight = new Map<string, AbortController>();
+  /** Gates a tool call is blocked on, keyed by the approval the user answers. */
+  private readonly gates = new Map<string, PendingGate>();
+  private nextApprovalSequence = 1;
 
   private companions: readonly AgentCompanion[] = [];
   private activeCompanionId: string | null = null;
@@ -177,7 +346,16 @@ export class AgentManager {
     this.secrets = options.secrets;
     this.publish = options.publish;
     this.provider = options.provider ?? null;
+    this.providerTurn = options.providerTurn ?? null;
     this.command = options.command ?? null;
+    this.browserSessions = options.browserSessions ?? null;
+    // With no answer supplied, no program supports the browser. A default that
+    // said yes would hand a session to a tool that has no way to load one.
+    this.supportsBrowserTools = options.supportsBrowserTools ?? (() => false);
+    // Built once rather than per call, and rebuilt rather than spread, because an
+    // explicit `undefined` is a different thing from an absent field here.
+    this.toolOptions =
+      options.scriptRunner === undefined ? {} : { scriptRunner: options.scriptRunner };
   }
 
   /* --------------------------------------------------------------------- */
@@ -187,8 +365,8 @@ export class AgentManager {
   /**
    * Restores companions and past runs, seeding a companion on first launch.
    *
-   * Every restored run comes back non-live — `parsePersistedAgentState`
-   * downgrades any running status to `paused` — so a restart can never resume an
+   * Every restored run comes back non-live â€” `parsePersistedAgentState`
+   * downgrades any running status to `paused` â€” so a restart can never resume an
    * action that was waiting on an approval.
    */
   public restore(): void {
@@ -232,6 +410,11 @@ export class AgentManager {
     for (const controller of this.inFlight.values()) controller.abort();
     this.inFlight.clear();
 
+    // A gate nobody can answer any more is a refusal, not a wait. Settling them
+    // is what lets the tool call on the far side of the socket return, so the
+    // child exits rather than being killed on its timeout.
+    for (const id of [...this.gates.keys()]) this.settleGate(id, false);
+
     try {
       this.persistState();
     } catch {
@@ -265,7 +448,7 @@ export class AgentManager {
     this.activeRunId = id;
     this.emit();
 
-    void this.driveScriptedRun(id, payload);
+    void this.driveRun(id, payload);
     return this.snapshot();
   }
 
@@ -273,12 +456,17 @@ export class AgentManager {
     const run = this.findRun(runId);
     if (run === null || isTerminalStatus(run.status)) return this.snapshot();
 
-    // The status is the cancellation signal — the loop checks it between steps.
+    // The status is the cancellation signal â€” the loop checks it between steps.
     // Keeping one source of truth means a cancelled run cannot look live.
     // A request already in flight is abandoned rather than left to finish into
     // a run nobody is watching.
     this.inFlight.get(runId)?.abort();
     this.inFlight.delete(runId);
+
+    // An outstanding gate is refused rather than left hanging: the tool call
+    // waiting on it belongs to the run being cancelled.
+    this.denyGatesFor(runId);
+    this.updateRun(runId, (current) => ({ ...current, pendingApproval: null }));
 
     this.appendStep(runId, "message", "Cancelled by you.", null, null);
     return this.setStatus(runId, "cancelled");
@@ -307,10 +495,100 @@ export class AgentManager {
       tabId
     );
 
+    // The tool call is blocked on this. Releasing it after the state has been
+    // updated means the run already reads as resumed by the time the action it
+    // was waiting on begins.
+    this.settleGate(payload.approvalId, payload.decision === "allow");
+
     // Both decisions resume the loop. A denial is not a failure: the gated tool
     // returns an error saying the user declined, so the agent can choose another
     // route rather than dying on a "no".
     return this.setStatus(run.id, "acting");
+  }
+
+  /* --------------------------------------------------------------------- */
+  /* Gates                                                                 */
+  /* --------------------------------------------------------------------- */
+
+  /**
+   * Stops a run for the user, and answers with what they said.
+   *
+   * This is the producer the approval machinery was built for: the run goes to
+   * `awaiting-approval`, the panel shows the request, and the tool call on the
+   * other side of the socket stays open until somebody decides.
+   *
+   * A run that is gone, finished, cancelled, or already holding a gate is
+   * refused immediately rather than queued. One outstanding request at a time is
+   * what the state can express - `pendingApproval` is a field, not a list - and
+   * an agent that fires two actions at once should be told no to the second
+   * rather than have it silently applied later against a browser that has since
+   * moved.
+   */
+  private requestApproval(
+    runId: string,
+    toolName: string,
+    summary: string,
+    reason: string,
+    tabId: string | null
+  ): Promise<boolean> {
+    if (this.destroyed) return Promise.resolve(false);
+
+    const run = this.findRun(runId);
+    if (run === null || isTerminalStatus(run.status) || run.pendingApproval !== null) {
+      return Promise.resolve(false);
+    }
+
+    const id = `approval-${this.nextApprovalSequence++}`;
+    const request: ApprovalRequest = { id, runId, toolName, summary, reason, tabId };
+
+    this.updateRun(runId, (current) => ({ ...current, pendingApproval: request }));
+    this.appendStep(runId, "tool-call", summary, null, tabId);
+    this.setStatus(runId, "awaiting-approval");
+
+    return new Promise<boolean>((resolve) => {
+      const timer = setTimeout(() => this.expireGate(id), APPROVAL_TIMEOUT_MS);
+      // Node keeps the process alive for a pending timer, and a gate nobody
+      // answers must not be the reason the app will not quit.
+      timer.unref?.();
+      this.gates.set(id, { runId, resolve, timer });
+    });
+  }
+
+  /** Releases one waiting tool call. Unknown ids are already settled. */
+  private settleGate(approvalId: string, allowed: boolean): void {
+    const gate = this.gates.get(approvalId);
+    if (gate === undefined) return;
+
+    this.gates.delete(approvalId);
+    clearTimeout(gate.timer);
+    gate.resolve(allowed);
+  }
+
+  /** An unanswered gate becomes a refusal, and says so in the run. */
+  private expireGate(approvalId: string): void {
+    const gate = this.gates.get(approvalId);
+    if (gate === undefined) return;
+
+    const run = this.findRun(gate.runId);
+    if (run?.pendingApproval?.id === approvalId) {
+      this.updateRun(gate.runId, (current) => ({ ...current, pendingApproval: null }));
+      this.appendStep(
+        gate.runId,
+        "error",
+        `No answer to ${run.pendingApproval.toolName}, so it was refused.`,
+        null,
+        run.pendingApproval.tabId
+      );
+      if (!isTerminalStatus(run.status)) this.setStatus(gate.runId, "acting");
+    }
+
+    this.settleGate(approvalId, false);
+  }
+
+  private denyGatesFor(runId: string): void {
+    for (const [id, gate] of [...this.gates]) {
+      if (gate.runId === runId) this.settleGate(id, false);
+    }
   }
 
   /* --------------------------------------------------------------------- */
@@ -321,7 +599,7 @@ export class AgentManager {
    * Adds an agent and selects it.
    *
    * The id is minted here rather than accepted from the renderer, so every
-   * handle in the roster is app-minted — the assumption `requireIdentifier`
+   * handle in the roster is app-minted â€” the assumption `requireIdentifier`
    * encodes everywhere else. At the cap, the call is a no-op: the roster is
    * bounded in the contract, not by the renderer's restraint.
    */
@@ -336,7 +614,8 @@ export class AgentManager {
       provider: payload.provider,
       model: payload.model,
       baseUrl: payload.baseUrl,
-      command: payload.command
+      command: payload.command,
+      tuning: payload.tuning
     };
 
     this.companions = [...this.companions, companion];
@@ -357,7 +636,8 @@ export class AgentManager {
             provider: payload.provider,
             model: payload.model,
             baseUrl: payload.baseUrl,
-            command: payload.command
+            command: payload.command,
+            tuning: payload.tuning
           }
         : companion
     );
@@ -369,7 +649,7 @@ export class AgentManager {
    * Removes an agent, along with the runs that belong to it.
    *
    * The runs go because a run names its agent and nothing would resolve that
-   * name afterwards — `parsePersistedAgentState` already drops such runs on the
+   * name afterwards â€” `parsePersistedAgentState` already drops such runs on the
    * next load, so keeping them in memory would only make live state disagree
    * with restored state.
    *
@@ -461,7 +741,8 @@ export class AgentManager {
       payload.provider,
       payload.model,
       payload.baseUrl,
-      payload.command
+      payload.command,
+      payload.tuning
     );
     this.emit();
     return status;
@@ -536,13 +817,19 @@ export class AgentManager {
   }
 
   /**
-   * The scripted stand-in for the model loop.
+   * Drives one run from a task to an answer.
    *
-   * It exercises exactly the transitions the real loop will: plan, act, report,
-   * finish — checking for cancellation between steps, the way an interruptible
-   * turn must.
+   * This used to open with two written-out steps and a delay, standing in for a
+   * model loop that did not exist yet. It does now â€” the tool loop in
+   * `browser-agent.ts` on an API key, and the CLI's own loop over MCP â€” so the
+   * theatre is gone and every step in the log after this one is something that
+   * actually happened.
+   *
+   * What is left before the model is called is the one step the model cannot
+   * write: what it was asked, and which tabs it was given. That is the record of
+   * the grant, and it belongs in the log whether the provider answers or not.
    */
-  private async driveScriptedRun(runId: string, payload: StartRunPayload): Promise<void> {
+  private async driveRun(runId: string, payload: StartRunPayload): Promise<void> {
     const tabs = this.browser.snapshot().tabs;
     const context = payload.tabIds
       .map((tabId) => tabs.find((tab) => tab.id === tabId))
@@ -563,27 +850,29 @@ export class AgentManager {
     const target =
       route.command !== null
         ? `the ${route.command} command`
-        : `${route.provider} · ${route.model}${
+        : `${route.provider} Â· ${route.model}${
             route.baseUrl === null ? "" : ` at ${route.baseUrl}`
           }`;
     const routeLabel = `${target}${route.inherited ? " (from the orchestrator)" : ""}`;
 
-    const script: readonly (readonly [AgentStepKind, string, string | null])[] = [
-      ["thought", `Planning: ${payload.task}`, null],
-      [
-        "tool-result",
-        `Read context from ${contextLabel}.`,
-        context.map((tab) => `${tab.title} — ${tab.url}`).join("\n") || null
-      ]
-    ];
+    this.appendStep(
+      runId,
+      "thought",
+      `${payload.task}`,
+      /*
+       * Addresses rather than titles. A `thought` keeps its detail on disk, and
+       * a title is text the page chose - it belongs to the same class as the
+       * page's body, which this file is careful never to persist. The address is
+       * already in the session file, so naming it here adds nothing new.
+       */
+      context.length === 0
+        ? `Using ${routeLabel}. No tabs were granted, so the browser tools have nothing to look at.`
+        : `Using ${routeLabel}. Granted:\n${context.map((tab) => `${tab.id} â€” ${tab.url}`).join("\n")}`,
+      context.at(0)?.id ?? null
+    );
 
-    for (const [kind, label, detail] of script) {
-      await delay(220);
-      if (!this.isRunnable(runId)) return;
-      if (kind === "tool-result") this.setStatus(runId, "acting");
-      this.appendStep(runId, kind, label, detail, context.at(0)?.id ?? null);
-    }
-
+    if (!this.isRunnable(runId)) return;
+    this.setStatus(runId, "acting");
     if (!this.isRunnable(runId)) return;
 
     await this.callModel(runId, payload, route, routeLabel, contextLabel, context.at(0)?.id ?? null);
@@ -614,18 +903,39 @@ export class AgentManager {
   public async dispatch(
     companionId: string,
     prompt: string,
-    signal: AbortSignal
+    signal: AbortSignal,
+    /**
+     * The run to hand the browser to, and the tabs it was granted.
+     *
+     * Null means no session, which is what a plan step passes: a step is
+     * executed outside any `AgentRunState`, so there is nowhere to raise an
+     * approval and no panel showing one. Orchestrated work reaches the browser
+     * when the graph grows its own gate, not by borrowing a run's.
+     */
+    grant: { readonly runId: string; readonly tabIds: readonly string[] } | null = null
   ): Promise<ProviderResult> {
     const companion = this.companions.find((entry) => entry.id === companionId) ?? null;
     const route = resolvedProvider(companion, this.getConfig());
 
     if (route.command !== null) {
       if (this.command === null) return { ok: false, code: "unsupported-provider" };
-      try {
-        return await this.command({ command: route.command, prompt, signal });
-      } catch {
-        return { ok: false, code: "command-failed" };
-      }
+
+      const command = route.command;
+      const run = this.command;
+      return this.withBrowserSession(command, companion, grant, async (mcpConfigPath) => {
+        try {
+          return await run({
+            command,
+            prompt:
+              mcpConfigPath === null ? prompt : `${BROWSER_TOOL_BRIEFING}\n\n${prompt}`,
+            model: route.model,
+            signal,
+            mcpConfigPath
+          });
+        } catch {
+          return { ok: false, code: "command-failed" };
+        }
+      });
     }
 
     if (this.provider === null) return { ok: false, code: "unsupported-provider" };
@@ -641,10 +951,199 @@ export class AgentManager {
         // Read immediately before the call and handed straight on; never held.
         credential: this.secrets.readCredential(descriptor.id, companionId),
         prompt,
+        temperature: route.tuning.temperature,
         signal
       });
     } catch {
       return { ok: false, code: "network" };
+    }
+  }
+
+  /* --------------------------------------------------------------------- */
+  /* Trying a configuration                                                */
+  /* --------------------------------------------------------------------- */
+
+  /**
+   * Tries a route the user has typed but not yet applied.
+   *
+   * Deliberately not "test the saved configuration". The button exists to answer
+   * a question about a form, and testing what is already stored would answer a
+   * different one â€” leaving the user to apply a broken setting to find out.
+   *
+   * Nothing here is written. The stored credential is read exactly as a run
+   * reads it and handed straight to the port, and what comes back is a code:
+   * neither the key nor the provider's reply survives this method.
+   *
+   * A CLI route is not called at all. Running the program to see whether it runs
+   * would start a process, and possibly a billed session, to answer a question
+   * the user only asked about configuration â€” so the check is that the program
+   * is one this build will execute, which is the thing that actually varies.
+   */
+  public async testProvider(
+    payload: ProviderTestPayload,
+    signal: AbortSignal
+  ): Promise<ProviderTestResult> {
+    const descriptor = providerDescriptor(payload.provider);
+    if (descriptor === null) return { ok: false, code: "unsupported-provider" };
+
+    const startedAt = Date.now();
+
+    if (descriptor.transport === "cli") {
+      const command = payload.command ?? descriptor.defaultCommand;
+      if (command === null) return { ok: false, code: "unsupported-provider" };
+      if (this.command === null) return { ok: false, code: "unsupported-provider" };
+      return isAllowedCommand(command)
+        ? { ok: true, elapsedMs: Date.now() - startedAt }
+        : { ok: false, code: "command-not-allowed" };
+    }
+
+    if (this.provider === null) return { ok: false, code: "unsupported-provider" };
+
+    try {
+      const result = await this.provider({
+        provider: descriptor.id,
+        model: payload.model ?? descriptor.defaultModel,
+        baseUrl: payload.baseUrl,
+        credential: this.secrets.readCredential(descriptor.id, payload.companionId),
+        prompt: PROVIDER_TEST_PROMPT,
+        temperature: payload.tuning.temperature,
+        signal
+      });
+
+      // The text is discarded on purpose. That the provider answered at all is
+      // the entire result; what it said is remote content with nowhere to go.
+      return result.ok
+        ? { ok: true, elapsedMs: Date.now() - startedAt }
+        : { ok: false, code: result.code };
+    } catch {
+      return { ok: false, code: "network" };
+    }
+  }
+
+  /**
+   * One run's authority over the browser, for a model this process is driving.
+   *
+   * The same object an MCP client's session hands to the executor, built here
+   * because there is no separate process to mint a token for. The grant set is
+   * held in the closure rather than on the class: it belongs to this run, it
+   * lasts exactly as long as the loop does, and nothing else can widen it.
+   */
+  private browserToolSession(
+    runId: string,
+    tabIds: readonly string[],
+    agentName: string
+  ): BrowserToolSession {
+    const grants = new Set(tabIds);
+    const owned = new Set<string>();
+    /*
+     * Captured pages live and die with the run. Holding them here rather than
+     * beside the browser is what keeps a signed-in page's field values out of
+     * memory once the run that read them has finished, and what stops two runs
+     * resolving each other's references.
+     */
+    const snapshots = new SnapshotRegistry();
+
+    /*
+     * Asked once, then remembered â€” including a refusal, so a user who said no
+     * is not asked again every time the agent tries.
+     */
+    let interaction: Promise<boolean> | null = null;
+
+    return {
+      agentName,
+      granted: (tabId) => grants.has(tabId),
+      grant: (tabId) => {
+        grants.add(tabId);
+        owned.add(tabId);
+      },
+      ownTabs: () => owned,
+      snapshots,
+      approve: (toolName, summary, reason, tabId) =>
+        this.requestApproval(runId, toolName, summary, reason, tabId),
+      mayInteract: () => {
+        interaction ??= this.requestApproval(
+          runId,
+          "interact",
+          interactionConsentSummary(agentName, grants.size),
+          interactionConsentReason(),
+          null
+        );
+        return interaction;
+      }
+    };
+  }
+
+  /** Turns what the loop did into steps the user can read. */
+  private recordAgentEvent(runId: string, event: BrowserAgentEvent): void {
+    if (event.kind === "thought") {
+      this.appendStep(runId, "thought", event.text, null, null);
+      return;
+    }
+
+    if (event.kind === "tool-call") {
+      this.appendStep(runId, "tool-call", `Using ${event.tool}`, event.detail, event.tabId);
+      return;
+    }
+
+    this.appendStep(
+      runId,
+      event.failed ? "error" : "tool-result",
+      event.failed ? `${event.tool} did not succeed` : `${event.tool} answered`,
+      event.detail,
+      event.tabId
+    );
+  }
+
+  /**
+   * Opens a browser session around one call, and closes it afterwards.
+   *
+   * The session's lifetime is the call's lifetime, exactly. That is the point:
+   * the token it mints authenticates nothing once the child that was given it
+   * has exited, and the config file carrying that token is removed on the way
+   * out - so a config left on disk by a crash is a file naming a dead port and a
+   * revoked secret rather than a way in.
+   *
+   * A session that cannot be opened is not an error. The body runs with no
+   * config path, which is the call this adapter made before the browser existed:
+   * a coding CLI with no tools still answers the question it was asked.
+   */
+  private async withBrowserSession<T>(
+    command: string,
+    companion: AgentCompanion | null,
+    grant: { readonly runId: string; readonly tabIds: readonly string[] } | null,
+    body: (mcpConfigPath: string | null) => Promise<T>
+  ): Promise<T> {
+    const sessions = this.browserSessions;
+    if (grant === null || sessions === null || !this.supportsBrowserTools(command)) {
+      return body(null);
+    }
+
+    let session: BrowserSessionHandle | null = null;
+    try {
+      session = await sessions({
+        // Named in every gate, so the user is told which of their agents is
+        // asking rather than being asked to trust "an agent".
+        agentName: companion?.name ?? "An agent",
+        tabIds: grant.tabIds,
+        approve: (toolName, summary, reason, tabId) =>
+          this.requestApproval(grant.runId, toolName, summary, reason, tabId)
+      });
+    } catch {
+      session = null;
+    }
+
+    try {
+      return await body(session === null ? null : session.configPath);
+    } finally {
+      session?.close();
+      // The child is gone. Anything still waiting on this run's gate is waiting
+      // for a process that will never read the answer, and leaving the run
+      // parked on `awaiting-approval` would show the user a decision that no
+      // longer decides anything.
+      this.denyGatesFor(grant.runId);
+      if (this.findRun(grant.runId)?.pendingApproval != null) {
+        this.updateRun(grant.runId, (current) => ({ ...current, pendingApproval: null }));
+      }
     }
   }
 
@@ -667,6 +1166,9 @@ export class AgentManager {
       return;
     }
 
+    const companion =
+      this.companions.find((entry) => entry.id === payload.companionId) ?? null;
+
     /*
      * A CLI route starts a program on this machine rather than making a
      * request, so it takes its own port. Both end in the same `ProviderResult`,
@@ -688,13 +1190,33 @@ export class AgentManager {
       const controller = new AbortController();
       this.inFlight.set(runId, controller);
 
+      const command = route.command;
+      const runCommand = this.command;
+
+      /*
+       * The one place a run is handed the browser. The grant is the run's own
+       * id and the tabs the user picked when they started it - not every tab
+       * that happens to be open - so what an agent can see is what somebody
+       * chose to show it.
+       */
       let outcome: ProviderResult;
       try {
-        outcome = await this.command({
-          command: route.command,
-          prompt: payload.task,
-          signal: controller.signal
-        });
+        outcome = await this.withBrowserSession(
+          command,
+          companion,
+          { runId, tabIds: payload.tabIds },
+          (mcpConfigPath) =>
+            runCommand({
+              command,
+              prompt:
+                mcpConfigPath === null
+                  ? payload.task
+                  : `${BROWSER_TOOL_BRIEFING}\n\n${payload.task}`,
+              model: route.model,
+              signal: controller.signal,
+              mcpConfigPath
+            })
+        );
       } catch {
         outcome = { ok: false, code: "command-failed" };
       } finally {
@@ -730,6 +1252,66 @@ export class AgentManager {
     const controller = new AbortController();
     this.inFlight.set(runId, controller);
 
+    /*
+     * An agent on an API key drives the browser too.
+     *
+     * The route has no separate process to hand a socket to, so the tool loop
+     * runs here instead: the tools go out with the request, a reply asking for
+     * one is executed against the same session an MCP client would have got,
+     * and the answer goes back on the next turn. `runNamedBrowserTool` is the
+     * shared floor under both, which is what makes "the same tools, the same
+     * grants, the same gate" a fact about the code rather than an intention.
+     */
+    if (this.providerTurn !== null) {
+      const turn = this.providerTurn;
+      const session = this.browserToolSession(runId, payload.tabIds, companion?.name ?? "An agent");
+
+      let outcome: ProviderResult;
+      try {
+        outcome = await runBrowserAgent({
+          // Bounded here rather than in the transport, because the transport
+          // now renders a transcript and slicing the middle of one would cut a
+          // tool result away from the call it answers.
+          task: `${payload.task}\n\nOpen tabs: ${contextLabel}`.slice(0, MAX_PROMPT_LENGTH),
+          signal: controller.signal,
+          contextWindow: route.tuning.contextWindow,
+          turn: (messages, withTools, signal) =>
+            turn({
+              provider: descriptor.id,
+              model: route.model,
+              baseUrl: route.baseUrl,
+              credential,
+              messages,
+              tools: withTools ? BROWSER_TOOLS : [],
+              system: withTools ? BROWSER_TOOL_BRIEFING : null,
+              temperature: route.tuning.temperature,
+              signal
+            }),
+          runTool: (call) =>
+            runNamedBrowserTool(
+              this.browser,
+              session,
+              call.name,
+              call.arguments,
+              this.toolOptions
+            ),
+          record: (event) => this.recordAgentEvent(runId, event)
+        });
+      } catch {
+        outcome = { ok: false, code: "network" };
+      } finally {
+        this.inFlight.delete(runId);
+        this.denyGatesFor(runId);
+        if (this.findRun(runId)?.pendingApproval != null) {
+          this.updateRun(runId, (current) => ({ ...current, pendingApproval: null }));
+        }
+      }
+
+      if (!this.isRunnable(runId)) return;
+      this.reportOutcome(runId, outcome, routeLabel, tabId, descriptor.label);
+      return;
+    }
+
     let result: ProviderResult;
     try {
       result = await this.provider({
@@ -740,6 +1322,7 @@ export class AgentManager {
         // The context is named, not pasted: a page's whole text is not the
         // agent's to send anywhere until context grants exist.
         prompt: `${payload.task}\n\nOpen tabs: ${contextLabel}`,
+        temperature: route.tuning.temperature,
         signal: controller.signal
       });
     } catch {
@@ -794,7 +1377,7 @@ export class AgentManager {
     try {
       // Strip a byte-order mark, which an editor or sync tool could introduce
       // and which would otherwise discard the whole file.
-      const text = readFileSync(this.statePath, "utf8").replace(/^﻿/u, "");
+      const text = readFileSync(this.statePath, "utf8").replace(/^ï»¿/u, "");
       return JSON.parse(text) as unknown;
     } catch {
       return null;
@@ -810,8 +1393,3 @@ export class AgentManager {
   }
 }
 
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms);
-  });
-}

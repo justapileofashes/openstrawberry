@@ -27,6 +27,7 @@ import { readFileSync, rmSync } from "node:fs";
 import { writeFileAtomically } from "./atomic-write.js";
 import {
   emptyAgentProfile,
+  emptyTuning,
   parseAgentProfile,
   providerDescriptor,
   PROVIDERS,
@@ -34,6 +35,7 @@ import {
   type AgentCredentialStatus,
   type AgentProfile,
   type EncryptionState,
+  type ModelTuning,
   type ProviderId,
   type ProviderStatus
 } from "../shared/agents.js";
@@ -195,6 +197,7 @@ export class SecretStore {
       model: this.profile.model,
       baseUrl: this.profile.baseUrl,
       command: this.profile.command,
+      tuning: this.profile.tuning,
       encryption: this.encryptionState(),
       providers,
       agentCredentials
@@ -338,9 +341,10 @@ export class SecretStore {
     provider: ProviderId,
     model: string,
     baseUrl: string | null = null,
-    command: string | null = null
+    command: string | null = null,
+    tuning: ModelTuning = emptyTuning()
   ): AgentConfigStatus {
-    this.writeProfile({ ...this.profile, provider, model, baseUrl, command });
+    this.writeProfile({ ...this.profile, provider, model, baseUrl, command, tuning });
     return this.status();
   }
 

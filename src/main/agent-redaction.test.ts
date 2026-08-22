@@ -20,7 +20,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { AgentManager, type BrowserPort } from "./agent-manager.js";
 import { SecretStore, type CipherPort } from "./secret-store.js";
 import { redactErrorForRenderer } from "./ipc-security.js";
-import { parseStartRunPayload } from "../shared/agents.js";
+import { parseResolveApprovalPayload, parseStartRunPayload } from "../shared/agents.js";
 import type { BrowserSnapshot } from "../shared/browser.js";
 
 /**
@@ -71,7 +71,12 @@ const browser: BrowserPort = {
   createTab: () => EMPTY_BROWSER,
   closeTab: () => EMPTY_BROWSER,
   navigate: () => EMPTY_BROWSER,
-  contentsFor: () => null
+  goBack: () => EMPTY_BROWSER,
+  goForward: () => EMPTY_BROWSER,
+  reload: () => EMPTY_BROWSER,
+  contentsFor: () => null,
+  generationFor: () => 0,
+  viewportFor: () => ({ width: 1200, height: 800 })
 };
 
 let directory = "";
@@ -232,6 +237,154 @@ describe("credential redaction", () => {
     expect(state).toContain("use this key");
     expectNoSecrets(state, "agents.json after a task containing a key");
     expectNoSecrets(manager.snapshot(), "snapshot after a task containing a key");
+  });
+
+  it("keeps the key out of a run that drove the browser", async () => {
+    /*
+     * The route that reaches a provider with tools attached is the newest way a
+     * credential travels, and the one with the most places for it to land: a
+     * transcript, a tool argument, a tool result, and a step written for each.
+     * The key goes in at the port, as it must, and nothing downstream of that
+     * may carry it.
+     */
+    const secrets = new SecretStore({
+      credentialPath: join(directory, "agent-credentials.enc"),
+      profilePath: join(directory, "agent-profile.json"),
+      cipher: bufferCipher()
+    });
+
+    secrets.setCredential("anthropic", SECRET);
+    secrets.setOrchestrator("anthropic", "claude-opus-5", null, null);
+
+    let sawCredential = false;
+    let step = 0;
+
+    const manager = new AgentManager({
+      statePath: join(directory, "agents.json"),
+      browser,
+      secrets,
+      publish: (snapshot) => published.push(snapshot),
+      provider: () => Promise.resolve({ ok: false, code: "network" }),
+      providerTurn: (request) => {
+        // The credential does reach the transport. That is the whole point of
+        // the transport, and it is the last place it is allowed to be.
+        if (request.credential === SECRET) sawCredential = true;
+
+        step += 1;
+        return Promise.resolve(
+          step === 1
+            ? {
+                ok: true,
+                reply: {
+                  text: "Looking at the tab.",
+                  toolCalls: [{ id: "c1", name: "list_tabs", arguments: {} }]
+                }
+              }
+            : { ok: true, reply: { text: "One tab is open.", toolCalls: [] } }
+        );
+      }
+    });
+
+    manager.restore();
+
+    const companion = manager.snapshot().companions[0];
+    manager.startRun(
+      parseStartRunPayload({
+        companionId: companion?.id ?? "",
+        task: "what is open",
+        tabIds: ["tab-1"]
+      })
+    );
+
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    manager.destroy();
+
+    expect(sawCredential).toBe(true);
+    expectNoSecrets(manager.snapshot(), "snapshot after a browser run");
+    expectNoSecrets(filesOnDisk(), "files on disk after a browser run");
+    for (const snapshot of published) expectNoSecrets(snapshot, "pushed snapshot");
+  });
+
+  it("keeps a page's own words off disk, however the tool answered", async () => {
+    /*
+     * A different canary from the credential ones, for a different rule: the
+     * contents of a signed-in page must not outlive the window in plain JSON.
+     * Both halves are checked, because a failed tool result and a successful one
+     * take different paths into the log - and the `run` tool made the failed one
+     * reachable by text a script wrote rather than by wording this app holds.
+     */
+    const PAGE_CANARY = "PAGE-CONTENT-CANARY-account-balance-4471";
+
+    const secrets = new SecretStore({
+      credentialPath: join(directory, "agent-credentials.enc"),
+      profilePath: join(directory, "agent-profile.json"),
+      cipher: bufferCipher()
+    });
+    secrets.setOrchestrator("anthropic", "claude-opus-5", null, null);
+
+    let step = 0;
+    const manager = new AgentManager({
+      statePath: join(directory, "agents.json"),
+      browser,
+      secrets,
+      publish: (snapshot) => published.push(snapshot),
+      provider: () => Promise.resolve({ ok: false, code: "network" }),
+      providerTurn: () => {
+        step += 1;
+        return Promise.resolve(
+          step === 1
+            ? {
+                ok: true,
+                reply: {
+                  text: "Collecting it.",
+                  toolCalls: [
+                    { id: "c1", name: "run", arguments: { script: "return browser.list_tabs();" } }
+                  ]
+                }
+              }
+            : { ok: true, reply: { text: "Done.", toolCalls: [] } }
+        );
+      },
+      scriptRunner: {
+        // Stands in for a script that put page text on its failure path, which
+        // is the one result body this application does not author itself.
+        run: () => Promise.resolve({ text: PAGE_CANARY, isError: true, image: null })
+      }
+    });
+
+    manager.restore();
+    const companion = manager.snapshot().companions[0];
+    manager.startRun(
+      parseStartRunPayload({
+        companionId: companion?.id ?? "",
+        task: "read it",
+        tabIds: ["tab-1"]
+      })
+    );
+
+    /*
+     * `run` stops for the once-per-run interaction consent, and nothing here is
+     * a user. Answering it is what lets the script actually run, which is what
+     * makes this test check the path rather than the refusal of it.
+     */
+    let allowed = false;
+    for (let attempt = 0; attempt < 40 && !allowed; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      const approval = manager.snapshot().runs.at(-1)?.pendingApproval ?? null;
+      if (approval === null) continue;
+      manager.resolveApproval(
+        parseResolveApprovalPayload({ approvalId: approval.id, decision: "allow" })
+      );
+      allowed = true;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 400));
+
+    // The canary did travel: it is in the live log, which is what the panel shows.
+    expect(JSON.stringify(manager.snapshot())).toContain(PAGE_CANARY);
+
+    manager.destroy();
+    expect(filesOnDisk()).not.toContain(PAGE_CANARY);
   });
 
   it("keeps the key out of redacted error text", () => {

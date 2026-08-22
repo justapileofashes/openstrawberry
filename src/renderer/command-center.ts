@@ -10,20 +10,28 @@
 import {
   defaultCommandFor,
   defaultModelFor,
+  emptyTuning,
   hasOwnCredential,
+  resolveTuning,
   MAX_AGENTS,
   MAX_AGENT_NAME_LENGTH,
   MAX_BASE_URL_LENGTH,
   MAX_COMMAND_LENGTH,
+  MAX_CONTEXT_WINDOW,
   MAX_MODEL_LENGTH,
+  MAX_PROVIDER_LABEL_LENGTH,
+  MAX_TEMPERATURE,
+  MIN_CONTEXT_WINDOW,
   providerDescriptor,
   resolvedProvider,
   type AgentCompanion,
   type AgentConfigStatus,
+  type ModelTuning,
   type ProviderId,
   type ProviderStatus
 } from "../shared/agents.js";
-import type { CompanionDraft } from "../shared/bridge.js";
+import type { CompanionDraft, ProviderTestRequest } from "../shared/bridge.js";
+import type { ProviderErrorCode } from "../shared/provider-request.js";
 import { providerLabel } from "./agent-chrome.js";
 
 /**
@@ -41,6 +49,148 @@ export interface AgentDraft {
   readonly model: string;
   readonly baseUrl: string;
   readonly command: string;
+  readonly tuning: TuningDraft;
+}
+
+/**
+ * Model settings as the form holds them.
+ *
+ * Text rather than numbers, for the same reason `model` is a string here: a
+ * number input hands back `""` while it is being cleared and `NaN` while it is
+ * being typed into, and a draft that stores either has already lost the
+ * difference between "empty" and "invalid". The conversion happens once, at
+ * `toModelTuning`, where both are handled deliberately.
+ *
+ * `supportsImages` is the exception, because a checkbox genuinely has two
+ * states — but it is nullable all the same, since a draft with no provider
+ * chosen has not answered the question.
+ */
+export interface TuningDraft {
+  readonly providerLabel: string;
+  readonly supportsImages: boolean | null;
+  readonly contextWindow: string;
+  readonly temperature: string;
+}
+
+export function emptyTuningDraft(): TuningDraft {
+  return {
+    providerLabel: "",
+    supportsImages: null,
+    contextWindow: "",
+    temperature: ""
+  };
+}
+
+/** The saved settings, as the form holds them. Nulls become empty boxes. */
+export function tuningDraftFrom(tuning: ModelTuning): TuningDraft {
+  return {
+    providerLabel: tuning.providerLabel ?? "",
+    supportsImages: tuning.supportsImages,
+    contextWindow: tuning.contextWindow === null ? "" : String(tuning.contextWindow),
+    temperature: tuning.temperature === null ? "" : String(tuning.temperature)
+  };
+}
+
+/**
+ * What the settings become when a provider is chosen.
+ *
+ * The two the preset actually knows are prefilled, and the two it cannot know
+ * are left empty. Called on every provider change, so a window belonging to one
+ * provider never survives into another — the same rule the model, endpoint, and
+ * command already follow.
+ */
+export function tuningDraftFor(provider: ProviderId | null): TuningDraft {
+  const descriptor = provider === null ? null : providerDescriptor(provider);
+  if (descriptor === null) return emptyTuningDraft();
+
+  return {
+    providerLabel: "",
+    supportsImages: descriptor.supportsImages,
+    contextWindow:
+      descriptor.defaultContextWindow === null
+        ? ""
+        : String(descriptor.defaultContextWindow),
+    temperature: ""
+  };
+}
+
+/**
+ * True when the box holds a context window the contract will accept.
+ *
+ * Empty is valid and means "the provider's own". Anything else has to be a
+ * whole number of tokens in range, checked here so the Apply button is honest
+ * rather than firing a write that is guaranteed to be rejected.
+ */
+export function isValidContextWindow(text: string): boolean {
+  const value = text.trim();
+  if (value.length === 0) return true;
+  if (!/^\d+$/u.test(value)) return false;
+
+  const parsed = Number(value);
+  return (
+    Number.isSafeInteger(parsed) &&
+    parsed >= MIN_CONTEXT_WINDOW &&
+    parsed <= MAX_CONTEXT_WINDOW
+  );
+}
+
+/** True when the box holds a temperature the contract will accept. Empty is fine. */
+export function isValidTemperature(text: string): boolean {
+  const value = text.trim();
+  if (value.length === 0) return true;
+  if (!/^\d+(\.\d+)?$/u.test(value)) return false;
+
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 && parsed <= MAX_TEMPERATURE;
+}
+
+/** True when the name box holds something short enough to store. Empty is fine. */
+export function isValidProviderLabel(text: string): boolean {
+  return text.trim().length <= MAX_PROVIDER_LABEL_LENGTH;
+}
+
+/** Whether every model setting in this draft would be accepted. */
+export function canSaveTuning(draft: TuningDraft): boolean {
+  return (
+    isValidProviderLabel(draft.providerLabel) &&
+    isValidContextWindow(draft.contextWindow) &&
+    isValidTemperature(draft.temperature)
+  );
+}
+
+/**
+ * The contract shape, with the form's empty boxes normalised back to null.
+ *
+ * Null throughout for a draft with no provider: an agent that follows the
+ * orchestrator follows its settings too, and sending half of its own would be
+ * storing a temperature against a route it does not control.
+ */
+export function toModelTuning(
+  provider: ProviderId | null,
+  draft: TuningDraft
+): ModelTuning {
+  if (provider === null) return emptyTuning();
+
+  const label = draft.providerLabel.trim();
+  const contextWindow = draft.contextWindow.trim();
+  const temperature = draft.temperature.trim();
+
+  return {
+    // A name identical to the provider's own is not a name the user gave; it is
+    // the placeholder they left alone, and storing it would pin the label
+    // against a preset that may be renamed later.
+    providerLabel:
+      label.length === 0 || label === providerName(provider) ? null : label,
+    supportsImages: draft.supportsImages,
+    contextWindow:
+      contextWindow.length === 0 || !isValidContextWindow(contextWindow)
+        ? null
+        : Number(contextWindow),
+    temperature:
+      temperature.length === 0 || !isValidTemperature(temperature)
+        ? null
+        : Number(temperature)
+  };
 }
 
 /** The model charset the contract enforces, checked here so the form can too. */
@@ -65,7 +215,15 @@ export function slugifyRole(text: string): string {
 }
 
 export function emptyDraft(): AgentDraft {
-  return { name: "", role: "", provider: null, model: "", baseUrl: "", command: "" };
+  return {
+    name: "",
+    role: "",
+    provider: null,
+    model: "",
+    baseUrl: "",
+    command: "",
+    tuning: emptyTuningDraft()
+  };
 }
 
 export function draftFrom(companion: AgentCompanion): AgentDraft {
@@ -75,7 +233,8 @@ export function draftFrom(companion: AgentCompanion): AgentDraft {
     provider: companion.provider,
     model: companion.model ?? "",
     baseUrl: companion.baseUrl ?? "",
-    command: companion.command ?? ""
+    command: companion.command ?? "",
+    tuning: tuningDraftFrom(companion.tuning)
   };
 }
 
@@ -177,7 +336,8 @@ export function canSaveAgent(draft: AgentDraft): boolean {
   // Blank is fine — it means the preset's command. Typed-and-wrong is not.
   const command = draft.command.trim();
   if (draftIsCli(draft) && command.length > 0 && !isValidCommand(command)) return false;
-  return true;
+
+  return canSaveTuning(draft.tuning);
 }
 
 /** The contract shape, with the form's empty strings normalised back to null. */
@@ -196,7 +356,8 @@ export function toCompanionDraft(draft: AgentDraft): CompanionDraft {
     baseUrl: draftNeedsBaseUrl(draft) && baseUrl.length > 0 ? baseUrl : null,
     // Likewise a program: an executable path stored against an HTTP provider is
     // config nothing reads, waiting for a future adapter to find it.
-    command: draftIsCli(draft) && command.length > 0 ? command : null
+    command: draftIsCli(draft) && command.length > 0 ? command : null,
+    tuning: toModelTuning(draft.provider, draft.tuning)
   };
 }
 
@@ -251,6 +412,7 @@ export interface OrchestratorDraft {
   readonly model: string;
   readonly baseUrl: string;
   readonly command: string;
+  readonly tuning: TuningDraft;
 }
 
 /** The saved orchestrator, as the form holds it. */
@@ -260,7 +422,8 @@ export function orchestratorDraftFrom(config: AgentConfigStatus): OrchestratorDr
     provider: descriptor?.id ?? "anthropic",
     model: config.model,
     baseUrl: config.baseUrl ?? "",
-    command: config.command ?? ""
+    command: config.command ?? "",
+    tuning: tuningDraftFrom(config.tuning)
   };
 }
 
@@ -297,12 +460,36 @@ export function canSaveOrchestrator(
   const command = isCli ? draft.command.trim() : "";
   if (command.length > 0 && !isValidCommand(command)) return false;
 
+  if (!canSaveTuning(draft.tuning)) return false;
+
   const baseUrl = orchestratorNeedsBaseUrl(draft) ? draft.baseUrl.trim() : "";
   return (
     draft.provider !== config.provider ||
     model !== config.model ||
     baseUrl !== (config.baseUrl ?? "") ||
-    command !== (config.command ?? "")
+    command !== (config.command ?? "") ||
+    tuningChanged(draft.provider, draft.tuning, config.tuning)
+  );
+}
+
+/**
+ * Whether the model settings differ from what is stored.
+ *
+ * Compared after normalisation rather than field by field, so a box holding
+ * "0.20" and a stored 0.2 are the same setting — otherwise Apply would stay lit
+ * after a save and invite the user to wonder whether it landed.
+ */
+export function tuningChanged(
+  provider: ProviderId | null,
+  draft: TuningDraft,
+  saved: ModelTuning
+): boolean {
+  const next = toModelTuning(provider, draft);
+  return (
+    next.providerLabel !== saved.providerLabel ||
+    next.supportsImages !== saved.supportsImages ||
+    next.contextWindow !== saved.contextWindow ||
+    next.temperature !== saved.temperature
   );
 }
 
@@ -366,18 +553,88 @@ export function routeSummary(
 ): string {
   const route = resolvedProvider(companion, config);
   const inherited = route.inherited ? " · follows orchestrator" : "";
+  /*
+   * The name the user gave this configuration, falling back to the provider's
+   * own. This is the line where it earns its keep: two agents on two different
+   * machines both reading "OpenAI-compatible" is the exact confusion the field
+   * exists to prevent, and the roster is where they are read side by side.
+   */
+  const name = route.tuning.providerLabel;
 
   // A CLI route names the program, because that is what would run — and the
   // model is the tool's business unless it was explicitly overridden.
   if (route.command !== null) {
     const model = route.model.length === 0 ? "" : ` · ${route.model}`;
-    return `${providerName(route.provider)} · ${route.command}${model}${inherited}`;
+    return `${name} · ${route.command}${model}${inherited}`;
   }
 
   const model = route.model.length === 0 ? "no model set" : route.model;
   const host = route.baseUrl === null ? "" : ` · ${hostOf(route.baseUrl)}`;
 
-  return `${providerName(route.provider)} · ${model}${host}${inherited}`;
+  return `${name} · ${model}${host}${inherited}`;
+}
+
+/**
+ * The orchestrator's own line, with nothing said about following.
+ *
+ * `routeSummary(null, config)` resolves through the inherit path and so ends in
+ * "follows orchestrator" — true of an agent reading that line, and nonsense on
+ * the orchestrator's own row, which is the thing being followed. Two callers
+ * need the plain line: that row, and the "Follows the orchestrator · …" summary
+ * an unpinned agent shows, where the suffix would say it twice.
+ */
+export function orchestratorRouteSummary(config: AgentConfigStatus): string {
+  const command = config.command ?? defaultCommandFor(config.provider);
+  const name = resolveTuning(config.provider, config.tuning).providerLabel;
+
+  if (command !== null) {
+    const model = config.model.length === 0 ? "" : ` · ${config.model}`;
+    return `${name} · ${command}${model}`;
+  }
+
+  const model = config.model.length === 0 ? "no model set" : config.model;
+  const host = config.baseUrl === null ? "" : ` · ${hostOf(config.baseUrl)}`;
+
+  return `${name} · ${model}${host}`;
+}
+
+/**
+ * The same line, for a route that is still being edited.
+ *
+ * `routeSummary` reads a saved agent, and an unsaved draft has no saved agent to
+ * read — so the panel behind the dialog would otherwise describe the route the
+ * user just changed away from.
+ */
+export function draftRouteSummary(
+  draft: AgentDraft,
+  config: AgentConfigStatus
+): string {
+  // Said once, at the front, where it answers the row's own question. The
+  // orchestrator's line is taken plain so the sentence does not end by
+  // repeating what it opened with.
+  if (draft.provider === null) {
+    return `Follows the orchestrator · ${orchestratorRouteSummary(config)}`;
+  }
+
+  const tuning = toModelTuning(draft.provider, draft.tuning);
+  const name = tuning.providerLabel ?? providerName(draft.provider);
+  const model = draft.model.trim();
+  const baseUrl = draft.baseUrl.trim();
+  const command = draft.command.trim();
+
+  if (draftIsCli(draft)) {
+    const program = command.length > 0 ? command : defaultCommandFor(draft.provider) ?? "";
+    const named = model.length === 0 ? "" : ` · ${model}`;
+    return `${name} · ${program}${named}`;
+  }
+
+  const named =
+    model.length > 0
+      ? model
+      : defaultModelFor(draft.provider) || "no model set";
+  const host = baseUrl.length === 0 ? "" : ` · ${hostOf(baseUrl)}`;
+
+  return `${name} · ${named}${host}`;
 }
 
 /** The host of an endpoint, for a summary line that has no room for the rest. */
@@ -412,6 +669,128 @@ export function draftCommandPlaceholder(draft: AgentDraft): string {
   if (draft.provider === null) return "";
   return defaultCommandFor(draft.provider) ?? "";
 }
+
+/**
+ * What the empty context-window box should say.
+ *
+ * The preset's number where there is one, and an honest admission where there
+ * is not. A compatible endpoint serves whatever its operator loaded, so an
+ * invented figure there would be a guess wearing the authority of a default.
+ */
+export function contextWindowPlaceholder(provider: ProviderId | null): string {
+  if (provider === null) return "Follows the orchestrator";
+
+  const descriptor = providerDescriptor(provider);
+  if (descriptor === null) return "";
+  if (descriptor.transport === "cli") return "Managed by the CLI";
+  return descriptor.defaultContextWindow === null
+    ? "Optional — the model's window in tokens"
+    : String(descriptor.defaultContextWindow);
+}
+
+/* ------------------------------------------------------------------------- */
+/* Trying a configuration                                                     */
+/* ------------------------------------------------------------------------- */
+
+/**
+ * What a test is doing, or what it found.
+ *
+ * `idle` is a distinct state rather than a null result, because "not tried" and
+ * "tried and came back clean" must not look alike on a button the user is about
+ * to trust.
+ */
+export type TestState =
+  | { readonly kind: "idle" }
+  | { readonly kind: "running" }
+  | { readonly kind: "passed"; readonly elapsedMs: number }
+  | { readonly kind: "failed"; readonly code: ProviderErrorCode };
+
+/**
+ * Wording for every way a test can fail.
+ *
+ * Held here rather than taken from the provider, for the same reason the run log
+ * holds its own: an error body is remote content, and a settings dialog is the
+ * last place it should be rendered. Each line says what the user can do next
+ * where there is something to do.
+ */
+const TEST_FAILURE_TEXT: Readonly<Record<ProviderErrorCode, string>> = {
+  "no-credential": "No key is stored for this provider yet.",
+  "unsupported-provider": "This build has no transport for that provider.",
+  "bad-endpoint": "That base URL is not a usable https address.",
+  network: "The request did not complete. Check the endpoint and your connection.",
+  timeout: "The provider did not answer in time.",
+  redirected: "The endpoint redirected the request, which is refused.",
+  unauthorised: "The stored key was rejected.",
+  "rate-limited": "The provider is rate limiting requests. Try again shortly.",
+  "provider-error": "The provider returned an error. Check the model name.",
+  "malformed-reply": "The reply could not be read as a completion.",
+  "too-large": "The reply was larger than this app will read.",
+  cancelled: "The test was cancelled.",
+  "command-not-allowed": "That program is not one this app will run.",
+  "command-failed": "The command did not run successfully.",
+  "no-output": "The command printed nothing."
+};
+
+/**
+ * One line describing where a test got to. Null while nothing has been tried.
+ *
+ * `route` is what the pass line turns on, and it has to: a CLI route is checked
+ * rather than called, so reporting that a provider answered — and how fast —
+ * would describe a request that was never made. The two outcomes are not the
+ * same claim, and the wording is where that has to show.
+ */
+export function testSummary(
+  state: TestState,
+  route: { readonly isCli: boolean; readonly command: string } = {
+    isCli: false,
+    command: ""
+  }
+): string | null {
+  switch (state.kind) {
+    case "idle":
+      return null;
+    case "running":
+      return route.isCli ? "Checking this program…" : "Trying this configuration…";
+    case "passed":
+      return route.isCli
+        ? `${route.command || "That program"} is a program this build will run.`
+        : `The provider answered in ${Math.max(1, Math.round(state.elapsedMs))} ms.`;
+    case "failed":
+      return TEST_FAILURE_TEXT[state.code];
+  }
+}
+
+/**
+ * Whether this configuration is complete enough to be worth trying.
+ *
+ * The same rules that gate Apply, because a test of a configuration that could
+ * not be saved answers a question about a route that will never exist.
+ */
+export function canTestAgent(draft: AgentDraft): boolean {
+  return draft.provider !== null && canSaveAgent(draft);
+}
+
+/** The test request for an agent's form, including whose key to authenticate with. */
+export function agentTestRequest(
+  draft: AgentDraft,
+  companionId: string | null
+): ProviderTestRequest | null {
+  if (draft.provider === null) return null;
+
+  const model = draft.model.trim();
+  const baseUrl = draft.baseUrl.trim();
+  const command = draft.command.trim();
+
+  return {
+    provider: draft.provider,
+    model: model.length === 0 ? null : model,
+    baseUrl: draftNeedsBaseUrl(draft) && baseUrl.length > 0 ? baseUrl : null,
+    command: draftIsCli(draft) && command.length > 0 ? command : null,
+    tuning: toModelTuning(draft.provider, draft.tuning),
+    companionId
+  };
+}
+
 
 /* ------------------------------------------------------------------------- */
 /* Per-agent credentials                                                      */

@@ -19,6 +19,7 @@ import {
   X
 } from "lucide-react";
 import type { BrowserPaneId, BrowserSnapshot } from "../shared/browser.js";
+import { MAX_BUBBLE_TEXT_LENGTH } from "../shared/bubble.js";
 import { BLANK_PAGE, usesCustomWindowControls } from "../shared/desktop-shell.js";
 import { shouldOfferWizard, type MigrationOverview } from "../shared/migration.js";
 import { emptyDownloadSnapshot, type DownloadSnapshot } from "../shared/downloads.js";
@@ -74,24 +75,93 @@ const EMPTY_SNAPSHOT: BrowserSnapshot = {
   groups: []
 };
 
-/** Icon-only control with a hover and keyboard-focus text bubble. */
+/**
+ * Hover text for a control whose bubble would land on a page.
+ *
+ * A bubble is normally just DOM, and the stylesheet keeps it inside the chrome's
+ * own bands, because a page is a native view the compositor draws above this
+ * document. Two places have no band to stay inside: the tab rail, which is 56px
+ * of chrome with a pane immediately beside it, and the pane head, which has a
+ * page directly beneath it. Their bubbles are drawn by a window the trusted
+ * process holds above the chrome instead.
+ *
+ * The element still exists here, and is still placed by the same stylesheet —
+ * it is simply never painted. Measuring it is how the bubble's position and size
+ * are decided, so the CSS remains the one place that knows where a bubble goes,
+ * and the window is only a surface to paint the result on.
+ */
+function showDetachedBubble(host: HTMLElement): void {
+  const element = host.querySelector<HTMLElement>(".bubble");
+  if (element === null) return;
+
+  const text = element.textContent ?? "";
+  const rect = element.getBoundingClientRect();
+  if (text.length === 0 || rect.width < 1 || rect.height < 1) return;
+
+  /*
+   * Rounded outward. The window is sized to what this reports and the text is
+   * drawn into it at the same size, so a fractional width rounded down would
+   * clip the last letter of every other label.
+   */
+  void window.openstrawberry.bubbles
+    .show(text.slice(0, MAX_BUBBLE_TEXT_LENGTH), {
+      x: Math.round(rect.x),
+      y: Math.round(rect.y),
+      width: Math.ceil(rect.width),
+      height: Math.ceil(rect.height)
+    })
+    .catch(() => {
+      // Hover text that could not be drawn is not worth telling anyone about.
+    });
+}
+
+function hideDetachedBubble(): void {
+  void window.openstrawberry.bubbles.hide().catch(() => {
+    // As above: there is nothing to recover and nothing to report.
+  });
+}
+
+/**
+ * Spread onto the host of a detached bubble.
+ *
+ * `pointerdown` is in the list because a click usually changes what is under the
+ * cursor — activating a tab, closing a pane — and the bubble belongs to the
+ * control that was there before it did.
+ */
+const detachedBubbleHandlers = {
+  onPointerEnter: (event: React.PointerEvent<HTMLElement>) =>
+    showDetachedBubble(event.currentTarget),
+  onPointerLeave: hideDetachedBubble,
+  onPointerDown: hideDetachedBubble,
+  onFocus: (event: React.FocusEvent<HTMLElement>) => showDetachedBubble(event.currentTarget),
+  onBlur: hideDetachedBubble
+} as const;
+
+/**
+ * Icon-only control with a hover and keyboard-focus text bubble.
+ *
+ * `detached` is for the ones sitting against a pane, where the bubble has to be
+ * drawn above the page rather than in this document.
+ */
 function IconButton({
   label,
   onClick,
   disabled = false,
+  detached = false,
   children
 }: {
   readonly label: string;
   readonly onClick: () => void;
   readonly disabled?: boolean;
+  readonly detached?: boolean;
   readonly children: React.ReactNode;
 }): React.JSX.Element {
   return (
-    <span className="bubble-host">
+    <span className="bubble-host" {...(detached ? detachedBubbleHandlers : {})}>
       <button type="button" className="icon-btn" onClick={onClick} disabled={disabled} aria-label={label}>
         {children}
       </button>
-      <span className="bubble" role="tooltip">
+      <span className={detached ? "bubble is-detached" : "bubble"} role="tooltip">
         {label}
       </span>
     </span>
@@ -634,6 +704,24 @@ export function App(): React.JSX.Element {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [runCommand, paletteOpen, reader.status]);
 
+  /*
+   * A detached bubble lives in another window, so it does not disappear with the
+   * control that asked for it. Everything that ends a hover without a pointer
+   * ever leaving anything — a tab closing under the cursor, the window losing
+   * focus, this view going away — drops it here instead.
+   */
+  useEffect(() => {
+    window.addEventListener("blur", hideDetachedBubble);
+    return () => {
+      window.removeEventListener("blur", hideDetachedBubble);
+      hideDetachedBubble();
+    };
+  }, []);
+
+  useEffect(() => {
+    hideDetachedBubble();
+  }, [snapshot.tabs.length, snapshot.splitEnabled]);
+
   // The address bar follows the focused tab unless the user is mid-edit.
   useEffect(() => {
     if (addressEdited) return;
@@ -669,7 +757,8 @@ export function App(): React.JSX.Element {
       <AmbientField />
 
       <nav className="tab-rail glass" aria-label="Tabs">
-        <div className="rail-tabs">
+        {/* A scroll moves the rail out from under a placed bubble. */}
+        <div className="rail-tabs" onScroll={hideDetachedBubble}>
           {/*
             The rail draws what `railTabsForPane` allows: a collapsed group
             hides its members, except the active tab, which is always shown.
@@ -688,7 +777,7 @@ export function App(): React.JSX.Element {
                     group.collapsed ? ", collapsed" : ""
                   }`;
             return (
-              <span className="bubble-host rail-slot" key={tab.id}>
+              <span className="bubble-host rail-slot" key={tab.id} {...detachedBubbleHandlers}>
                 <button
                   type="button"
                   data-group-colour={group?.colour}
@@ -746,7 +835,7 @@ export function App(): React.JSX.Element {
                   </svg>
                 </button>
 
-                <span className="bubble" role="tooltip">
+                <span className="bubble is-detached" role="tooltip">
                   {name}
                 </span>
               </span>
@@ -755,7 +844,11 @@ export function App(): React.JSX.Element {
         </div>
 
         <div className="rail-foot">
-          <IconButton label="New tab" onClick={() => void bridge.createTab(snapshot.activePaneId)}>
+          <IconButton
+            label="New tab"
+            detached
+            onClick={() => void bridge.createTab(snapshot.activePaneId)}
+          >
             <Plus size={16} strokeWidth={1.5} aria-hidden="true" />
           </IconButton>
         </div>
@@ -1015,6 +1108,7 @@ export function App(): React.JSX.Element {
                     <span className="pane-label">{paneId}</span>
                     <IconButton
                       label={`Close ${paneId} pane`}
+                      detached
                       onClick={() => void bridge.setSplitEnabled(false)}
                     >
                       <X size={13} strokeWidth={1.5} aria-hidden="true" />

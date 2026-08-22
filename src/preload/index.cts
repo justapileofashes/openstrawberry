@@ -27,6 +27,7 @@ import type {
   UPDATE_STATE_EVENT as UpdateStateEvent,
   TRACKING_STATE_EVENT as TrackingStateEvent,
   OpenStrawberryBridge,
+  ProviderTestRequest,
   ShellInfo,
   WINDOW_STATE_EVENT as WindowStateEvent,
   WindowState
@@ -41,13 +42,16 @@ import type { BookmarkPage } from "../shared/bookmarks.js";
 import type { Plan, PlanDraftPayload } from "../shared/orchestration.js";
 import type { UpdateState } from "../shared/updates.js";
 import type { DefaultBrowserState } from "../shared/default-browser.js";
+import type { BubbleRect } from "../shared/bubble.js";
 import type { BrowserPaneId, BrowserSnapshot, BrowserViewport } from "../shared/browser.js";
 import type {
   AgentConfigStatus,
   AgentSkillSummary,
   AgentSnapshot,
-  ApprovalDecision
+  ApprovalDecision,
+  ModelTuning
 } from "../shared/agents.js";
+import type { ProviderTestResult } from "../shared/provider-request.js";
 import type {
   BookmarkPreviewResponse,
   HtmlSourceKind,
@@ -92,6 +96,7 @@ const CHANNEL: Channels = {
   agentDeleteCompanion: "agent:delete-companion",
   agentSelectCompanion: "agent:select-companion",
   agentSetOrchestrator: "agent:set-orchestrator",
+  agentTestProvider: "agent:test-provider",
   migrationOverview: "migration:overview",
   migrationPreviewProfile: "migration:preview-profile",
   migrationPickBookmarks: "migration:pick-bookmarks",
@@ -136,7 +141,9 @@ const CHANNEL: Channels = {
   updateDownload: "update:download",
   updateInstall: "update:install",
   defaultBrowserState: "default-browser:state",
-  defaultBrowserRequest: "default-browser:request"
+  defaultBrowserRequest: "default-browser:request",
+  bubbleShow: "bubble:show",
+  bubbleHide: "bubble:hide"
 };
 
 const STATE_EVENT: typeof BrowserStateEvent = "browser:state";
@@ -273,14 +280,26 @@ const api: OpenStrawberryBridge = {
       provider: string,
       model: string,
       baseUrl?: string | null,
-      command?: string | null
+      command?: string | null,
+      tuning?: ModelTuning
     ) =>
       configCall(CHANNEL.agentSetOrchestrator, {
         provider,
         model,
         baseUrl: baseUrl ?? null,
-        command: command ?? null
+        command: command ?? null,
+        tuning: tuning ?? null
       }),
+    /*
+     * Write-only in the same sense as `setCredential`: a configuration goes out
+     * and a code comes back. The stored key is read on the trusted side and
+     * never crosses this boundary in either direction.
+     */
+    testProvider: async (request: ProviderTestRequest) =>
+      (await electron.ipcRenderer.invoke(
+        CHANNEL.agentTestProvider,
+        request
+      )) as ProviderTestResult,
     onState: (listener: (snapshot: AgentSnapshot) => void): (() => void) => {
       const handler = (_event: unknown, snapshot: AgentSnapshot): void => listener(snapshot);
       electron.ipcRenderer.on(AGENT_EVENT, handler);
@@ -434,6 +453,16 @@ const api: OpenStrawberryBridge = {
         tabId,
         action
       })) as MediaState
+  },
+  bubbles: {
+    // A place in this window's own document, never a place on the screen: the
+    // trusted process resolves the rectangle against the window it owns.
+    show: async (text: string, rect: BubbleRect): Promise<void> => {
+      await electron.ipcRenderer.invoke(CHANNEL.bubbleShow, { text, rect });
+    },
+    hide: async (): Promise<void> => {
+      await electron.ipcRenderer.invoke(CHANNEL.bubbleHide);
+    }
   }
 };
 

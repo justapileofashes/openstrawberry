@@ -11,19 +11,25 @@ import {
   emptyAgentProfile,
   emptyAgentState,
   emptyConfigStatus,
+  emptyTuning,
   hasOwnCredential,
   MAX_AGENTS,
   MAX_AGENT_NAME_LENGTH,
   MAX_COMMAND_LENGTH,
+  MAX_CONTEXT_WINDOW,
+  MAX_PROVIDER_LABEL_LENGTH,
   MAX_RUNS_RETAINED,
   MAX_STEP_DETAIL_LENGTH,
   MAX_STEPS_RETAINED,
   MAX_TASK_LENGTH,
+  MAX_TEMPERATURE,
   parseAgentProfile,
   parseCompanionIdPayload,
   parseCreateCompanionPayload,
   parseCredentialScopePayload,
+  parseModelTuning,
   parsePersistedAgentState,
+  parseProviderTestPayload,
   parseResolveApprovalPayload,
   parseRunIdPayload,
   parseSetCredentialPayload,
@@ -35,6 +41,7 @@ import {
   PROVIDERS,
   requireCommand,
   resolvedProvider,
+  resolveTuning,
   restoredStatus,
   REDACTED_PLACEHOLDER,
   scrubCredentials,
@@ -82,6 +89,7 @@ function companion(overrides: Partial<AgentCompanion> = {}): AgentCompanion {
     model: null,
     baseUrl: null,
     command: null,
+    tuning: emptyTuning(),
     ...overrides
   };
 }
@@ -158,6 +166,53 @@ describe("toPersistedAgentState", () => {
     expect(serialized).not.toContain("credential");
     expect(serialized).not.toContain("apiKey");
     expect(serialized).not.toContain("config");
+  });
+
+  it("writes no page contents, whatever a browser tool returned", () => {
+    /*
+     * The one thing a run can now hold that a session file never could. A
+     * `read_page` result is the article and a `page_links` result is every
+     * address on it, so writing either to `agents.json` would leave the contents
+     * of a signed-in page in plain JSON on disk, outliving the run and the
+     * window. The label stays, so a restored run still says what was done.
+     */
+    const state = toPersistedAgentState(
+      snapshot({
+        runs: [
+          run({
+            steps: [
+              step({ id: "step-1", kind: "tool-call", label: "Using read_page", detail: "tabId: tab-1" }),
+              step({
+                id: "step-2",
+                kind: "tool-result",
+                label: "read_page answered",
+                detail: "Account balance: 4,812.55. Statement for Ms A Person."
+              })
+            ]
+          })
+        ]
+      })
+    );
+
+    const serialized = JSON.stringify(state);
+    expect(serialized).not.toContain("4,812.55");
+    expect(serialized).not.toContain("Ms A Person");
+    expect(serialized).toContain("read_page answered");
+    expect(state.runs[0]?.steps.map((entry) => entry.detail)).toEqual([null, null]);
+  });
+
+  it("still writes the detail of a step that is not a tool's output", () => {
+    const state = toPersistedAgentState(
+      snapshot({
+        runs: [
+          run({
+            steps: [step({ kind: "message", label: "The model replied.", detail: "Kelp grows fast." })]
+          })
+        ]
+      })
+    );
+
+    expect(state.runs[0]?.steps[0]?.detail).toBe("Kelp grows fast.");
   });
 
   it("trims a transcript that outgrew the retention bound", () => {
@@ -472,6 +527,8 @@ describe("resolvedProvider", () => {
       model: "gpt-5",
       baseUrl: null,
       command: null,
+      // Unstated everywhere, so resolved from the OpenAI preset.
+      tuning: resolveTuning("openai", emptyTuning()),
       inherited: true
     });
   });
@@ -484,6 +541,7 @@ describe("resolvedProvider", () => {
       model: "claude-sonnet-5",
       baseUrl: null,
       command: null,
+      tuning: resolveTuning("anthropic", emptyTuning()),
       inherited: false
     });
   });
@@ -857,7 +915,9 @@ describe("IPC payload parsers", () => {
       provider: "google",
       model: "gemini-2.5-pro",
       baseUrl: null,
-      command: null
+      command: null,
+      // A payload with no model configuration reads as four unstated settings.
+      tuning: emptyTuning()
     });
   });
 
@@ -916,7 +976,13 @@ describe("IPC payload parsers", () => {
   it("lets a CLI orchestrator leave the model to the tool", () => {
     expect(
       parseSetOrchestratorPayload({ provider: "claude-code", model: "" })
-    ).toEqual({ provider: "claude-code", model: "", baseUrl: null, command: null });
+    ).toEqual({
+      provider: "claude-code",
+      model: "",
+      baseUrl: null,
+      command: null,
+      tuning: emptyTuning()
+    });
 
     expect(parseSetOrchestratorPayload({ provider: "gemini-cli" }).model).toBe("");
   });
@@ -1010,7 +1076,9 @@ describe("IPC payload parsers", () => {
       provider: null,
       model: null,
       baseUrl: null,
-      command: null
+      command: null,
+      // An agent that follows the orchestrator stores none of its own settings.
+      tuning: emptyTuning()
     });
   });
 
@@ -1027,7 +1095,8 @@ describe("IPC payload parsers", () => {
       provider: "claude-code",
       model: null,
       baseUrl: null,
-      command: null
+      command: null,
+      tuning: emptyTuning()
     });
   });
 
@@ -1090,7 +1159,8 @@ describe("IPC payload parsers", () => {
       provider: "openai-compatible",
       model: "llama-3.3",
       baseUrl: "https://api.example.com/v1",
-      command: null
+      command: null,
+      tuning: emptyTuning()
     });
   });
 
@@ -1112,7 +1182,8 @@ describe("IPC payload parsers", () => {
       provider: null,
       model: null,
       baseUrl: null,
-      command: null
+      command: null,
+      tuning: emptyTuning()
     });
   });
 
@@ -1250,3 +1321,298 @@ describe("scrubCredentials", () => {
     expect(scrubCredentials("")).toBe("");
   });
 });
+
+describe("model tuning", () => {
+  it("resolves an unstated setting against the provider that owns it", () => {
+    const resolved = resolveTuning("anthropic", emptyTuning());
+
+    expect(resolved.providerLabel).toBe("Anthropic");
+    expect(resolved.supportsImages).toBe(true);
+    expect(resolved.contextWindow).toBe(200_000);
+    // No descriptor fallback: unstated means the request carries no temperature
+    // at all, which is not the same as one this app chose.
+    expect(resolved.temperature).toBeNull();
+  });
+
+  it("lets a stated setting beat the provider's own", () => {
+    const resolved = resolveTuning("anthropic", {
+      providerLabel: "Work account",
+      supportsImages: false,
+      contextWindow: 32_768,
+      temperature: 0.4
+    });
+
+    expect(resolved).toEqual({
+      providerLabel: "Work account",
+      supportsImages: false,
+      contextWindow: 32_768,
+      temperature: 0.4
+    });
+  });
+
+  it("claims no context window for a route this app cannot know one for", () => {
+    // A compatible endpoint serves whatever its operator loaded, and a CLI
+    // manages its own context. Inventing a figure for either would be a guess
+    // wearing the authority of a default.
+    expect(resolveTuning("openai-compatible", emptyTuning()).contextWindow).toBeNull();
+    expect(resolveTuning("claude-code", emptyTuning()).contextWindow).toBeNull();
+  });
+
+  it("falls back to the provider id for a provider it has never heard of", () => {
+    expect(resolveTuning("not-a-provider", emptyTuning()).providerLabel).toBe(
+      "not-a-provider"
+    );
+  });
+});
+
+describe("parseModelTuning", () => {
+  it("reads an absent block as four unstated settings", () => {
+    expect(parseModelTuning(undefined, "Test")).toEqual(emptyTuning());
+    expect(parseModelTuning(null, "Test")).toEqual(emptyTuning());
+  });
+
+  it("keeps every stated setting", () => {
+    expect(
+      parseModelTuning(
+        {
+          providerLabel: "Local llama",
+          supportsImages: true,
+          contextWindow: 8192,
+          temperature: 0.7
+        },
+        "Test"
+      )
+    ).toEqual({
+      providerLabel: "Local llama",
+      supportsImages: true,
+      contextWindow: 8192,
+      temperature: 0.7
+    });
+  });
+
+  it("drops a setting whose stored type is wrong rather than coercing it", () => {
+    // A file on disk could have been hand-edited, and "0.7" is a string. Reading
+    // it as a number would be the parser inventing an intent the file does not
+    // state.
+    expect(
+      parseModelTuning(
+        { supportsImages: "yes", contextWindow: "8192", temperature: "0.7" },
+        "Test"
+      )
+    ).toEqual(emptyTuning());
+  });
+
+  it("refuses a context window outside the contract bounds", () => {
+    expect(() => parseModelTuning({ contextWindow: 4 }, "Test")).toThrow(
+      IpcValidationError
+    );
+    expect(() =>
+      parseModelTuning({ contextWindow: MAX_CONTEXT_WINDOW + 1 }, "Test")
+    ).toThrow(IpcValidationError);
+  });
+
+  it("refuses a temperature outside the range every provider accepts", () => {
+    expect(() => parseModelTuning({ temperature: -0.1 }, "Test")).toThrow(
+      IpcValidationError
+    );
+    expect(() =>
+      parseModelTuning({ temperature: MAX_TEMPERATURE + 0.1 }, "Test")
+    ).toThrow(IpcValidationError);
+  });
+
+  it("rounds a float that arrived with binary noise", () => {
+    expect(parseModelTuning({ temperature: 0.30000000000000004 }, "Test").temperature).toBe(
+      0.3
+    );
+  });
+
+  it("reads a blank name as no name at all", () => {
+    expect(parseModelTuning({ providerLabel: "   " }, "Test").providerLabel).toBeNull();
+  });
+});
+
+describe("model tuning across the IPC boundary", () => {
+  it("stores what the orchestrator form sent", () => {
+    expect(
+      parseSetOrchestratorPayload({
+        provider: "openai",
+        model: "gpt-5",
+        tuning: {
+          providerLabel: "Team key",
+          supportsImages: false,
+          contextWindow: 128_000,
+          temperature: 0.2
+        }
+      }).tuning
+    ).toEqual({
+      providerLabel: "Team key",
+      supportsImages: false,
+      contextWindow: 128_000,
+      temperature: 0.2
+    });
+  });
+
+  it("drops every setting a CLI route could not act on, but keeps its name", () => {
+    // A CLI runs a program that manages its own sampling and its own context, so
+    // a temperature stored against one would be config with nothing reading it.
+    expect(
+      parseSetOrchestratorPayload({
+        provider: "claude-code",
+        model: "",
+        tuning: {
+          providerLabel: "Work CLI",
+          supportsImages: true,
+          contextWindow: 128_000,
+          temperature: 1
+        }
+      }).tuning
+    ).toEqual({
+      providerLabel: "Work CLI",
+      supportsImages: null,
+      contextWindow: null,
+      temperature: null
+    });
+  });
+
+  it("refuses a temperature the renderer should never have sent", () => {
+    expect(() =>
+      parseSetOrchestratorPayload({
+        provider: "openai",
+        model: "gpt-5",
+        tuning: { temperature: 9 }
+      })
+    ).toThrow(IpcValidationError);
+  });
+
+  it("refuses a coerced boolean for image support", () => {
+    expect(() =>
+      parseSetOrchestratorPayload({
+        provider: "openai",
+        model: "gpt-5",
+        tuning: { supportsImages: 1 }
+      })
+    ).toThrow(IpcValidationError);
+  });
+
+  it("stores nothing for an agent that follows the orchestrator", () => {
+    // Following means following all of it. Half a set of settings on an
+    // inherited route would make "follows" mean two things at once.
+    expect(
+      parseCreateCompanionPayload({
+        name: "Ledger",
+        role: "finance",
+        provider: null,
+        tuning: { temperature: 0.9, contextWindow: 8192 }
+      }).tuning
+    ).toEqual(emptyTuning());
+  });
+
+  it("keeps a pinned agent's own settings", () => {
+    expect(
+      parseCreateCompanionPayload({
+        name: "Ledger",
+        role: "finance",
+        provider: "openai",
+        model: "gpt-5",
+        tuning: { temperature: 0.9 }
+      }).tuning.temperature
+    ).toBe(0.9);
+  });
+
+  it("refuses a provider name longer than the contract bound", () => {
+    expect(() =>
+      parseSetOrchestratorPayload({
+        provider: "openai",
+        model: "gpt-5",
+        tuning: { providerLabel: "n".repeat(MAX_PROVIDER_LABEL_LENGTH + 1) }
+      })
+    ).toThrow(IpcValidationError);
+  });
+});
+
+describe("parseProviderTestPayload", () => {
+  it("reads a route the form has not applied yet", () => {
+    expect(
+      parseProviderTestPayload({
+        provider: "openai-compatible",
+        model: "llama-3.3",
+        baseUrl: "https://api.example.com/v1",
+        tuning: { temperature: 0.1 },
+        companionId: "companion-1"
+      })
+    ).toEqual({
+      provider: "openai-compatible",
+      model: "llama-3.3",
+      baseUrl: "https://api.example.com/v1",
+      command: null,
+      tuning: {
+        providerLabel: null,
+        supportsImages: null,
+        contextWindow: null,
+        temperature: 0.1
+      },
+      companionId: "companion-1"
+    });
+  });
+
+  it("treats a blank model as the provider's default, exactly as a save does", () => {
+    expect(
+      parseProviderTestPayload({ provider: "anthropic", model: "" }).model
+    ).toBeNull();
+  });
+
+  it("reads an absent agent as the shared key", () => {
+    expect(
+      parseProviderTestPayload({ provider: "anthropic" }).companionId
+    ).toBeNull();
+  });
+
+  it("refuses a provider it does not ship", () => {
+    expect(() => parseProviderTestPayload({ provider: "nope" })).toThrow(
+      IpcValidationError
+    );
+  });
+
+  it("refuses a model id that would escape the endpoint path", () => {
+    expect(() =>
+      parseProviderTestPayload({ provider: "google", model: "../../models" })
+    ).toThrow(IpcValidationError);
+  });
+
+  it("refuses an agent id that is not one this app would have minted", () => {
+    expect(() =>
+      parseProviderTestPayload({ provider: "anthropic", companionId: "../../etc" })
+    ).toThrow(IpcValidationError);
+  });
+
+  it("has no field a credential could travel in", () => {
+    const parsed = parseProviderTestPayload({
+      provider: "anthropic",
+      key: "sk-ant-secret-value-here",
+      credential: "sk-ant-secret-value-here"
+    });
+
+    expect(JSON.stringify(parsed)).not.toContain("secret-value");
+  });
+});
+
+describe("provider descriptors carry model defaults", () => {
+  it("gives every shipped provider an answer for both new fields", () => {
+    for (const descriptor of PROVIDERS) {
+      expect(typeof descriptor.supportsImages).toBe("boolean");
+      expect(
+        descriptor.defaultContextWindow === null ||
+          Number.isSafeInteger(descriptor.defaultContextWindow)
+      ).toBe(true);
+    }
+  });
+
+  it("claims no window for anything whose window this app cannot know", () => {
+    for (const descriptor of PROVIDERS) {
+      if (descriptor.transport === "cli" || descriptor.requiresBaseUrl) {
+        expect(descriptor.defaultContextWindow).toBeNull();
+      }
+    }
+  });
+});
+
